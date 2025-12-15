@@ -1,0 +1,7 @@
+{
+  "name": "Centro de Mando de Pronosticos",
+  "description": "Una aplicación integral para registrar, analizar y mejorar tus estrategias de apuestas deportivas con el poder de la IA de Gemini. Realiza un seguimiento de las apuestas, visualiza estadísticas, analiza escenarios con datos actualizados y chatea con un asistente de IA.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
