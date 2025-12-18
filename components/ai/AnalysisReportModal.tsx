@@ -190,6 +190,9 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
 
     const data = analysis.dashboardData;
 
+    console.log("[DEBUG] Report Data Received:", data);
+    if (!data) console.error("[DEBUG] No dashboardData found in analysis object");
+
     // Fallback por si la IA devolvió texto plano en lugar del JSON (caso raro con Gemini 2.5 Pro y prompt estricto)
     if (!data) {
         return (
@@ -211,28 +214,28 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
     return (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-0 md:p-4 animate-fade-in">
             <div className="bg-gray-900 w-full h-full md:h-[95vh] md:max-w-6xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-800">
-                
+
                 {/* Scrollable Container */}
                 <div className="flex-grow overflow-y-auto custom-scrollbar">
-                    
+
                     {/* Header */}
                     {data.header_partido && <HeaderSection data={data.header_partido} />}
 
                     <div className="p-4 md:p-8 space-y-8">
-                        
+
                         {/* 1. Resumen Ejecutivo */}
                         {data.resumen_ejecutivo && <ExecutiveSummary data={data.resumen_ejecutivo} />}
 
                         {/* 2. Grid de Tablas y Gráficos */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             <div className="space-y-6">
-                                <h3 className="text-xl font-bold text-white flex items-center"><ChartBarIcon className="w-5 h-5 mr-2 text-green-accent"/> Datos Clave</h3>
+                                <h3 className="text-xl font-bold text-white flex items-center"><ChartBarIcon className="w-5 h-5 mr-2 text-green-accent" /> Datos Clave</h3>
                                 {data.tablas_comparativas && Object.values(data.tablas_comparativas).map((tabla, idx) => (
                                     <DynamicTable key={idx} data={tabla} />
                                 ))}
                             </div>
                             <div className="space-y-6">
-                                <h3 className="text-xl font-bold text-white flex items-center"><TrophyIcon className="w-5 h-5 mr-2 text-blue-400"/> Visualización</h3>
+                                <h3 className="text-xl font-bold text-white flex items-center"><TrophyIcon className="w-5 h-5 mr-2 text-blue-400" /> Visualización</h3>
                                 {data.graficos_sugeridos && data.graficos_sugeridos.map((grafico, idx) => (
                                     <VisualChart key={idx} data={grafico} />
                                 ))}
@@ -259,7 +262,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                         {data.predicciones_finales && data.predicciones_finales.detalle && (
                             <div>
                                 <h3 className="text-2xl font-bold text-white mb-6 flex items-center">
-                                    <TrophyIcon className="w-8 h-8 text-green-accent mr-3" /> 
+                                    <TrophyIcon className="w-8 h-8 text-green-accent mr-3" />
                                     Predicciones del Modelo
                                 </h3>
                                 {data.predicciones_finales.detalle.map((pred) => (
@@ -300,7 +303,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
 
                 {/* Close Button Fixed Footer (Mobile Friendly) */}
                 <div className="p-4 border-t border-gray-800 bg-gray-900 flex justify-end">
-                    <button 
+                    <button
                         onClick={onClose}
                         className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded-lg transition-colors"
                     >

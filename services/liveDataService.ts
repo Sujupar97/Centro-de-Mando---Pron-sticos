@@ -1,5 +1,5 @@
-
-import { Game, DashboardData, League, Country, GameDetails, TopPickItem, AnalyzedGameDB } from '../types';
+import { DashboardData, Game, AnalyzedGameDB, TopPickItem, League, Country, GameDetails } from '../types';
+import { getCurrentDateInBogota, getLocalDayRange } from '../utils/dateUtils';
 import { supabase } from './supabaseService';
 
 // --- CONSTANTES ---
@@ -36,11 +36,11 @@ const processFixturesResponse = (response: Game[]): DashboardData => {
         }
         leaguesMap[game.league.id].games.push(game);
     }
-    
+
     const allLeagues = Object.values(leaguesMap);
     const importantLeagues = allLeagues.filter(l => IMPORTANT_LEAGUES_IDS.includes(l.id));
     const otherLeagues = allLeagues.filter(l => !IMPORTANT_LEAGUES_IDS.includes(l.id));
-    
+
     const countryMap: { [name: string]: Country } = {};
     otherLeagues.forEach(league => {
         const countryName = league.country || 'Internacional';
@@ -48,15 +48,26 @@ const processFixturesResponse = (response: Game[]): DashboardData => {
         countryMap[countryName].leagues.push(league);
     });
 
-    return { importantLeagues, countryLeagues: Object.values(countryMap) };
+    const countryLeagues = Object.values(countryMap).sort((a, b) => a.name.localeCompare(b.name));
+
+    return { importantLeagues, countryLeagues };
 };
 
 // --- FUNCIONES EXPORTADAS ---
 
 export const fetchFixturesByDate = async (date: string): Promise<DashboardData> => {
+    console.log(`[DEBUG] fetchFixturesByDate called for: ${date}`);
     // Delegamos la petición al proxy
-    const data = await callProxy<Game[]>('fixtures', { date });
-    return processFixturesResponse(data);
+    try {
+        const data = await callProxy<Game[]>('fixtures', { date });
+        console.log(`[DEBUG] Proxy returned ${data?.length} fixtures for ${date}`, data);
+        const processed = processFixturesResponse(data);
+        console.log(`[DEBUG] Processed data:`, processed);
+        return processed;
+    } catch (e) {
+        console.error(`[DEBUG] Error in fetchFixturesByDate:`, e);
+        throw e;
+    }
 };
 
 export const fetchLiveFixtures = async (): Promise<DashboardData> => {
@@ -82,7 +93,7 @@ export const fetchGameDetails = async (game: Game): Promise<GameDetails> => {
     // 2. Pedir al Proxy que construya el Dossier completo
     // El proxy ahora tiene un modo especial 'full-dossier' para hacer todas las llamadas
     // internas (H2H, Standings, Stats) en el servidor y ahorrar round-trips.
-    const dossier = await callProxy<GameDetails>('full-dossier', { 
+    const dossier = await callProxy<GameDetails>('full-dossier', {
         fixtureId: fixtureId,
         homeTeamId: game.teams.home.id,
         awayTeamId: game.teams.away.id,
@@ -102,77 +113,60 @@ export const fetchGameDetails = async (game: Game): Promise<GameDetails> => {
     return dossier;
 };
 
-export const fetchTopPicksByDate = async (date: string): Promise<TopPickItem[]> => {
-    const startOfDay = `${date}T00:00:00`;
-    const endOfDay = `${date}T23:59:59`;
-
+export const fetchTopPicks = async (date: string) => {
     try {
-        const { data, error } = await supabase
-            .from('analisis')
-            .select(`
-                partido_id,
-                resultado_analisis,
-                partidos!inner (
-                    fecha,
-                    equipo_local_nombre,
-                    equipo_visitante_nombre,
-                    equipo_local_logo,
-                    equipo_visitante_logo,
-                    liga_nombre
-                )
-            `)
-            .gte('partidos.fecha', startOfDay)
-            .lte('partidos.fecha', endOfDay);
+        console.log(`[TopPicks] Fetching for date: ${date}`);
+
+        // 1. Obtener Partidos (para info de equipos y logos)
+        const allFixtures = await fetchFixturesByDate(date);
+        const games = [
+            ...allFixtures.importantLeagues.flatMap(l => l.games),
+            ...allFixtures.countryLeagues.flatMap(c => c.leagues.flatMap(l => l.games))
+        ];
+
+        const fixtureIds = games.map(g => g.fixture.id);
+
+        if (fixtureIds.length === 0) return [];
+
+        // 2. Obtener Predicciones Relacionales (Direct SQL Select) ✅
+        const { supabase } = await import('./supabaseService');
+        const { data: predictions, error } = await supabase
+            .from('predictions')
+            .select('*')
+            .in('fixture_id', fixtureIds)
+            .order('probability', { ascending: false });
 
         if (error) throw error;
-        if (!data) return [];
 
-        return data.map((item: any) => {
-                const typedItem = item as AnalyzedGameDB;
-                const analysisData = typedItem.resultado_analisis.dashboardData || typedItem.resultado_analisis.visualData;
-                let bestRec = null;
-                
-                if (typedItem.resultado_analisis.dashboardData) {
-                    const preds = typedItem.resultado_analisis.dashboardData.predicciones_finales.detalle;
-                    if (preds && preds.length > 0) {
-                        const sorted = [...preds].sort((a, b) => b.probabilidad_estimado_porcentaje - a.probabilidad_estimado_porcentaje);
-                        const top = sorted[0];
-                        bestRec = {
-                            market: top.mercado,
-                            prediction: top.seleccion,
-                            probability: top.probabilidad_estimado_porcentaje,
-                            confidence: top.probabilidad_estimado_porcentaje >= 75 ? 'Alta' : top.probabilidad_estimado_porcentaje >= 50 ? 'Media' : 'Baja',
-                            reasoning: top.justificacion_detallada.conclusion
-                        };
-                    }
-                } else if (typedItem.resultado_analisis.visualData?.recommendations) {
-                    const recs = typedItem.resultado_analisis.visualData.recommendations;
-                    if (recs.length > 0) {
-                        bestRec = recs.reduce((prev: any, current: any) => 
-                            (prev.probability > current.probability) ? prev : current
-                        );
-                    }
+        // 3. Cruzar datos (Join en memoria)
+        const topPicks = predictions.map((pred: any) => {
+            const game = games.find(g => g.fixture.id === pred.fixture_id);
+            if (!game) return null;
+
+            return {
+                gameId: pred.fixture_id,
+                analysisRunId: pred.analysis_run_id,
+                matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
+                date: game.fixture.date,
+                league: game.league.name,
+                teams: {
+                    home: { name: game.teams.home.name, logo: game.teams.home.logo },
+                    away: { name: game.teams.away.name, logo: game.teams.away.logo }
+                },
+                bestRecommendation: {
+                    market: pred.market,
+                    prediction: pred.selection,
+                    probability: pred.probability,
+                    confidence: pred.confidence,
+                    reasoning: pred.reasoning
                 }
+            };
+        }).filter((item: any) => item !== null);
 
-                if (!bestRec) return null;
-
-                return {
-                    gameId: typedItem.partido_id,
-                    matchup: `${typedItem.partidos.equipo_local_nombre} vs ${typedItem.partidos.equipo_visitante_nombre}`,
-                    date: typedItem.partidos.fecha,
-                    league: typedItem.partidos.liga_nombre,
-                    teams: {
-                        home: { name: typedItem.partidos.equipo_local_nombre, logo: typedItem.partidos.equipo_local_logo },
-                        away: { name: typedItem.partidos.equipo_visitante_nombre, logo: typedItem.partidos.equipo_visitante_logo }
-                    },
-                    bestRecommendation: bestRec
-                };
-            })
-            .filter((item): item is TopPickItem => item !== null)
-            .sort((a, b) => b.bestRecommendation.probability - a.bestRecommendation.probability);
+        return topPicks;
 
     } catch (error: any) {
         console.error('Error al obtener Top Picks:', error.message);
-        throw new Error('No se pudieron cargar las mejores opciones.');
+        return [];
     }
 };

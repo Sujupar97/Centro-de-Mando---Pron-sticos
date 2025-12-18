@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from '../_shared/cors.ts'
 
 // FIX: Se declara la variable global Deno para que TypeScript la reconozca, ya que este código se ejecuta en un entorno Deno.
@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
-    
+
     // Crear un cliente de Supabase para verificar los permisos del usuario que realiza la llamada
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
     if (profileError || !profile) {
       throw new Error("No se pudo verificar el rol del usuario.")
     }
-    
+
     // Solo los superadministradores pueden invitar usuarios
     if (profile.role !== 'superadmin') {
       return new Response(JSON.stringify({ error: 'No tienes permiso para invitar usuarios.' }), {

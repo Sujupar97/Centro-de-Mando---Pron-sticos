@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { TopPickItem } from '../../types';
-import { fetchTopPicksByDate } from '../../services/liveDataService';
+import { fetchTopPicks } from '../../services/liveDataService';
 import { TrophyIcon, ChartBarIcon } from '../icons/Icons';
 
 interface TopPicksProps {
     date: string;
+    onOpenReport?: (runId: string) => void;
 }
 
 // Componente de Círculo de Probabilidad
@@ -21,7 +22,7 @@ const ProbabilityBadge: React.FC<{ probability: number }> = ({ probability }) =>
     );
 };
 
-export const TopPicks: React.FC<TopPicksProps> = ({ date }) => {
+export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
     const [topPicks, setTopPicks] = useState<TopPickItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
@@ -32,8 +33,8 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date }) => {
             setError('');
             setTopPicks([]);
             try {
-                const data = await fetchTopPicksByDate(date);
-                setTopPicks(data);
+                const data = await fetchTopPicks(date);
+                if (data) setTopPicks(data);
             } catch (err: any) {
                 setError(err.message || 'Error al cargar las mejores opciones.');
             } finally {
@@ -47,7 +48,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date }) => {
     return (
         <div className="flex flex-col h-full animate-fade-in">
             <div className="mb-6">
-                 <div className="bg-green-accent/10 border border-green-accent/20 p-4 rounded-lg">
+                <div className="bg-green-accent/10 border border-green-accent/20 p-4 rounded-lg">
                     <h3 className="text-lg font-bold text-white flex items-center">
                         <TrophyIcon className="w-6 h-6 text-green-accent mr-2" />
                         Mejores Opciones del Día
@@ -80,9 +81,10 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date }) => {
             ) : (
                 <div className="grid gap-4">
                     {topPicks.map((pick) => (
-                        <div 
-                            key={pick.gameId} 
-                            className="relative bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-700 hover:border-green-accent/50 transition-all duration-300 group"
+                        <div
+                            key={pick.gameId}
+                            onClick={() => pick.analysisRunId && onOpenReport && onOpenReport(pick.analysisRunId)}
+                            className="relative bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-700 hover:border-green-accent/50 transition-all duration-300 group cursor-pointer hover:bg-gray-750"
                         >
                             {/* Barra lateral indicadora de confianza */}
                             <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${pick.bestRecommendation.probability >= 80 ? 'bg-green-accent' : pick.bestRecommendation.probability >= 60 ? 'bg-yellow-400' : 'bg-red-500'}`}></div>
@@ -96,7 +98,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date }) => {
                                     </div>
                                     <div className="flex flex-col items-center">
                                         <span className="text-gray-500 font-bold text-xs mb-1">VS</span>
-                                        <span className="text-xs text-gray-600 font-mono bg-gray-900 px-2 py-0.5 rounded">{new Date(pick.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                        <span className="text-xs text-gray-600 font-mono bg-gray-900 px-2 py-0.5 rounded">{new Date(pick.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                     </div>
                                     <div className="flex flex-col items-center w-20">
                                         <img src={pick.teams.away.logo} alt={pick.teams.away.name} className="w-10 h-10 object-contain mb-2" />
@@ -118,11 +120,14 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date }) => {
                                     <ProbabilityBadge probability={pick.bestRecommendation.probability} />
                                 </div>
                             </div>
-                            
+
                             {/* Footer informativo */}
                             <div className="bg-gray-900/50 px-4 py-2 flex justify-between items-center text-xs text-gray-500">
                                 <span>{pick.league}</span>
-                                <span>Confianza IA: <span className={pick.bestRecommendation.confidence === 'Alta' ? 'text-green-500 font-bold' : 'text-yellow-500'}>{pick.bestRecommendation.confidence}</span></span>
+                                <div className="flex items-center gap-2">
+                                    <span className="uppercase text-[10px] font-bold tracking-widest bg-gray-800 px-2 py-0.5 rounded border border-gray-600 text-gray-300 group-hover:bg-green-accent group-hover:text-black transition-colors">Ver Informe</span>
+                                    <span>Confianza IA: <span className={pick.bestRecommendation.confidence === 'Alta' ? 'text-green-500 font-bold' : 'text-yellow-500'}>{pick.bestRecommendation.confidence}</span></span>
+                                </div>
                             </div>
                         </div>
                     ))}

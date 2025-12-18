@@ -13,7 +13,10 @@ serve(async (req) => {
   }
 
   try {
-    const { endpoint, params, fixtureId, homeTeamId, awayTeamId, leagueId, season } = await req.json();
+    const { endpoint, params, fixtureId, homeTeamId, awayTeamId, leagueId, season, ...otherParams } = await req.json();
+
+    // Compatibilidad: Si 'params' viene explícito, úsalo. Si no, usa el resto de propiedades del body.
+    const finalParams = params || otherParams;
 
     // 1. Obtener y parsear las claves
     const keysString = Deno.env.get('API_FOOTBALL_KEYS');
@@ -28,41 +31,41 @@ serve(async (req) => {
 
       for (const key of apiKeys) {
         try {
-            console.log(`Intentando con clave: ${key.substring(0, 4)}...`);
-            const response = await fetch(`${API_BASE}/${urlPath}`, {
-                headers: {
-                    'x-apisports-key': key,
-                    'Content-Type': 'application/json'
-                }
-            });
+          console.log(`Intentando con clave: ${key.substring(0, 4)}...`);
+          const response = await fetch(`${API_BASE}/${urlPath}`, {
+            headers: {
+              'x-apisports-key': key,
+              'Content-Type': 'application/json'
+            }
+          });
 
-            // Si es 200 OK, verificar errores lógicos de la API (límites)
-            if (response.ok) {
-                const data = await response.json();
-                
-                // Verificar si la respuesta contiene errores de límite
-                if (data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0)) {
-                    const errorStr = JSON.stringify(data.errors);
-                    if (errorStr.includes("limit") || errorStr.includes("suspended")) {
-                        console.warn(`Clave ${key.substring(0, 4)} agotada. Rotando...`);
-                        continue; // Intentar siguiente clave
-                    }
-                    // Otros errores (ej: parámetros inválidos) no se resuelven rotando
-                     throw new Error(`API Error: ${errorStr}`);
-                }
-                
-                return data.response;
-            } else if (response.status === 429) {
-                 console.warn(`Clave ${key.substring(0, 4)} rate limited (429). Rotando...`);
-                 continue;
-            } else {
-                 throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+          // Si es 200 OK, verificar errores lógicos de la API (límites)
+          if (response.ok) {
+            const data = await response.json();
+
+            // Verificar si la respuesta contiene errores de límite
+            if (data.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0)) {
+              const errorStr = JSON.stringify(data.errors);
+              if (errorStr.includes("limit") || errorStr.includes("suspended")) {
+                console.warn(`Clave ${key.substring(0, 4)} agotada. Rotando...`);
+                continue; // Intentar siguiente clave
+              }
+              // Otros errores (ej: parámetros inválidos) no se resuelven rotando
+              throw new Error(`API Error: ${errorStr}`);
             }
 
+            return data.response;
+          } else if (response.status === 429) {
+            console.warn(`Clave ${key.substring(0, 4)} rate limited (429). Rotando...`);
+            continue;
+          } else {
+            throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+          }
+
         } catch (e) {
-            lastError = e;
-            // Si es un error de red o límite, seguimos iterando.
-            // Si es un error fatal, podríamos decidir parar, pero por seguridad intentamos todas.
+          lastError = e;
+          // Si es un error de red o límite, seguimos iterando.
+          // Si es un error fatal, podríamos decidir parar, pero por seguridad intentamos todas.
         }
       }
       throw lastError || new Error("Todas las claves API se han agotado o fallaron.");
@@ -72,42 +75,42 @@ serve(async (req) => {
 
     // MODO: FULL DOSSIER (Optimización para reducir round-trips desde el cliente)
     if (endpoint === 'full-dossier') {
-        if (!fixtureId || !homeTeamId || !awayTeamId || !leagueId) throw new Error("Faltan parámetros para dossier.");
-        
-        // Ejecutar promesas en paralelo para velocidad
-        const [fixture, stats, lineups, events, h2h, standings, teamStatsHome, teamStatsAway, lastHome, lastAway] = await Promise.all([
-             fetchWithRotation(`fixtures?id=${fixtureId}`),
-             fetchWithRotation(`fixtures/statistics?fixture=${fixtureId}`),
-             fetchWithRotation(`fixtures/lineups?fixture=${fixtureId}`),
-             fetchWithRotation(`fixtures/events?fixture=${fixtureId}`),
-             fetchWithRotation(`fixtures/headtohead?h2h=${homeTeamId}-${awayTeamId}`),
-             fetchWithRotation(`standings?league=${leagueId}&season=${season}`),
-             fetchWithRotation(`teams/statistics?league=${leagueId}&season=${season}&team=${homeTeamId}`),
-             fetchWithRotation(`teams/statistics?league=${leagueId}&season=${season}&team=${awayTeamId}`),
-             fetchWithRotation(`fixtures?team=${homeTeamId}&last=10`),
-             fetchWithRotation(`fixtures?team=${awayTeamId}&last=10`),
-        ]);
+      if (!fixtureId || !homeTeamId || !awayTeamId || !leagueId) throw new Error("Faltan parámetros para dossier.");
 
-        resultData = {
-            fixture: fixture?.[0]?.fixture,
-            league: fixture?.[0]?.league,
-            teams: fixture?.[0]?.teams,
-            goals: fixture?.[0]?.goals,
-            statistics: stats,
-            lineups: lineups,
-            events: events,
-            h2h: h2h,
-            standings: standings?.[0]?.league?.standings || null,
-            teamStats: { home: teamStatsHome, away: teamStatsAway },
-            lastMatches: { home: lastHome, away: lastAway }
-        };
+      // Ejecutar promesas en paralelo para velocidad
+      const [fixture, stats, lineups, events, h2h, standings, teamStatsHome, teamStatsAway, lastHome, lastAway] = await Promise.all([
+        fetchWithRotation(`fixtures?id=${fixtureId}`),
+        fetchWithRotation(`fixtures/statistics?fixture=${fixtureId}`),
+        fetchWithRotation(`fixtures/lineups?fixture=${fixtureId}`),
+        fetchWithRotation(`fixtures/events?fixture=${fixtureId}`),
+        fetchWithRotation(`fixtures/headtohead?h2h=${homeTeamId}-${awayTeamId}`),
+        fetchWithRotation(`standings?league=${leagueId}&season=${season}`),
+        fetchWithRotation(`teams/statistics?league=${leagueId}&season=${season}&team=${homeTeamId}`),
+        fetchWithRotation(`teams/statistics?league=${leagueId}&season=${season}&team=${awayTeamId}`),
+        fetchWithRotation(`fixtures?team=${homeTeamId}&last=10`),
+        fetchWithRotation(`fixtures?team=${awayTeamId}&last=10`),
+      ]);
+
+      resultData = {
+        fixture: fixture?.[0]?.fixture,
+        league: fixture?.[0]?.league,
+        teams: fixture?.[0]?.teams,
+        goals: fixture?.[0]?.goals,
+        statistics: stats,
+        lineups: lineups,
+        events: events,
+        h2h: h2h,
+        standings: standings?.[0]?.league?.standings || null,
+        teamStats: { home: teamStatsHome, away: teamStatsAway },
+        lastMatches: { home: lastHome, away: lastAway }
+      };
 
     } else {
-        // MODO: PROXY SIMPLE (fixtures, live, etc)
-        // Construir query string
-        const queryString = new URLSearchParams(params).toString();
-        const url = queryString ? `${endpoint}?${queryString}` : endpoint;
-        resultData = await fetchWithRotation(url);
+      // MODO: PROXY SIMPLE (fixtures, live, etc)
+      // Construir query string
+      const queryString = new URLSearchParams(finalParams).toString();
+      const url = queryString ? `${endpoint}?${queryString}` : endpoint;
+      resultData = await fetchWithRotation(url);
     }
 
     return new Response(JSON.stringify(resultData), {

@@ -2,7 +2,7 @@
 import { GoogleGenAI, GenerateContentParameters, GenerateContentResponse, Chat, GroundingChunk } from "@google/genai";
 import { GameDetails, VisualAnalysisResult, PerformanceReportResult, Game, ParlayAnalysisResult, GamedayAnalysisResult, BetTicketAnalysisResult, ExtractedBetInfo, DashboardAnalysisJSON } from '../types';
 
-export const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+export const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // --- CONSTANTS & HELPERS ---
 const MAX_RETRIES = 3;
@@ -10,61 +10,61 @@ const INITIAL_DELAY_MS = 2000;
 const MAX_DELAY_MS = 10000;
 
 async function generateWithRetry(request: GenerateContentParameters): Promise<GenerateContentResponse> {
-    let retries = 0;
-    let delay = INITIAL_DELAY_MS;
+  let retries = 0;
+  let delay = INITIAL_DELAY_MS;
 
-    while (true) {
-        try {
-            const response = await ai.models.generateContent(request);
-            if (!response.text || response.text.trim() === '') throw new Error('EMPTY_AI_RESPONSE');
-            return response;
-        } catch (error: any) {
-            let isRetryable = false;
-            let statusCode = 0;
+  while (true) {
+    try {
+      const response = await ai.models.generateContent(request);
+      if (!response.text || response.text.trim() === '') throw new Error('EMPTY_AI_RESPONSE');
+      return response;
+    } catch (error: any) {
+      let isRetryable = false;
+      let statusCode = 0;
 
-            if (error.message?.includes('EMPTY_AI_RESPONSE')) isRetryable = true;
-            else if (error?.error?.code && error.error.code >= 500) { isRetryable = true; statusCode = error.error.code; }
-            else if (String(error.message).includes('UNAVAILABLE') || String(error.message).includes('503')) { isRetryable = true; statusCode = 503; }
-            
-            if (isRetryable && retries < MAX_RETRIES) {
-                retries++;
-                const waitTime = delay + (Math.random() * 1000);
-                console.warn(`Gemini Retry (${retries}/${MAX_RETRIES}) for status ${statusCode}. Waiting ${Math.round(waitTime)}ms`);
-                await new Promise(r => setTimeout(r, waitTime));
-                delay = Math.min(delay * 2, MAX_DELAY_MS);
-            } else {
-                throw error;
-            }
-        }
+      if (error.message?.includes('EMPTY_AI_RESPONSE')) isRetryable = true;
+      else if (error?.error?.code && error.error.code >= 500) { isRetryable = true; statusCode = error.error.code; }
+      else if (String(error.message).includes('UNAVAILABLE') || String(error.message).includes('503')) { isRetryable = true; statusCode = 503; }
+
+      if (isRetryable && retries < MAX_RETRIES) {
+        retries++;
+        const waitTime = delay + (Math.random() * 1000);
+        console.warn(`Gemini Retry (${retries}/${MAX_RETRIES}) for status ${statusCode}. Waiting ${Math.round(waitTime)}ms`);
+        await new Promise(r => setTimeout(r, waitTime));
+        delay = Math.min(delay * 2, MAX_DELAY_MS);
+      } else {
+        throw error;
+      }
     }
+  }
 }
 
 // --- CORE ANALYSIS FUNCTION ---
 
 export async function getScenarioAnalysis(prompt: string, gameDetails: GameDetails, performanceReport?: PerformanceReportResult | null): Promise<VisualAnalysisResult> {
-    const { fixture, league, teams, teamStats, lineups, standings, h2h, lastMatches } = gameDetails;
-    const homeTeam = teams.home;
-    const awayTeam = teams.away;
+  const { fixture, league, teams, teamStats, lineups, standings, h2h, lastMatches } = gameDetails;
+  const homeTeam = teams.home;
+  const awayTeam = teams.away;
 
-    const formatLineup = (lineup: any) => !lineup?.startXI ? 'No disponible' : lineup.startXI.map((p: any) => `${p.player.number}. ${p.player.name} (${p.player.pos})`).join(', ');
-    const homeLineupStr = formatLineup(lineups?.find(l => l.team.id === homeTeam.id));
-    const awayLineupStr = formatLineup(lineups?.find(l => l.team.id === awayTeam.id));
+  const formatLineup = (lineup: any) => !lineup?.startXI ? 'No disponible' : lineup.startXI.map((p: any) => `${p.player.number}. ${p.player.name} (${p.player.pos})`).join(', ');
+  const homeLineupStr = formatLineup(lineups?.find(l => l.team.id === homeTeam.id));
+  const awayLineupStr = formatLineup(lineups?.find(l => l.team.id === awayTeam.id));
 
-    const formatLastMatches = (games: Game[] | null) => {
-        if (!games || games.length === 0) return "No data";
-        return games.map(g => {
-            const score = `${g.goals.home}-${g.goals.away}`;
-            return `[${new Date(g.fixture.timestamp*1000).toLocaleDateString()}] ${g.teams.home.name} ${score} ${g.teams.away.name} (${g.league.name})`;
-        }).join('\n');
-    };
+  const formatLastMatches = (games: Game[] | null) => {
+    if (!games || games.length === 0) return "No data";
+    return games.map(g => {
+      const score = `${g.goals.home}-${g.goals.away}`;
+      return `[${new Date(g.fixture.timestamp * 1000).toLocaleDateString()}] ${g.teams.home.name} ${score} ${g.teams.away.name} (${g.league.name})`;
+    }).join('\n');
+  };
 
-    const flatStandings = standings ? standings.flat() : [];
-    const relevantStandings = flatStandings.filter(s => s.team.id === homeTeam.id || s.team.id === awayTeam.id);
-    const standingsStr = relevantStandings.length > 0 
-        ? relevantStandings.map(s => `#${s.rank} ${s.team.name}: ${s.points}pts (PJ:${s.all.played}, G:${s.all.win}, E:${s.all.draw}, P:${s.all.lose}, GF:${s.all.goals.for}, GC:${s.all.goals.against})`).join('\n') 
-        : 'N/A';
+  const flatStandings = standings ? standings.flat() : [];
+  const relevantStandings = flatStandings.filter(s => s.team.id === homeTeam.id || s.team.id === awayTeam.id);
+  const standingsStr = relevantStandings.length > 0
+    ? relevantStandings.map(s => `#${s.rank} ${s.team.name}: ${s.points}pts (PJ:${s.all.played}, G:${s.all.win}, E:${s.all.draw}, P:${s.all.lose}, GF:${s.all.goals.for}, GC:${s.all.goals.against})`).join('\n')
+    : 'N/A';
 
-    const dossier = `
+  const dossier = `
 **DOSSIER TÁCTICO INTEGRAL: ${homeTeam.name} vs ${awayTeam.name}**
 Liga: ${league.name} | Ronda: ${league.round || 'Regular'} | Estadio: ${fixture.venue.name} | Fecha: ${new Date(fixture.timestamp * 1000).toLocaleString()}
 Árbitro: ${fixture.referee || 'N/A'}
@@ -84,15 +84,15 @@ Estadísticas Temporada: Form: ${teamStats.away?.form || 'N/A'}
 ${formatLastMatches(lastMatches.away)}
 
 **H2H (Enfrentamientos Directos):**
-${h2h ? h2h.slice(0,8).map(h => `${new Date(h.fixture.timestamp*1000).getFullYear()}: ${h.teams.home.name} ${h.goals.home}-${h.goals.away} ${h.teams.away.name}`).join('\n') : 'N/A'}
+${h2h ? h2h.slice(0, 8).map(h => `${new Date(h.fixture.timestamp * 1000).getFullYear()}: ${h.teams.home.name} ${h.goals.home}-${h.goals.away} ${h.teams.away.name}`).join('\n') : 'N/A'}
 
 **ALINEACIONES PROBABLES/CONFIRMADAS:**
 LOCAL (${homeTeam.name}): ${homeLineupStr}
 VISITANTE (${awayTeam.name}): ${awayLineupStr}
 `;
 
-    // --- NUEVO PROMPT MAESTRO (ACTUALIZADO CON REGLAS DE INTEGRIDAD DE DATOS) ---
-    const systemInstruction = `
+  // --- NUEVO PROMPT MAESTRO (ACTUALIZADO CON REGLAS DE INTEGRIDAD DE DATOS) ---
+  const systemInstruction = `
 A partir de este momento, tu tarea es MODIFICAR por completo la forma en la que analizas partidos de fútbol.
 
 Actualmente ya realizas análisis de partidos, pero tus análisis NO son suficientes: son superficiales, se basan en pocos datos y no aprovechan todo el contexto disponible. Desde ahora, debes seguir estrictamente las siguientes instrucciones para analizar cada partido de fútbol usando los datos estructurados que se te entregan (incluyendo datos obtenidos desde la API de Fútbol y cualquier otra fuente de datos que reciba el sistema).
@@ -479,96 +479,115 @@ A partir de ahora, TODOS tus análisis de partidos de fútbol deben seguir:
 - Y ESTE FORMATO DE SALIDA VISUAL, pensado para que un tipster humano pueda leerlo de un vistazo y un software pueda convertirlo en gráficos y componentes visuales.
 `;
 
-    const request: GenerateContentParameters = {
-        model: 'gemini-2.5-pro',
-        contents: { parts: [{ text: dossier + "\n\n" + prompt }] },
-        config: {
-            systemInstruction,
-            maxOutputTokens: 8192,
-            temperature: 0.5, // Más determinista para seguir la estructura
-            responseMimeType: "application/json", // Forzar modo JSON
-        }
-    };
-
-    const response = await generateWithRetry(request);
-    
-    // Parseo robusto del JSON
-    const cleanText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
-    let dashboardData: DashboardAnalysisJSON | null = null;
-    
-    try {
-        dashboardData = JSON.parse(cleanText);
-    } catch (e) {
-        console.error("Error crítico parsing Dashboard JSON de IA", e);
-        // Fallback: Si falla el JSON, devolver null y manejar en UI con mensaje de error
-        return { analysisText: response.text, dashboardData: null };
+  const request: GenerateContentParameters = {
+    model: 'gemini-2.5-pro',
+    contents: { parts: [{ text: dossier + "\n\n" + prompt }] },
+    config: {
+      systemInstruction,
+      maxOutputTokens: 8192,
+      temperature: 0.5, // Más determinista para seguir la estructura
+      responseMimeType: "application/json", // Forzar modo JSON
     }
+  };
 
-    return {
-        analysisText: JSON.stringify(dashboardData), // Guardamos el JSON stringificado como texto base
-        dashboardData: dashboardData,
-        sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks
-    };
+  const response = await generateWithRetry(request);
+
+  // Parseo robusto del JSON
+  const cleanText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
+  let dashboardData: DashboardAnalysisJSON | null = null;
+
+  try {
+    dashboardData = JSON.parse(cleanText);
+  } catch (e) {
+    console.error("Error crítico parsing Dashboard JSON de IA", e);
+    // Fallback: Si falla el JSON, devolver null y manejar en UI con mensaje de error
+    return { analysisText: response.text, dashboardData: null };
+  }
+
+  return {
+    analysisText: JSON.stringify(dashboardData), // Guardamos el JSON stringificado como texto base
+    dashboardData: dashboardData,
+    sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks
+  };
 }
 
 // --- Mantenimiento de otras funciones existentes ---
 
 export async function extractBetInfoFromImage(base64: string, mimeType: string): Promise<ExtractedBetInfo> {
-    const prompt = `Analiza este ticket. Extrae datos JSON: date (YYYY-MM-DD), stake (number), totalOdds (number), status (Pendiente/Ganada/Perdida), legs array [{sport, league, event, market, odds, status}].`;
-    const request = {
-        model: 'gemini-2.5-flash',
-        contents: { parts: [{ text: prompt }, { inlineData: { data: base64, mimeType } }] },
-        config: { responseMimeType: 'application/json' }
-    };
-    const res = await generateWithRetry(request);
-    return JSON.parse(res.text) as ExtractedBetInfo;
+  const prompt = `Analiza este ticket de apuestas deportivas. Extrae la información y devuélvela EXCLUSIVAMENTE en formato JSON válido sin bloques de código markdown "json".
+    
+    Formato requerido:
+    {
+      "date": "YYYY-MM-DD",
+      "stake": number,
+      "totalOdds": number,
+      "status": "Pendiente" | "Ganada" | "Perdida",
+      "legs": [
+        {
+          "sport": "Fútbol" | "Baloncesto" | "Tenis" | "Otro",
+          "league": "nombre de liga o null",
+          "event": "Equipo A vs Equipo B",
+          "market": "nombre del mercado",
+          "odds": number,
+          "status": "Pendiente" | "Ganada" | "Perdida"
+        }
+      ]
+    }
+    `;
+  const request = {
+    model: 'gemini-1.5-flash-001',
+    contents: { parts: [{ text: prompt }, { inlineData: { data: base64, mimeType } }] },
+    config: { responseMimeType: 'application/json' }
+  };
+  const res = await generateWithRetry(request);
+  return JSON.parse(res.text) as ExtractedBetInfo;
 }
 
 export function createAnalysisChat(): Chat {
-    return ai.chats.create({ model: 'gemini-2.5-flash', config: { systemInstruction: "Asistente de apuestas experto." } });
+  return ai.chats.create({ model: 'gemini-2.5-flash', config: { systemInstruction: "Asistente de apuestas experto." } });
 }
 
 export async function sendMessageToChat(chat: Chat, message: string): Promise<{ text: string, sources?: GroundingChunk[] }> {
-    const res = await chat.sendMessage({ message });
-    return { text: res.text, sources: res.candidates?.[0]?.groundingMetadata?.groundingChunks };
+  const res = await chat.sendMessage({ message });
+  return { text: res.text, sources: res.candidates?.[0]?.groundingMetadata?.groundingChunks };
 }
 
 export async function generateParlayAnalysis(prompt: string, date: string): Promise<ParlayAnalysisResult> {
-    const request = {
-        model: 'gemini-2.5-pro',
-        contents: { parts: [{ text: `Genera parlay para ${date}. Prompt: ${prompt}` }] },
-        config: { responseMimeType: 'application/json', systemInstruction: "Genera JSON con parlayTitle, legs[], finalOdds, overallStrategy." }
-    };
-    const res = await generateWithRetry(request);
-    return JSON.parse(res.text);
+  const request = {
+    model: 'gemini-2.5-pro',
+    contents: { parts: [{ text: `Genera parlay para ${date}. Prompt: ${prompt}` }] },
+    config: { responseMimeType: 'application/json', systemInstruction: "Genera JSON con parlayTitle, legs[], finalOdds, overallStrategy." }
+  };
+  const res = await generateWithRetry(request);
+  return JSON.parse(res.text);
 }
 
 export async function getGamedayAnalysis(sport: string, date: string): Promise<GamedayAnalysisResult> {
-    const request = {
-        model: 'gemini-2.5-pro',
-        contents: { parts: [{ text: `${sport} en ${date}` }] },
-        config: { responseMimeType: 'application/json', systemInstruction: "Analiza jornada, devuelve array de GameAnalysis." }
-    };
-    const res = await generateWithRetry(request);
-    return JSON.parse(res.text);
+  const request = {
+    model: 'gemini-2.5-pro',
+    contents: { parts: [{ text: `${sport} en ${date}` }] },
+    config: { responseMimeType: 'application/json', systemInstruction: "Analiza jornada, devuelve array de GameAnalysis." }
+  };
+  const res = await generateWithRetry(request);
+  return JSON.parse(res.text);
 }
 
 export async function analyzeBetTicket(image: { base64: string, mimeType: string }, context?: string): Promise<BetTicketAnalysisResult> {
-    const request = {
-        model: 'gemini-2.5-pro',
-        contents: { parts: [{ text: `Analiza ticket. ${context || ''}` }, { inlineData: { data: image.base64, mimeType: image.mimeType } }] },
-        config: { responseMimeType: 'application/json', systemInstruction: "JSON output: overallVerdict, strongestPick, riskiestPick, legAnalyses[]" }
-    };
-    const res = await generateWithRetry(request);
-    return JSON.parse(res.text);
+  const request = {
+    model: 'gemini-2.5-pro',
+    contents: { parts: [{ text: `Analiza ticket. ${context || ''}` }, { inlineData: { data: image.base64, mimeType: image.mimeType } }] },
+    config: { responseMimeType: 'application/json', systemInstruction: "JSON output: overallVerdict, strongestPick, riskiestPick, legAnalyses[]" }
+  };
+  const res = await generateWithRetry(request);
+  return JSON.parse(res.text);
 }
 
 export async function generatePerformanceReport(bets: any[]): Promise<PerformanceReportResult> {
-    const request = {
-        model: 'gemini-2.5-pro',
-        contents: { parts: [{ text: JSON.stringify(bets) }] },
-        config: { responseMimeType: 'application/json', systemInstruction: "Genera reporte rendimiento." }
-    };
-    const res = await generateWithRetry(request);
-    return JSON.parse(res.text) as PerformanceReportResult;
+  const request = {
+    model: 'gemini-2.5-pro',
+    contents: { parts: [{ text: JSON.stringify(bets) }] },
+    config: { responseMimeType: 'application/json', systemInstruction: "Genera reporte rendimiento." }
+  };
+  const res = await generateWithRetry(request);
+  return JSON.parse(res.text) as PerformanceReportResult;
 }

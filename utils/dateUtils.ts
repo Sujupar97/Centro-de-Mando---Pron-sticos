@@ -6,7 +6,7 @@
  */
 export const getCurrentDateInBogota = (): string => {
     const today = new Date();
-    
+
     // Usamos el formateador de fecha internacional para obtener las partes de la fecha
     // específicamente en la zona horaria de Bogotá. El formato 'en-CA' (Canadá)
     // produce 'YYYY-MM-DD' de forma nativa y fiable.
@@ -16,6 +16,13 @@ export const getCurrentDateInBogota = (): string => {
         day: '2-digit',
         timeZone: 'America/Bogota',
     });
-    
+
     return formatter.format(today);
+};
+
+export const getLocalDayRange = (date: string): { startOfDay: string; endOfDay: string } => {
+    return {
+        startOfDay: `${date}T00:00:00`,
+        endOfDay: `${date}T23:59:59`
+    };
 };
