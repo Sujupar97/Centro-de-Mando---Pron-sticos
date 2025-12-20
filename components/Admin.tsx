@@ -233,13 +233,16 @@ export const AdminPage: React.FC = () => {
     }
 
     return (
-        <div className="space-y-8">
-            <h2 className="text-3xl font-bold text-white">Administración de Usuarios</h2>
+        <div className="space-y-8 pb-20">
+            <div>
+                <h2 className="text-3xl font-display font-bold text-white tracking-tight">Panel de Administración</h2>
+                <p className="text-slate-400 mt-1">Gestión de usuarios, verificaciones y análisis del sistema.</p>
+            </div>
 
             {profile?.role === 'superadmin' && (
                 <>
-                    <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                        <h3 className="text-xl font-semibold text-white mb-4">Invitar Nuevo Usuario</h3>
+                    <div className="glass p-6 rounded-xl border border-white/5 shadow-2xl">
+                        <h3 className="text-xl font-display font-bold text-white mb-4">Invitar Nuevo Usuario</h3>
                         <form onSubmit={handleInviteUser} className="flex flex-col sm:flex-row gap-4 items-center">
                             <input
                                 type="email"
@@ -247,12 +250,12 @@ export const AdminPage: React.FC = () => {
                                 value={inviteEmail}
                                 onChange={(e) => setInviteEmail(e.target.value)}
                                 required
-                                className="flex-grow w-full bg-gray-700 border border-gray-600 rounded-md p-2.5 text-white focus:ring-green-accent focus:border-green-accent"
+                                className="flex-grow w-full bg-slate-900/80 border border-white/10 rounded-lg p-3 text-white focus:ring-2 focus:ring-brand outline-none"
                             />
                             <select
                                 value={inviteRole}
                                 onChange={(e) => setInviteRole(e.target.value as 'superadmin' | 'admin' | 'usuario')}
-                                className="w-full sm:w-auto bg-gray-700 border border-gray-600 rounded-md p-2.5 text-white focus:ring-green-accent focus:border-green-accent"
+                                className="w-full sm:w-auto bg-slate-900/80 border border-white/10 rounded-lg p-3 text-white focus:ring-2 focus:ring-brand outline-none"
                             >
                                 <option value="usuario">Usuario</option>
                                 <option value="admin">Administrador</option>
@@ -261,28 +264,28 @@ export const AdminPage: React.FC = () => {
                             <button
                                 type="submit"
                                 disabled={inviteLoading}
-                                className="w-full sm:w-auto bg-green-accent hover:bg-green-600 text-white font-bold py-2.5 px-6 rounded-md transition duration-300 disabled:bg-gray-600"
+                                className="w-full sm:w-auto bg-brand hover:bg-emerald-400 text-slate-900 font-bold py-3 px-6 rounded-lg transition-all shadow-lg shadow-brand/20 disabled:opacity-50"
                             >
                                 {inviteLoading ? 'Enviando...' : 'Invitar'}
                             </button>
                         </form>
-                        {inviteMessage && <p className="mt-3 text-sm text-green-accent">{inviteMessage}</p>}
-                        {error && <p className="mt-3 text-sm text-red-accent">{error}</p>}
+                        {inviteMessage && <p className="mt-3 text-sm text-emerald-400 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">{inviteMessage}</p>}
+                        {error && <p className="mt-3 text-sm text-red-400 bg-red-500/10 p-2 rounded-lg border border-red-500/20">{error}</p>}
                     </div>
 
-                    <div className="bg-gray-800 p-6 rounded-lg shadow-lg mb-8">
-                        <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-                            <ChartBarIcon className="w-6 h-6 text-green-500" />
+                    <div className="glass p-6 rounded-xl border border-white/5 shadow-2xl mb-8">
+                        <h3 className="text-xl font-display font-bold text-white mb-6 flex items-center gap-3">
+                            <ChartBarIcon className="w-6 h-6 text-emerald-500" />
                             Informe de Rendimiento AI
                         </h3>
-                        <div className="bg-gray-700/30 p-6 rounded-lg border border-gray-600">
+                        <div className="bg-slate-900/30 p-6 rounded-lg border border-white/5">
                             <PerformanceReports />
                         </div>
                     </div>
 
-                    <div className="bg-gray-800 p-6 rounded-lg shadow-lg mb-8">
-                        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                            <CheckCircleIcon className="w-5 h-5 text-purple-400" />
+                    <div className="glass p-6 rounded-xl border border-white/5 shadow-2xl mb-8">
+                        <h2 className="text-xl font-display font-bold text-white mb-6 flex items-center gap-3">
+                            <CheckCircleIcon className="w-6 h-6 text-purple-400" />
                             Validación Automática de Resultados
                         </h2>
 
@@ -295,7 +298,7 @@ export const AdminPage: React.FC = () => {
                             </button>
                         </div>
 
-                        <div className="bg-gray-700/30 p-6 rounded-lg border border-gray-600">
+                        <div className="bg-slate-900/30 p-6 rounded-lg border border-white/5">
                             <h4 className="font-bold text-gray-200 mb-2">Verificación de Pronósticos por Lotes</h4>
                             <p className="text-sm text-gray-400 mb-6">
                                 Escanea y verifica masivamente los resultados de los partidos en un rango de fechas. El sistema procesa los partidos en pequeños grupos para asegurar la estabilidad.
@@ -397,12 +400,12 @@ export const AdminPage: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="bg-gray-800 p-6 rounded-lg shadow-lg mb-8">
-                        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                            <SparklesIcon className="w-5 h-5 text-yellow-400" />
+                    <div className="glass p-6 rounded-xl border border-white/5 shadow-2xl mb-8">
+                        <h2 className="text-xl font-display font-bold text-white mb-6 flex items-center gap-3">
+                            <SparklesIcon className="w-6 h-6 text-yellow-400" />
                             Análisis Post-Partido Retroactivo
                         </h2>
-                        <div className="bg-gray-700/30 p-6 rounded-lg border border-gray-600">
+                        <div className="bg-slate-900/30 p-6 rounded-lg border border-white/5">
                             <p className="text-sm text-gray-400 mb-4">
                                 Escanea partidos que ya fueron verificados (tienen resultado) pero aún no tienen el "Análisis 360°" (autopsia IA).
                             </p>
@@ -568,21 +571,21 @@ export const AdminPage: React.FC = () => {
             )}
 
 
-            <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+            <div className="glass rounded-xl border border-white/5 shadow-2xl overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                        <thead className="bg-gray-700/50">
+                        <thead className="bg-slate-900/50">
                             <tr>
                                 <th className="p-4 font-semibold">Nombre</th>
                                 <th className="p-4 font-semibold">ID de Usuario</th>
                                 <th className="p-4 font-semibold">Rol</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-700">
+                        <tbody className="divide-y divide-white/5">
                             {users.map(user => (
-                                <tr key={user.id} className="hover:bg-gray-700/30">
+                                <tr key={user.id} className="hover:bg-white/5 transition-colors">
                                     <td className="p-4 font-medium text-white">{user.full_name || 'N/A'}</td>
-                                    <td className="p-4 text-gray-400 font-mono">{user.id}</td>
+                                    <td className="p-4 text-slate-400 font-mono text-xs">{user.id}</td>
                                     <td className="p-4">
                                         {updatingUserId === user.id ? (
                                             <span className="text-sm text-gray-400">Actualizando...</span>

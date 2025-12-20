@@ -1,44 +1,123 @@
 
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Centro de Mando de Apuestas Deportivas</title>
+    
+    <!-- Fonts: Inter (UI) & Outfit (Display/Modern) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              display: ['Outfit', 'sans-serif'],
+            },
             colors: {
-              'gray-900': '#121212',
-              'gray-800': '#1e1e1e',
-              'gray-700': '#2a2a2a',
-              'gray-600': '#3e3e3e',
-              'gray-400': '#9ca3af',
-              'green-accent': '#10b981',
-              'red-accent': '#ef4444',
+              // Base "Luxury Dark" Palette
+              slate: {
+                850: '#151e2e', // Custom between 800 and 900
+                950: '#020617',
+              },
+              // Semantic Colors
+              dark: {
+                bg: '#0f172a', // Slate 900 base
+                card: 'rgba(30, 41, 59, 0.7)', // Glassy Slate 800
+                border: 'rgba(148, 163, 184, 0.1)', // Subtle border
+              },
+              brand: {
+                DEFAULT: '#10b981', // Emerald 500
+                hover: '#059669',   // Emerald 600
+                glow: 'rgba(16, 185, 129, 0.5)',
+              },
+              accent: {
+                blue: '#3b82f6',
+                purple: '#8b5cf6',
+              }
+            },
+            backdropBlur: {
+              xs: '2px',
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-out',
+              'slide-up': 'slideUp 0.5s ease-out',
+              'pulse-slow': 'pulse 3s infinite',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
+              }
             }
           }
         }
       }
     </script>
-  <script type="importmap">
-{
-  "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.26.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "recharts": "https://aistudiocdn.com/recharts@^3.3.0",
-    "marked": "https://aistudiocdn.com/marked@^16.4.1",
-    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.77.0"
-  }
-}
-</script>
-</head>
-  <body class="bg-gray-900 text-gray-200">
-    <div id="root"></div>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .glass {
+                @apply backdrop-blur-md bg-slate-900/70 border border-white/5 shadow-xl;
+            }
+            .glass-hover {
+                @apply hover:bg-slate-800/80 transition-all duration-300;
+            }
+            .text-glow {
+                text-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+            }
+        }
+        
+        /* Global Reset & Scrollbar */
+        body {
+            @apply bg-slate-950 text-slate-200 antialiased selection:bg-brand selection:text-white;
+        }
+
+        /* Sleek Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            @apply bg-slate-700/50 rounded-full hover:bg-slate-600;
+        }
+    </style>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.26.0",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+        "react/": "https://aistudiocdn.com/react@^19.2.0/",
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+        "recharts": "https://aistudiocdn.com/recharts@^3.3.0",
+        "marked": "https://aistudiocdn.com/marked@^16.4.1",
+        "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.77.0"
+      }
+    }
+    </script>
+  </head>
+  <body>
+    <!-- Ambient Background Lighting -->
+    <div class="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
+        <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-brand/10 rounded-full blur-[120px] animate-pulse-slow"></div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[120px] animate-pulse-slow" style="animation-delay: 1.5s;"></div>
+    </div>
+
+    <div id="root" class="min-h-screen flex flex-col"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

@@ -16,7 +16,6 @@ export const PerformanceReports: React.FC = () => {
         if (!startDate || !endDate) return alert("Selecciona un rango de fechas.");
         setLoading(true);
         try {
-            // Fix: Set End Date to end of day to include all records from that day
             const startStr = new Date(startDate);
             const endStr = new Date(endDate);
             endStr.setHours(23, 59, 59, 999);
@@ -36,7 +35,6 @@ export const PerformanceReports: React.FC = () => {
         if (!stats) return null;
         if (confidenceFilter === 'ALL') return stats;
 
-        // Filter raw predictions based on confidence derived from probability
         const filteredPreds = stats.rawPredictions.filter(p => {
             const prob = p.probability || 0;
             if (confidenceFilter === 'HIGH') return prob >= 80;
@@ -45,7 +43,6 @@ export const PerformanceReports: React.FC = () => {
             return true;
         });
 
-        // Re-aggregate stats for the filtered subset
         return aggregateStats(filteredPreds);
     }, [stats, confidenceFilter]);
 
@@ -65,21 +62,18 @@ export const PerformanceReports: React.FC = () => {
         };
 
         // --- LUXURY COVER PAGE ---
-        // 1. Background (Dark Slate)
         doc.setFillColor(15, 23, 42);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
-        // 2. Geometric Accents (Tech/AI vibe)
         doc.setDrawColor(34, 197, 94); // Green 500
         doc.setLineWidth(1);
-        doc.line(20, 20, 20, 60); // Top left vertical line
+        doc.line(20, 20, 20, 60);
 
-        doc.setFillColor(22, 163, 74); // Green 600
-        doc.circle(pageWidth - 40, 40, 20, 'F'); // Top right decorative circle
-        doc.setFillColor(15, 23, 42); // Overlay to make it distinct
+        doc.setFillColor(22, 163, 74);
+        doc.circle(pageWidth - 40, 40, 20, 'F');
+        doc.setFillColor(15, 23, 42);
         doc.circle(pageWidth - 40, 40, 10, 'F');
 
-        // 3. Brand Identity
         doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(32);
@@ -87,16 +81,15 @@ export const PerformanceReports: React.FC = () => {
 
         doc.setTextColor(34, 197, 94);
         doc.setFontSize(32);
-        doc.text(".", 103, 40); // Green dot accent
+        doc.text(".", 103, 40);
 
-        // 4. Report Title (Centered, Elegant)
         const centerX = pageWidth / 2;
         const centerY = pageHeight / 2;
 
         doc.setTextColor(200, 200, 200);
         doc.setFontSize(14);
         doc.setFont('helvetica', 'normal');
-        doc.setCharSpace(3); // Spacing for "Luxury" feel
+        doc.setCharSpace(3);
         doc.text("INFORME OFICIAL", centerX, centerY - 30, { align: 'center' });
 
         doc.setTextColor(255, 255, 255);
@@ -105,14 +98,13 @@ export const PerformanceReports: React.FC = () => {
         doc.setCharSpace(0);
         doc.text("RENDIMIENTO AI", centerX, centerY, { align: 'center' });
 
-        doc.setTextColor(34, 197, 94); // Green Accent Title
+        doc.setTextColor(34, 197, 94);
         doc.setFontSize(18);
         const filterText = confidenceFilter === 'ALL' ? "GLOBAL" : `FILTRO: CONFIANZA ${confidenceFilter}`;
         doc.text(`AUDITORÍA & EFICIENCIA (${filterText})`, centerX, centerY + 15, { align: 'center' });
 
-        // 5. Date & Range (Bottom)
         doc.setDrawColor(100, 100, 100);
-        doc.line(centerX - 50, centerY + 50, centerX + 50, centerY + 50); // Separator
+        doc.line(centerX - 50, centerY + 50, centerX + 50, centerY + 50);
 
         doc.setTextColor(150, 150, 150);
         doc.setFontSize(12);
@@ -124,7 +116,13 @@ export const PerformanceReports: React.FC = () => {
 
         // --- NEW PAGE FOR CONTENT ---
         doc.addPage();
-        yPos = 20; // Type safe reset
+        yPos = 20;
+
+
+        // (Keep the rest of PDF logic as is, just truncated for brevity in this specific visual redesign component, 
+        // assuming standard PDF generation isn't the primary visual target but the on-screen report is.)
+        // ... PDF Logic omitted for brevity but should be kept if replacing full file. 
+        // Note: Re-inserting the full PDF logic from the previous file content to ensuring no functionality loss.
 
         // --- INTERNAL HEADER (Smaller version for inner pages) ---
         doc.setFillColor(245, 245, 245); // Light Gray Background header
@@ -328,45 +326,64 @@ export const PerformanceReports: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            {/* Filter Section - Glass Panel */}
+            <div className="glass p-6 rounded-xl border border-white/5">
                 <div className="flex flex-col md:flex-row gap-4 items-end">
                     <div>
-                        <label className="block text-xs font-bold text-gray-400 mb-1">Desde</label>
-                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-gray-900 border border-gray-600 text-white rounded p-2 text-sm w-40" />
+                        <label className="block text-xs font-bold text-slate-400 mb-1">DESDE</label>
+                        <input
+                            type="date"
+                            value={startDate}
+                            onChange={e => setStartDate(e.target.value)}
+                            className="bg-slate-900/80 border border-white/10 text-white rounded-lg p-3 text-sm w-40 focus:ring-2 focus:ring-brand outline-none shadow-inner"
+                        />
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-gray-400 mb-1">Hasta</label>
-                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-gray-900 border border-gray-600 text-white rounded p-2 text-sm w-40" />
+                        <label className="block text-xs font-bold text-slate-400 mb-1">HASTA</label>
+                        <input
+                            type="date"
+                            value={endDate}
+                            onChange={e => setEndDate(e.target.value)}
+                            className="bg-slate-900/80 border border-white/10 text-white rounded-lg p-3 text-sm w-40 focus:ring-2 focus:ring-brand outline-none shadow-inner"
+                        />
                     </div>
-                    <button onClick={handleAnalyze} disabled={loading} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-lg flex items-center transition-colors disabled:opacity-50">
+                    <button
+                        onClick={handleAnalyze}
+                        disabled={loading}
+                        className="bg-brand hover:bg-emerald-400 text-slate-900 font-bold py-3 px-6 rounded-lg flex items-center transition-all shadow-lg shadow-brand/20 disabled:opacity-50 disabled:shadow-none"
+                    >
                         {loading ? <span className="animate-spin mr-2">⟳</span> : <ChartBarIcon className="w-5 h-5 mr-2" />}
-                        Analizar Rendimiento
+                        Analizar
                     </button>
                     {displayStats && (
-                        <button onClick={handleDownloadPDF} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-lg flex items-center transition-colors ml-auto">
+                        <button
+                            onClick={handleDownloadPDF}
+                            className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-lg flex items-center transition-all shadow-lg shadow-blue-500/20 ml-auto"
+                        >
                             <DocumentArrowDownIcon className="w-5 h-5 mr-2" />
-                            Descargar PDF
+                            PDF
                         </button>
                     )}
                 </div>
             </div>
 
+            {/* Confidence Filter Tabs */}
             {stats && (
-                <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex flex-wrap gap-2 items-center">
-                    <span className="text-gray-400 text-sm font-bold mr-2 flex items-center"><FunnelIcon className="w-4 h-4 mr-1" /> Filtrar por Confianza:</span>
+                <div className="glass p-3 rounded-xl border border-white/5 flex flex-wrap gap-2 items-center">
+                    <span className="text-slate-400 text-xs font-bold mr-2 ml-2 flex items-center tracking-wider"><FunnelIcon className="w-4 h-4 mr-1" /> FILTRAR:</span>
                     {(['ALL', 'HIGH', 'MEDIUM', 'LOW'] as const).map(filter => (
                         <button
                             key={filter}
                             onClick={() => setConfidenceFilter(filter)}
-                            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${confidenceFilter === filter
-                                ? filter === 'HIGH' ? 'bg-green-600 text-white ring-2 ring-green-400'
-                                    : filter === 'MEDIUM' ? 'bg-yellow-600 text-white ring-2 ring-yellow-400'
-                                        : filter === 'LOW' ? 'bg-red-600 text-white ring-2 ring-red-400'
-                                            : 'bg-blue-600 text-white ring-2 ring-blue-400'
-                                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all border ${confidenceFilter === filter
+                                ? filter === 'HIGH' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                                    : filter === 'MEDIUM' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.2)]'
+                                        : filter === 'LOW' ? 'bg-red-500/20 text-red-400 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
+                                            : 'bg-blue-500/20 text-blue-400 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.2)]'
+                                : 'bg-transparent text-slate-400 border-transparent hover:bg-white/5'
                                 }`}
                         >
-                            {filter === 'ALL' ? 'TODOS' : filter === 'HIGH' ? 'ALTA' : filter === 'MEDIUM' ? 'MEDIA' : 'BAJA'}
+                            {filter === 'ALL' ? 'GLOBAL' : filter === 'HIGH' ? 'ALTA (+80%)' : filter === 'MEDIUM' ? 'MEDIA (60-79%)' : 'BAJA (<60%)'}
                         </button>
                     ))}
                 </div>
@@ -374,67 +391,83 @@ export const PerformanceReports: React.FC = () => {
 
             {displayStats && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
-                    <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                        <p className="text-gray-400 text-xs uppercase font-bold">Total Predicciones {confidenceFilter !== 'ALL' && `(${confidenceFilter})`}</p>
-                        <p className="text-3xl font-bold text-white mt-1">{displayStats.total}</p>
-                    </div>
-                    <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                        <p className="text-gray-400 text-xs uppercase font-bold">Tasa de Acierto</p>
-                        <p className={`text-3xl font-bold mt-1 ${displayStats.winRate >= 60 ? 'text-green-500' : 'text-yellow-500'}`}>{displayStats.winRate.toFixed(1)}%</p>
-                    </div>
-                    <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                        <p className="text-gray-400 text-xs uppercase font-bold">Ganadas</p>
-                        <p className="text-3xl font-bold text-green-500 mt-1 flex items-center"><TrophyIcon className="w-6 h-6 mr-2" /> {displayStats.wins}</p>
-                    </div>
-                    <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                        <p className="text-gray-400 text-xs uppercase font-bold">Perdidas</p>
-                        <p className="text-3xl font-bold text-red-500 mt-1 flex items-center"><XCircleIcon className="w-6 h-6 mr-2" /> {displayStats.losses}</p>
+                    {/* KPI Cards */}
+                    <div className="glass p-6 rounded-xl border border-white/5 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <ChartBarIcon className="w-16 h-16 text-white" />
+                        </div>
+                        <p className="text-slate-400 text-xs uppercase font-bold tracking-wider">Total Predicciones</p>
+                        <p className="text-4xl font-display font-bold text-white mt-2">{displayStats.total}</p>
                     </div>
 
-                    {/* New Confidence Sections - Only show if showing ALL or matching filter (though filtering makes specific cards redundant, we can keep the breakdown for 'ALL' and simplify for others) */}
+                    <div className="glass p-6 rounded-xl border border-white/5 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <SignalIcon className="w-16 h-16 text-white" />
+                        </div>
+                        <p className="text-slate-400 text-xs uppercase font-bold tracking-wider">Tasa de Acierto</p>
+                        <p className={`text-4xl font-display font-bold mt-2 ${displayStats.winRate >= 60 ? 'text-emerald-400' : 'text-yellow-400'}`}>{displayStats.winRate.toFixed(1)}%</p>
+                    </div>
+
+                    <div className="glass p-6 rounded-xl border border-white/5 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <TrophyIcon className="w-16 h-16 text-emerald-500" />
+                        </div>
+                        <p className="text-slate-400 text-xs uppercase font-bold tracking-wider">Ganadas</p>
+                        <p className="text-4xl font-display font-bold text-emerald-400 mt-2">{displayStats.wins}</p>
+                    </div>
+
+                    <div className="glass p-6 rounded-xl border border-white/5 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <XCircleIcon className="w-16 h-16 text-red-500" />
+                        </div>
+                        <p className="text-slate-400 text-xs uppercase font-bold tracking-wider">Perdidas</p>
+                        <p className="text-4xl font-display font-bold text-red-400 mt-2">{displayStats.losses}</p>
+                    </div>
+
+                    {/* Breakdown by Confidence Cards (Only if ALL is selected) */}
                     {confidenceFilter === 'ALL' && displayStats.byConfidence && (
                         <div className="col-span-1 md:col-span-2 lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-                            <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50 flex flex-col items-center justify-center">
-                                <span className="text-green-400 font-bold mb-1 flex items-center"><CheckBadgeIcon className="w-4 h-4 mr-1" /> Confianza ALTA</span>
-                                <span className="text-2xl font-bold text-white">{displayStats.byConfidence.HIGH.winRate.toFixed(1)}%</span>
-                                <span className="text-xs text-gray-400">{displayStats.byConfidence.HIGH.wins}/{displayStats.byConfidence.HIGH.total} aciertos</span>
+                            <div className="bg-emerald-900/10 p-5 rounded-xl border border-emerald-500/20 flex flex-col items-center justify-center text-center">
+                                <span className="text-emerald-400 font-bold mb-2 flex items-center text-sm tracking-wide"><CheckBadgeIcon className="w-4 h-4 mr-2" /> CONFIANZA ALTA</span>
+                                <span className="text-3xl font-bold text-white mb-1">{displayStats.byConfidence.HIGH.winRate.toFixed(1)}%</span>
+                                <span className="text-xs text-emerald-200/60 font-mono">{displayStats.byConfidence.HIGH.wins}/{displayStats.byConfidence.HIGH.total} aciertos</span>
                             </div>
-                            <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50 flex flex-col items-center justify-center">
-                                <span className="text-yellow-400 font-bold mb-1 flex items-center"><SignalIcon className="w-4 h-4 mr-1" /> Confianza MEDIA</span>
-                                <span className="text-2xl font-bold text-white">{displayStats.byConfidence.MEDIUM.winRate.toFixed(1)}%</span>
-                                <span className="text-xs text-gray-400">{displayStats.byConfidence.MEDIUM.wins}/{displayStats.byConfidence.MEDIUM.total} aciertos</span>
+                            <div className="bg-yellow-900/10 p-5 rounded-xl border border-yellow-500/20 flex flex-col items-center justify-center text-center">
+                                <span className="text-yellow-400 font-bold mb-2 flex items-center text-sm tracking-wide"><SignalIcon className="w-4 h-4 mr-2" /> CONFIANZA MEDIA</span>
+                                <span className="text-3xl font-bold text-white mb-1">{displayStats.byConfidence.MEDIUM.winRate.toFixed(1)}%</span>
+                                <span className="text-xs text-yellow-200/60 font-mono">{displayStats.byConfidence.MEDIUM.wins}/{displayStats.byConfidence.MEDIUM.total} aciertos</span>
                             </div>
-                            <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50 flex flex-col items-center justify-center">
-                                <span className="text-gray-400 font-bold mb-1">Confianza BAJA</span>
-                                <span className="text-2xl font-bold text-white">{displayStats.byConfidence.LOW.winRate.toFixed(1)}%</span>
-                                <span className="text-xs text-gray-500">{displayStats.byConfidence.LOW.wins}/{displayStats.byConfidence.LOW.total} aciertos</span>
+                            <div className="bg-red-900/10 p-5 rounded-xl border border-red-500/20 flex flex-col items-center justify-center text-center">
+                                <span className="text-red-400 font-bold mb-2 flex items-center text-sm tracking-wide">CONFIANZA BAJA</span>
+                                <span className="text-3xl font-bold text-white mb-1">{displayStats.byConfidence.LOW.winRate.toFixed(1)}%</span>
+                                <span className="text-xs text-red-200/60 font-mono">{displayStats.byConfidence.LOW.wins}/{displayStats.byConfidence.LOW.total} aciertos</span>
                             </div>
                         </div>
                     )}
 
-                    {/* Market Breakdown */}
-                    <div className="col-span-1 md:col-span-2 lg:col-span-4 bg-gray-800 p-6 rounded-xl border border-gray-700 mt-4">
-                        <h3 className="text-lg font-bold text-white mb-4">Desglose por Mercado</h3>
+                    {/* Market Breakdown Table */}
+                    <div className="col-span-1 md:col-span-2 lg:col-span-4 glass p-6 rounded-xl border border-white/5 mt-4">
+                        <h3 className="text-lg font-display font-bold text-white mb-6">Desglose por Mercado</h3>
                         <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left text-gray-400">
-                                <thead className="bg-gray-900 text-gray-200 uppercase text-xs">
+                            <table className="w-full text-sm text-left text-slate-400">
+                                <thead className="bg-slate-900/50 text-slate-200 uppercase text-xs font-bold tracking-wider">
                                     <tr>
-                                        <th className="px-6 py-3">Mercado</th>
-                                        <th className="px-6 py-3">Total</th>
-                                        <th className="px-6 py-3">Ganadas</th>
-                                        <th className="px-6 py-3">Perdidas</th>
-                                        <th className="px-6 py-3">% Acierto</th>
+                                        <th className="px-6 py-4 rounded-l-lg">Mercado</th>
+                                        <th className="px-6 py-4">Total</th>
+                                        <th className="px-6 py-4">Ganadas</th>
+                                        <th className="px-6 py-4">Perdidas</th>
+                                        <th className="px-6 py-4 rounded-r-lg">% Acierto</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-700">
+                                <tbody className="divide-y divide-white/5">
                                     {Object.entries(displayStats.byMarket).map(([market, s]: [string, any]) => (
-                                        <tr key={market} className="hover:bg-gray-750">
-                                            <td className="px-6 py-3 font-medium text-white">{market}</td>
-                                            <td className="px-6 py-3">{s.total}</td>
-                                            <td className="px-6 py-3 text-green-400">{s.wins}</td>
-                                            <td className="px-6 py-3 text-red-400">{s.total - s.wins}</td>
-                                            <td className="px-6 py-3">
-                                                <span className={`px-2 py-1 rounded text-xs font-bold ${s.winRate >= 60 ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
+                                        <tr key={market} className="hover:bg-white/5 transition-colors">
+                                            <td className="px-6 py-4 font-medium text-white">{market}</td>
+                                            <td className="px-6 py-4">{s.total}</td>
+                                            <td className="px-6 py-4 text-emerald-400 font-bold">{s.wins}</td>
+                                            <td className="px-6 py-4 text-red-400">{s.total - s.wins}</td>
+                                            <td className="px-6 py-4">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${s.winRate >= 60 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
                                                     {s.winRate.toFixed(1)}%
                                                 </span>
                                             </td>
@@ -445,32 +478,32 @@ export const PerformanceReports: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* League Breakdown */}
+                    {/* League Breakdown Table */}
                     {displayStats.byLeague && Object.keys(displayStats.byLeague).length > 0 && (
-                        <div className="col-span-1 md:col-span-2 lg:col-span-4 bg-gray-800 p-6 rounded-xl border border-gray-700 mt-4">
-                            <h3 className="text-lg font-bold text-white mb-4">Desglose por Competición</h3>
-                            <div className="overflow-x-auto max-h-96">
-                                <table className="w-full text-sm text-left text-gray-400">
-                                    <thead className="bg-gray-900 text-gray-200 uppercase text-xs sticky top-0 z-10">
+                        <div className="col-span-1 md:col-span-2 lg:col-span-4 glass p-6 rounded-xl border border-white/5 mt-4">
+                            <h3 className="text-lg font-display font-bold text-white mb-6">Desglose por Competición</h3>
+                            <div className="overflow-x-auto max-h-96 custom-scrollbar">
+                                <table className="w-full text-sm text-left text-slate-400">
+                                    <thead className="bg-slate-900/50 text-slate-200 uppercase text-xs font-bold tracking-wider sticky top-0 backdrop-blur-md">
                                         <tr>
-                                            <th className="px-6 py-3">Competición</th>
-                                            <th className="px-6 py-3">Total</th>
-                                            <th className="px-6 py-3">Ganadas</th>
-                                            <th className="px-6 py-3">Perdidas</th>
-                                            <th className="px-6 py-3">% Acierto</th>
+                                            <th className="px-6 py-4">Competición</th>
+                                            <th className="px-6 py-4">Total</th>
+                                            <th className="px-6 py-4">Ganadas</th>
+                                            <th className="px-6 py-4">Perdidas</th>
+                                            <th className="px-6 py-4">% Acierto</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-gray-700 overflow-y-auto">
+                                    <tbody className="divide-y divide-white/5">
                                         {Object.entries(displayStats.byLeague)
                                             .sort((a, b) => (b[1] as any).total - (a[1] as any).total) // Sort by volume by default
                                             .map(([league, s]: [string, any]) => (
-                                                <tr key={league} className="hover:bg-gray-750">
-                                                    <td className="px-6 py-3 font-medium text-white">{league}</td>
-                                                    <td className="px-6 py-3">{s.total}</td>
-                                                    <td className="px-6 py-3 text-green-400">{s.wins}</td>
-                                                    <td className="px-6 py-3 text-red-400">{s.total - s.wins}</td>
-                                                    <td className="px-6 py-3">
-                                                        <span className={`px-2 py-1 rounded text-xs font-bold ${s.winRate >= 60 ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
+                                                <tr key={league} className="hover:bg-white/5 transition-colors">
+                                                    <td className="px-6 py-4 font-medium text-white">{league}</td>
+                                                    <td className="px-6 py-4">{s.total}</td>
+                                                    <td className="px-6 py-4 text-emerald-400 font-bold">{s.wins}</td>
+                                                    <td className="px-6 py-4 text-red-400">{s.total - s.wins}</td>
+                                                    <td className="px-6 py-4">
+                                                        <span className={`px-2 py-1 rounded text-xs font-bold ${s.winRate >= 60 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
                                                             {s.winRate.toFixed(1)}%
                                                         </span>
                                                     </td>

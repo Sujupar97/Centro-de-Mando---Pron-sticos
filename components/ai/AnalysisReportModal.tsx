@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { VisualAnalysisResult, DashboardAnalysisJSON, TablaComparativaData, AnalisisSeccion, DetallePrediccion, GraficoSugerido } from '../../types';
 import { XMarkIcon, TrophyIcon, ChartBarIcon, ListBulletIcon, LightBulbIcon, ExclamationTriangleIcon, LinkIcon } from '../icons/Icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -389,7 +390,7 @@ const VisualChart: React.FC<{ data: GraficoSugerido }> = ({ data }) => {
         <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
             <h4 className="text-sm font-bold text-white mb-1">{data.titulo}</h4>
             <p className="text-xs text-gray-400 mb-4">{data.descripcion}</p>
-            <div className="h-64 w-full">
+            <div className="h-64 w-full min-h-[256px]">
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={true} vertical={false} />
@@ -462,8 +463,8 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
     // Fallback por si la IA devolvió texto plano en lugar del JSON (caso raro con Gemini 2.5 Pro y prompt estricto)
     if (!data) {
         return (
-            <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 animate-fade-in backdrop-blur-sm">
-                <div className="bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl h-[90vh] flex flex-col border border-gray-700">
+            <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-4 md:p-6 animate-fade-in backdrop-blur-md" onClick={(e) => e.target === e.currentTarget && onClose()}>
+                <div className="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col border border-white/10" onClick={(e) => e.stopPropagation()}>
                     <div className="p-6 border-b border-gray-800 flex justify-between">
                         <h2 className="text-xl font-bold text-red-400">Error de Formato Visual</h2>
                         <button onClick={onClose}><XMarkIcon className="w-6 h-6 text-gray-400" /></button>
@@ -477,9 +478,9 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
         );
     }
 
-    return (
-        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-0 md:p-4 animate-fade-in">
-            <div className="bg-gray-900 w-full h-full md:h-[95vh] md:max-w-6xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-800">
+    return createPortal(
+        <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-0 md:p-6 animate-fade-in backdrop-blur-md" onClick={(e) => e.target === e.currentTarget && onClose()}>
+            <div className="bg-slate-900 w-full h-full md:h-[90vh] md:max-w-6xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-white/10" onClick={(e) => e.stopPropagation()}>
 
                 {/* Scrollable Container */}
                 <div className="flex-grow overflow-y-auto custom-scrollbar">
@@ -539,8 +540,8 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                     <TrophyIcon className="w-8 h-8 text-green-accent mr-3" />
                                     Predicciones del Modelo
                                 </h3>
-                                {data.predicciones_finales.detalle.map((pred) => (
-                                    <PredictionCard key={pred.id} pred={pred} />
+                                {data.predicciones_finales.detalle.map((pred, idx) => (
+                                    <PredictionCard key={pred.id || idx} pred={pred} />
                                 ))}
                             </div>
                         )}
@@ -585,6 +586,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
