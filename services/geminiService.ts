@@ -3,7 +3,7 @@ import { GoogleGenAI, GenerateContentParameters, GenerateContentResponse, Chat, 
 import { GameDetails, VisualAnalysisResult, PerformanceReportResult, Game, ParlayAnalysisResult, GamedayAnalysisResult, BetTicketAnalysisResult, ExtractedBetInfo, DashboardAnalysisJSON } from '../types';
 
 // FIX: Hardcoded API Key to ensure functionality in production without env vars.
-export const ai = new GoogleGenAI({ apiKey: 'AIzaSyDg85u-LTuSTKby1sq_FFj_v-XpbiaikLg' });
+export const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
 
 // --- CONSTANTS & HELPERS ---
 const MAX_RETRIES = 3;

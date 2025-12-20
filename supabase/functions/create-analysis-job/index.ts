@@ -124,8 +124,8 @@ serve(async (req) => {
       statsHome,
       statsAway
     ] = await Promise.all([
-      fetchFootball(`fixtures?team=${homeTeam.id}&last=15&status=FT`),
-      fetchFootball(`fixtures?team=${awayTeam.id}&last=15&status=FT`),
+      fetchFootball(`fixtures?team=${homeTeam.id}&last=40&status=FT`),
+      fetchFootball(`fixtures?team=${awayTeam.id}&last=40&status=FT`),
       fetchFootball(`fixtures/headtohead?h2h=${homeTeam.id}-${awayTeam.id}&last=10`),
       fetchFootball(`standings?league=${leagueId}&season=${season}`),
       fetchFootball(`injuries?fixture=${api_fixture_id}`),
@@ -138,8 +138,8 @@ serve(async (req) => {
     const blocks = {
       H_home_last10: last15_H.filter((f: any) => f.teams.home.id === homeTeam.id).slice(0, 10),
       H_away_last10: last15_H.filter((f: any) => f.teams.away.id === homeTeam.id).slice(0, 10),
-      A_home_last10: last15_H.filter((f: any) => f.teams.home.id === awayTeam.id).slice(0, 10),
-      A_away_last10: last15_H.filter((f: any) => f.teams.away.id === awayTeam.id).slice(0, 10),
+      A_home_last10: last15_A.filter((f: any) => f.teams.home.id === awayTeam.id).slice(0, 10),
+      A_away_last10: last15_A.filter((f: any) => f.teams.away.id === awayTeam.id).slice(0, 10),
       H2H_last10: h2h || []
     };
 

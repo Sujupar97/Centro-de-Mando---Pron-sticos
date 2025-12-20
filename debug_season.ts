@@ -2,7 +2,7 @@
 // debug_season.ts
 // Run with: deno run --allow-net --allow-env debug_season.ts
 
-const API_KEY = Deno.env.get('GEMINI_API_KEY') || 'AIzaSyDg85u-LTuSTKby1sq_FFj_v-XpbiaikLg'; // Using the known active key for football test if needed? 
+const API_KEY = Deno.env.get('GEMINI_API_KEY') || ''; // Secure: Load from env 
 // Wait, football API key is in API_FOOTBALL_KEYS. Need to read .env or hardcode for test.
 // I'll grab it from .env logic if possible, or just expect it.
 

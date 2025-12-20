@@ -1,15 +1,16 @@
 
-import React, { useState } from 'react';
-import { fetchPerformanceStats, PerformanceStats } from '../../services/analysisService';
+import React, { useState, useMemo } from 'react';
+import { fetchPerformanceStats, PerformanceStats, aggregateStats } from '../../services/analysisService';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { ChartBarIcon, DocumentArrowDownIcon, CalendarDaysIcon, TrophyIcon, XCircleIcon, CheckBadgeIcon, SignalIcon } from '../icons/Icons';
+import { ChartBarIcon, DocumentArrowDownIcon, CalendarDaysIcon, TrophyIcon, XCircleIcon, CheckBadgeIcon, SignalIcon, FunnelIcon } from '../icons/Icons';
 
 export const PerformanceReports: React.FC = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [stats, setStats] = useState<PerformanceStats | null>(null);
     const [loading, setLoading] = useState(false);
+    const [confidenceFilter, setConfidenceFilter] = useState<'ALL' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL');
 
     const handleAnalyze = async () => {
         if (!startDate || !endDate) return alert("Selecciona un rango de fechas.");
@@ -30,8 +31,26 @@ export const PerformanceReports: React.FC = () => {
         }
     };
 
+    // Dynamic Filter Logic
+    const displayStats = useMemo(() => {
+        if (!stats) return null;
+        if (confidenceFilter === 'ALL') return stats;
+
+        // Filter raw predictions based on confidence derived from probability
+        const filteredPreds = stats.rawPredictions.filter(p => {
+            const prob = p.probability || 0;
+            if (confidenceFilter === 'HIGH') return prob >= 80;
+            if (confidenceFilter === 'MEDIUM') return prob >= 60 && prob < 80;
+            if (confidenceFilter === 'LOW') return prob < 60;
+            return true;
+        });
+
+        // Re-aggregate stats for the filtered subset
+        return aggregateStats(filteredPreds);
+    }, [stats, confidenceFilter]);
+
     const handleDownloadPDF = () => {
-        if (!stats) return;
+        if (!displayStats) return;
 
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -88,7 +107,8 @@ export const PerformanceReports: React.FC = () => {
 
         doc.setTextColor(34, 197, 94); // Green Accent Title
         doc.setFontSize(18);
-        doc.text("AUDITORÍA & EFICIENCIA", centerX, centerY + 15, { align: 'center' });
+        const filterText = confidenceFilter === 'ALL' ? "GLOBAL" : `FILTRO: CONFIANZA ${confidenceFilter}`;
+        doc.text(`AUDITORÍA & EFICIENCIA (${filterText})`, centerX, centerY + 15, { align: 'center' });
 
         // 5. Date & Range (Bottom)
         doc.setDrawColor(100, 100, 100);
@@ -118,7 +138,7 @@ export const PerformanceReports: React.FC = () => {
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100, 100, 100);
-        doc.text(`Reporte: ${startDate} / ${endDate}`, pageWidth - 14, 20, { align: 'right' });
+        doc.text(`Reporte: ${startDate} / ${endDate} | Filtro: ${confidenceFilter}`, pageWidth - 14, 20, { align: 'right' });
 
         yPos = 50;
 
@@ -132,9 +152,9 @@ export const PerformanceReports: React.FC = () => {
         doc.setFontSize(11);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(80, 80, 80);
-        const summaryText = `Durante el período seleccionado, el sistema procesó un total de ${stats.total} predicciones. ` +
-            `Se alcanzó una tasa de acierto global del ${stats.winRate.toFixed(1)}%, identificando ${stats.wins} oportunidades ganadoras. ` +
-            `Este informe detalla el comportamiento de la IA segmentado por confianza y probabilidad para optimizar la toma de decisiones.`;
+        const summaryText = `Durante el período seleccionado ${confidenceFilter !== 'ALL' ? `(filtrando por confianza ${confidenceFilter})` : ''}, el sistema procesó un total de ${displayStats.total} predicciones. ` +
+            `Se alcanzó una tasa de acierto del ${displayStats.winRate.toFixed(1)}%, identificando ${displayStats.wins} oportunidades ganadoras. ` +
+            `Este informe detalla el comportamiento de la IA segmentado para optimizar la toma de decisiones.`;
         doc.text(doc.splitTextToSize(summaryText, pageWidth - 28), 14, yPos);
         yPos += 25;
 
@@ -142,10 +162,10 @@ export const PerformanceReports: React.FC = () => {
         const kpiWidth = (pageWidth - 34) / 4;
         const kpiHeight = 25;
         const metrics = [
-            { label: "TOTAL", value: stats.total.toString(), color: [60, 60, 60] },
-            { label: "% ACIERTO", value: stats.winRate.toFixed(1) + "%", color: stats.winRate >= 60 ? [22, 163, 74] : [220, 38, 38] },
-            { label: "GANADAS", value: stats.wins.toString(), color: [22, 163, 74] },
-            { label: "PERDIDAS", value: stats.losses.toString(), color: [220, 38, 38] }
+            { label: "TOTAL", value: displayStats.total.toString(), color: [60, 60, 60] },
+            { label: "% ACIERTO", value: displayStats.winRate.toFixed(1) + "%", color: displayStats.winRate >= 60 ? [22, 163, 74] : [220, 38, 38] },
+            { label: "GANADAS", value: displayStats.wins.toString(), color: [22, 163, 74] },
+            { label: "PERDIDAS", value: displayStats.losses.toString(), color: [220, 38, 38] }
         ];
 
         metrics.forEach((m, i) => {
@@ -165,48 +185,50 @@ export const PerformanceReports: React.FC = () => {
         });
         yPos += kpiHeight + 20;
 
-        // --- CONFIDENCE ANALYSIS ---
-        checkPageBreak(80);
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(16);
-        doc.text("2. Análisis por Nivel de Confianza", 14, yPos);
-        yPos += 10;
+        // --- CONFIDENCE ANALYSIS (Skip if single confidence filter is active unless needed for context) ---
+        if (confidenceFilter === 'ALL') {
+            checkPageBreak(80);
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(16);
+            doc.text("2. Análisis por Nivel de Confianza", 14, yPos);
+            yPos += 10;
 
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(80, 80, 80);
-        doc.text("Desglose de eficiencia según la clasificación de confianza del modelo (Alta, Media, Baja).", 14, yPos);
-        yPos += 8;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(80, 80, 80);
+            doc.text("Desglose de eficiencia según la clasificación de confianza del modelo.", 14, yPos);
+            yPos += 8;
 
-        const confData = [
-            ['Nivel', 'Predicciones', 'Ganadas', '% Eficiencia', 'Impacto'],
-            ['ALTA (+80%)', stats.byConfidence.HIGH.total, stats.byConfidence.HIGH.wins, stats.byConfidence.HIGH.winRate.toFixed(1) + "%", "Crítico"],
-            ['MEDIA (60-79%)', stats.byConfidence.MEDIUM.total, stats.byConfidence.MEDIUM.wins, stats.byConfidence.MEDIUM.winRate.toFixed(1) + "%", "Volumen"],
-            ['BAJA (<60%)', stats.byConfidence.LOW.total, stats.byConfidence.LOW.wins, stats.byConfidence.LOW.winRate.toFixed(1) + "%", "Riesgo"]
-        ];
+            const confData = [
+                ['Nivel', 'Predicciones', 'Ganadas', '% Eficiencia', 'Impacto'],
+                ['ALTA (+80%)', displayStats.byConfidence.HIGH.total, displayStats.byConfidence.HIGH.wins, displayStats.byConfidence.HIGH.winRate.toFixed(1) + "%", "Crítico"],
+                ['MEDIA (60-79%)', displayStats.byConfidence.MEDIUM.total, displayStats.byConfidence.MEDIUM.wins, displayStats.byConfidence.MEDIUM.winRate.toFixed(1) + "%", "Volumen"],
+                ['BAJA (<60%)', displayStats.byConfidence.LOW.total, displayStats.byConfidence.LOW.wins, displayStats.byConfidence.LOW.winRate.toFixed(1) + "%", "Riesgo"]
+            ];
 
-        autoTable(doc, {
-            startY: yPos,
-            head: [confData[0]],
-            body: confData.slice(1),
-            theme: 'striped',
-            headStyles: { fillColor: [31, 41, 55], textColor: 255, fontStyle: 'bold' },
-            styles: { fontSize: 10, cellPadding: 4 },
-            didParseCell: (data) => {
-                if (data.section === 'body' && data.column.index === 3) {
-                    const val = parseFloat(data.cell.raw as string);
-                    if (val >= 70) data.cell.styles.textColor = [22, 163, 74]; // Green
-                    else if (val < 50) data.cell.styles.textColor = [220, 38, 38]; // Red
+            autoTable(doc, {
+                startY: yPos,
+                head: [confData[0]],
+                body: confData.slice(1),
+                theme: 'striped',
+                headStyles: { fillColor: [31, 41, 55], textColor: 255, fontStyle: 'bold' },
+                styles: { fontSize: 10, cellPadding: 4 },
+                didParseCell: (data) => {
+                    if (data.section === 'body' && data.column.index === 3) {
+                        const val = parseFloat(data.cell.raw as string);
+                        if (val >= 70) data.cell.styles.textColor = [22, 163, 74]; // Green
+                        else if (val < 50) data.cell.styles.textColor = [220, 38, 38]; // Red
+                    }
                 }
-            }
-        });
-        yPos = (doc as any).lastAutoTable.finalY + 20;
+            });
+            yPos = (doc as any).lastAutoTable.finalY + 20;
+        }
 
         // --- PROBABILITY CURVE ---
         checkPageBreak(80);
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(16);
-        doc.text("3. Curva de Probabilidad Real vs Esperada", 14, yPos);
+        doc.text(`${confidenceFilter === 'ALL' ? '3' : '2'}. Curva de Probabilidad Real vs Esperada`, 14, yPos);
         yPos += 10;
 
         doc.setFontSize(10);
@@ -214,14 +236,15 @@ export const PerformanceReports: React.FC = () => {
         doc.text("Comparativa entre la probabilidad calculada por la IA y el resultado real obtenido.", 14, yPos);
         yPos += 8;
 
-        const probRows = Object.entries(stats.byProbability)
+        const probRows = Object.entries(displayStats.byProbability)
             .sort((a, b) => b[0].localeCompare(a[0])) // Sort desc ie 90-100 first
             .map(([bucket, s]: [string, any]) => [
                 bucket,
                 s.total,
                 s.wins,
                 s.winRate.toFixed(1) + "%",
-                s.winRate >= parseInt(bucket.split('-')[0]) ? "✅ Sobre-rendimiento" : "⚠️ Bajo rendimiento"
+                // Conditional logic for simple check
+                s.winRate >= (parseInt(bucket.split('-')[0]) || 0) ? "✅ Sobre-rendimiento" : "⚠️ Bajo rendimiento"
             ]);
 
         autoTable(doc, {
@@ -238,10 +261,10 @@ export const PerformanceReports: React.FC = () => {
         checkPageBreak(100);
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(16);
-        doc.text("4. Desglose Detallado por Mercado", 14, yPos);
+        doc.text(`${confidenceFilter === 'ALL' ? '4' : '3'}. Desglose Detallado por Mercado`, 14, yPos);
         yPos += 10;
 
-        const marketRows = Object.entries(stats.byMarket)
+        const marketRows = Object.entries(displayStats.byMarket)
             .sort((a, b) => (b[1] as any).total - (a[1] as any).total) // Sort by volume
             .map(([market, s]: [string, any]) => [
                 market,
@@ -263,7 +286,7 @@ export const PerformanceReports: React.FC = () => {
         checkPageBreak(100);
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(16);
-        doc.text("5. Desglose por Competición (Ligas)", 14, yPos);
+        doc.text(`${confidenceFilter === 'ALL' ? '5' : '4'}. Desglose por Competición (Ligas)`, 14, yPos);
         yPos += 10;
 
         doc.setFontSize(10);
@@ -272,7 +295,7 @@ export const PerformanceReports: React.FC = () => {
         doc.text("Análisis de rendimiento específico por liga o torneo.", 14, yPos);
         yPos += 8;
 
-        const leagueRows = Object.entries(stats.byLeague || {})
+        const leagueRows = Object.entries(displayStats.byLeague || {})
             .sort((a, b) => (b[1] as any).total - (a[1] as any).total)
             .map(([league, s]: [string, any]) => [
                 league,
@@ -300,7 +323,7 @@ export const PerformanceReports: React.FC = () => {
             doc.text(`Página ${i} de ${pageCount}`, pageWidth - 20, doc.internal.pageSize.getHeight() - 10);
         }
 
-        doc.save(`BetCommand_Analisis_Resultados_${startDate}_${endDate}.pdf`);
+        doc.save(`BetCommand_Analisis_${confidenceFilter}_${startDate}_${endDate}.pdf`);
     };
 
     return (
@@ -319,7 +342,7 @@ export const PerformanceReports: React.FC = () => {
                         {loading ? <span className="animate-spin mr-2">⟳</span> : <ChartBarIcon className="w-5 h-5 mr-2" />}
                         Analizar Rendimiento
                     </button>
-                    {stats && (
+                    {displayStats && (
                         <button onClick={handleDownloadPDF} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-lg flex items-center transition-colors ml-auto">
                             <DocumentArrowDownIcon className="w-5 h-5 mr-2" />
                             Descargar PDF
@@ -329,41 +352,62 @@ export const PerformanceReports: React.FC = () => {
             </div>
 
             {stats && (
+                <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex flex-wrap gap-2 items-center">
+                    <span className="text-gray-400 text-sm font-bold mr-2 flex items-center"><FunnelIcon className="w-4 h-4 mr-1" /> Filtrar por Confianza:</span>
+                    {(['ALL', 'HIGH', 'MEDIUM', 'LOW'] as const).map(filter => (
+                        <button
+                            key={filter}
+                            onClick={() => setConfidenceFilter(filter)}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${confidenceFilter === filter
+                                ? filter === 'HIGH' ? 'bg-green-600 text-white ring-2 ring-green-400'
+                                    : filter === 'MEDIUM' ? 'bg-yellow-600 text-white ring-2 ring-yellow-400'
+                                        : filter === 'LOW' ? 'bg-red-600 text-white ring-2 ring-red-400'
+                                            : 'bg-blue-600 text-white ring-2 ring-blue-400'
+                                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                }`}
+                        >
+                            {filter === 'ALL' ? 'TODOS' : filter === 'HIGH' ? 'ALTA' : filter === 'MEDIUM' ? 'MEDIA' : 'BAJA'}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {displayStats && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
                     <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                        <p className="text-gray-400 text-xs uppercase font-bold">Total Predicciones</p>
-                        <p className="text-3xl font-bold text-white mt-1">{stats.total}</p>
+                        <p className="text-gray-400 text-xs uppercase font-bold">Total Predicciones {confidenceFilter !== 'ALL' && `(${confidenceFilter})`}</p>
+                        <p className="text-3xl font-bold text-white mt-1">{displayStats.total}</p>
                     </div>
                     <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                         <p className="text-gray-400 text-xs uppercase font-bold">Tasa de Acierto</p>
-                        <p className={`text-3xl font-bold mt-1 ${stats.winRate >= 60 ? 'text-green-500' : 'text-yellow-500'}`}>{stats.winRate.toFixed(1)}%</p>
+                        <p className={`text-3xl font-bold mt-1 ${displayStats.winRate >= 60 ? 'text-green-500' : 'text-yellow-500'}`}>{displayStats.winRate.toFixed(1)}%</p>
                     </div>
                     <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                         <p className="text-gray-400 text-xs uppercase font-bold">Ganadas</p>
-                        <p className="text-3xl font-bold text-green-500 mt-1 flex items-center"><TrophyIcon className="w-6 h-6 mr-2" /> {stats.wins}</p>
+                        <p className="text-3xl font-bold text-green-500 mt-1 flex items-center"><TrophyIcon className="w-6 h-6 mr-2" /> {displayStats.wins}</p>
                     </div>
                     <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                         <p className="text-gray-400 text-xs uppercase font-bold">Perdidas</p>
-                        <p className="text-3xl font-bold text-red-500 mt-1 flex items-center"><XCircleIcon className="w-6 h-6 mr-2" /> {stats.losses}</p>
+                        <p className="text-3xl font-bold text-red-500 mt-1 flex items-center"><XCircleIcon className="w-6 h-6 mr-2" /> {displayStats.losses}</p>
                     </div>
 
-                    {/* New Confidence Section */}
-                    {stats.byConfidence && (
+                    {/* New Confidence Sections - Only show if showing ALL or matching filter (though filtering makes specific cards redundant, we can keep the breakdown for 'ALL' and simplify for others) */}
+                    {confidenceFilter === 'ALL' && displayStats.byConfidence && (
                         <div className="col-span-1 md:col-span-2 lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
                             <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50 flex flex-col items-center justify-center">
                                 <span className="text-green-400 font-bold mb-1 flex items-center"><CheckBadgeIcon className="w-4 h-4 mr-1" /> Confianza ALTA</span>
-                                <span className="text-2xl font-bold text-white">{stats.byConfidence.HIGH.winRate.toFixed(1)}%</span>
-                                <span className="text-xs text-gray-400">{stats.byConfidence.HIGH.wins}/{stats.byConfidence.HIGH.total} aciertos</span>
+                                <span className="text-2xl font-bold text-white">{displayStats.byConfidence.HIGH.winRate.toFixed(1)}%</span>
+                                <span className="text-xs text-gray-400">{displayStats.byConfidence.HIGH.wins}/{displayStats.byConfidence.HIGH.total} aciertos</span>
                             </div>
                             <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50 flex flex-col items-center justify-center">
                                 <span className="text-yellow-400 font-bold mb-1 flex items-center"><SignalIcon className="w-4 h-4 mr-1" /> Confianza MEDIA</span>
-                                <span className="text-2xl font-bold text-white">{stats.byConfidence.MEDIUM.winRate.toFixed(1)}%</span>
-                                <span className="text-xs text-gray-400">{stats.byConfidence.MEDIUM.wins}/{stats.byConfidence.MEDIUM.total} aciertos</span>
+                                <span className="text-2xl font-bold text-white">{displayStats.byConfidence.MEDIUM.winRate.toFixed(1)}%</span>
+                                <span className="text-xs text-gray-400">{displayStats.byConfidence.MEDIUM.wins}/{displayStats.byConfidence.MEDIUM.total} aciertos</span>
                             </div>
                             <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50 flex flex-col items-center justify-center">
                                 <span className="text-gray-400 font-bold mb-1">Confianza BAJA</span>
-                                <span className="text-2xl font-bold text-white">{stats.byConfidence.LOW.winRate.toFixed(1)}%</span>
-                                <span className="text-xs text-gray-500">{stats.byConfidence.LOW.wins}/{stats.byConfidence.LOW.total} aciertos</span>
+                                <span className="text-2xl font-bold text-white">{displayStats.byConfidence.LOW.winRate.toFixed(1)}%</span>
+                                <span className="text-xs text-gray-500">{displayStats.byConfidence.LOW.wins}/{displayStats.byConfidence.LOW.total} aciertos</span>
                             </div>
                         </div>
                     )}
@@ -383,7 +427,7 @@ export const PerformanceReports: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-700">
-                                    {Object.entries(stats.byMarket).map(([market, s]: [string, any]) => (
+                                    {Object.entries(displayStats.byMarket).map(([market, s]: [string, any]) => (
                                         <tr key={market} className="hover:bg-gray-750">
                                             <td className="px-6 py-3 font-medium text-white">{market}</td>
                                             <td className="px-6 py-3">{s.total}</td>
@@ -402,7 +446,7 @@ export const PerformanceReports: React.FC = () => {
                     </div>
 
                     {/* League Breakdown */}
-                    {stats.byLeague && Object.keys(stats.byLeague).length > 0 && (
+                    {displayStats.byLeague && Object.keys(displayStats.byLeague).length > 0 && (
                         <div className="col-span-1 md:col-span-2 lg:col-span-4 bg-gray-800 p-6 rounded-xl border border-gray-700 mt-4">
                             <h3 className="text-lg font-bold text-white mb-4">Desglose por Competición</h3>
                             <div className="overflow-x-auto max-h-96">
@@ -417,7 +461,7 @@ export const PerformanceReports: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-700 overflow-y-auto">
-                                        {Object.entries(stats.byLeague)
+                                        {Object.entries(displayStats.byLeague)
                                             .sort((a, b) => (b[1] as any).total - (a[1] as any).total) // Sort by volume by default
                                             .map(([league, s]: [string, any]) => (
                                                 <tr key={league} className="hover:bg-gray-750">

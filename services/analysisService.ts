@@ -215,24 +215,10 @@ export const fetchPerformanceStats = async (start: Date, end: Date): Promise<Per
 
 
     // 2. Aggregate
-    let total = 0;
-    let wins = 0;
-    let losses = 0;
-    let pushed = 0;
+    // Flatten predictions from runs to a single array for the helper
+    const allPredictions: any[] = [];
 
-    const byMarket: Record<string, { total: number; wins: number; winRate: number }> = {};
-    const byLeague: Record<string, { total: number; wins: number; winRate: number }> = {}; // Note: runs dont have league info directly, skipping for now or need join
-    const byDate: Record<string, { total: number; wins: number; profit: number }> = {};
-
-    const byConfidence: Record<'HIGH' | 'MEDIUM' | 'LOW', { total: number; wins: number; winRate: number }> = {
-        HIGH: { total: 0, wins: 0, winRate: 0 },
-        MEDIUM: { total: 0, wins: 0, winRate: 0 },
-        LOW: { total: 0, wins: 0, winRate: 0 }
-    };
-
-    const byProbability: Record<string, { total: number; wins: number; winRate: number }> = {};
-    const rawPredictions: any[] = [];
-
+    // Also need to map league names from metadata
     // --- NEW: Fetch Fixture Metadata for League info ---
     const fixtureIds = [...new Set(runs.map((r: any) => parseInt(r.fixture_id)))];
     let gamesMap: Record<number, any> = {};
@@ -248,17 +234,8 @@ export const fetchPerformanceStats = async (start: Date, end: Date): Promise<Per
         }
     }
 
-    const getProbBucket = (prob: number) => {
-        if (prob >= 90) return "90-100%";
-        if (prob >= 80) return "80-89%";
-        if (prob >= 70) return "70-79%";
-        if (prob >= 60) return "60-69%";
-        return "<60%";
-    };
-
     runs.forEach((run: any) => {
         if (!run.predictions) return;
-        const dateKey = new Date(run.created_at).toLocaleDateString('es-CO');
 
         // Find League
         const fixtureId = parseInt(run.fixture_id);
@@ -267,47 +244,84 @@ export const fetchPerformanceStats = async (start: Date, end: Date): Promise<Per
 
         run.predictions.forEach((p: any) => {
             if (p.verification_status !== 'verified' || p.is_won === null) return;
-
-            total++;
-            rawPredictions.push({ ...p, date: run.created_at, league: leagueName });
-
-            // Init Maps
-            if (!byMarket[p.market]) byMarket[p.market] = { total: 0, wins: 0, winRate: 0 };
-            if (!byDate[dateKey]) byDate[dateKey] = { total: 0, wins: 0, profit: 0 };
-            if (!byLeague[leagueName]) byLeague[leagueName] = { total: 0, wins: 0, winRate: 0 };
-
-            // Probability Buckets
-            const prob = p.probability || 0;
-            const probBucket = getProbBucket(prob);
-            if (!byProbability[probBucket]) byProbability[probBucket] = { total: 0, wins: 0, winRate: 0 };
-
-            // Confidence Level (Matching TopPicks Logic)
-            let confLevel: 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW';
-            if (prob >= 80) confLevel = 'HIGH';
-            else if (prob >= 60) confLevel = 'MEDIUM';
-
-            byMarket[p.market].total++;
-            byDate[dateKey].total++;
-            byLeague[leagueName].total++;
-            byProbability[probBucket].total++;
-            byConfidence[confLevel].total++;
-
-            if (p.is_won === true) {
-                wins++;
-                byMarket[p.market].wins++;
-                byDate[dateKey].wins++;
-                byLeague[leagueName].wins++;
-                byProbability[probBucket].wins++;
-                byConfidence[confLevel].wins++;
-            } else if (p.is_won === false) {
-                losses++;
-            } else {
-                pushed++;
-            }
+            // Enrich with metadata needed for aggregation
+            allPredictions.push({ ...p, date: run.created_at, league: leagueName });
         });
     });
 
-    // 3. Calc Rates
+    return aggregateStats(allPredictions);
+};
+
+/**
+ * Re-usable aggregator for client-side filtering
+ */
+export const aggregateStats = (predictions: any[]): PerformanceStats => {
+    let total = 0;
+    let wins = 0;
+    let losses = 0;
+    let pushed = 0;
+
+    const byMarket: Record<string, { total: number; wins: number; winRate: number }> = {};
+    const byLeague: Record<string, { total: number; wins: number; winRate: number }> = {};
+    const byDate: Record<string, { total: number; wins: number; profit: number }> = {};
+
+    const byConfidence: Record<'HIGH' | 'MEDIUM' | 'LOW', { total: number; wins: number; winRate: number }> = {
+        HIGH: { total: 0, wins: 0, winRate: 0 },
+        MEDIUM: { total: 0, wins: 0, winRate: 0 },
+        LOW: { total: 0, wins: 0, winRate: 0 }
+    };
+
+    const byProbability: Record<string, { total: number; wins: number; winRate: number }> = {};
+
+    const getProbBucket = (prob: number) => {
+        if (prob >= 90) return "90-100%";
+        if (prob >= 80) return "80-89%";
+        if (prob >= 70) return "70-79%";
+        if (prob >= 60) return "60-69%";
+        return "<60%";
+    };
+
+    predictions.forEach(p => {
+        total++;
+        const dateKey = new Date(p.date).toLocaleDateString('es-CO');
+        const leagueName = p.league || "Desconocida";
+
+        // Init Maps
+        if (!byMarket[p.market]) byMarket[p.market] = { total: 0, wins: 0, winRate: 0 };
+        if (!byDate[dateKey]) byDate[dateKey] = { total: 0, wins: 0, profit: 0 };
+        if (!byLeague[leagueName]) byLeague[leagueName] = { total: 0, wins: 0, winRate: 0 };
+
+        // Probability Buckets
+        const prob = p.probability || 0;
+        const probBucket = getProbBucket(prob);
+        if (!byProbability[probBucket]) byProbability[probBucket] = { total: 0, wins: 0, winRate: 0 };
+
+        // Confidence Level
+        let confLevel: 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW';
+        if (prob >= 80) confLevel = 'HIGH';
+        else if (prob >= 60) confLevel = 'MEDIUM';
+
+        byMarket[p.market].total++;
+        byDate[dateKey].total++;
+        byLeague[leagueName].total++;
+        byProbability[probBucket].total++;
+        byConfidence[confLevel].total++;
+
+        if (p.is_won === true) {
+            wins++;
+            byMarket[p.market].wins++;
+            byDate[dateKey].wins++;
+            byLeague[leagueName].wins++;
+            byProbability[probBucket].wins++;
+            byConfidence[confLevel].wins++;
+        } else if (p.is_won === false) {
+            losses++;
+        } else {
+            pushed++;
+        }
+    });
+
+    // Calc Rates
     const winRate = total > 0 ? (wins / total) * 100 : 0;
 
     Object.keys(byMarket).forEach(k => {
@@ -335,13 +349,13 @@ export const fetchPerformanceStats = async (start: Date, end: Date): Promise<Per
         losses,
         pushed,
         winRate,
-        yield: 0, // Need odds for real yield
+        yield: 0,
         byMarket,
         byLeague,
         byDate,
         byConfidence,
         byProbability,
-        rawPredictions
+        rawPredictions: predictions
     };
 };
 
