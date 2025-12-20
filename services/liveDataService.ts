@@ -34,7 +34,11 @@ const processFixturesResponse = (response: Game[]): DashboardData => {
         if (!leaguesMap[game.league.id]) {
             leaguesMap[game.league.id] = { ...game.league, games: [] };
         }
-        leaguesMap[game.league.id].games.push(game);
+        // Deduplicate games based on fixture ID
+        const existingGame = leaguesMap[game.league.id].games.find(g => g.fixture.id === game.fixture.id);
+        if (!existingGame) {
+            leaguesMap[game.league.id].games.push(game);
+        }
     }
 
     const allLeagues = Object.values(leaguesMap);
@@ -70,9 +74,42 @@ export const fetchFixturesByDate = async (date: string): Promise<DashboardData> 
     }
 };
 
+export const fetchFixturesByRange = async (from: string, to: string): Promise<DashboardData> => {
+    try {
+        const data = await callProxy<Game[]>('fixtures', { from, to });
+        return processFixturesResponse(data);
+    } catch (e) {
+        console.error(`[DEBUG] Error in fetchFixturesByRange:`, e);
+        throw e;
+    }
+};
+
 export const fetchLiveFixtures = async (): Promise<DashboardData> => {
     const data = await callProxy<Game[]>('fixtures', { live: 'all' });
     return processFixturesResponse(data);
+};
+
+export const fetchFixturesList = async (ids: number[]): Promise<Game[]> => {
+    if (ids.length === 0) return [];
+    // API-Sports supports max 20 IDs usually, but reducing to 10 to avoid Edge Function timeouts.
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 10) {
+        chunks.push(ids.slice(i, i + 10));
+    }
+
+    const results: Game[] = [];
+    for (const chunk of chunks) {
+        const idsStr = chunk.join('-');
+        try {
+            const data = await callProxy<Game[]>('fixtures', { ids: idsStr });
+            if (data && Array.isArray(data)) {
+                results.push(...data);
+            }
+        } catch (e) {
+            console.error(`Error fetching chunk ${idsStr}:`, e);
+        }
+    }
+    return results;
 };
 
 export const fetchGameDetails = async (game: Game): Promise<GameDetails> => {
@@ -98,7 +135,7 @@ export const fetchGameDetails = async (game: Game): Promise<GameDetails> => {
         homeTeamId: game.teams.home.id,
         awayTeamId: game.teams.away.id,
         leagueId: game.league.id,
-        season: 2023 // Idealmente dinámico, pero funcional por ahora
+        fixtureDate: game.fixture.date // Pass date for server-side season calculation
     });
 
     // 3. Guardar en caché si terminó
@@ -159,7 +196,8 @@ export const fetchTopPicks = async (date: string) => {
                     probability: pred.probability,
                     confidence: pred.confidence,
                     reasoning: pred.reasoning
-                }
+                },
+                result: pred.is_won === true ? 'Won' : (pred.is_won === false ? 'Lost' : 'Pending')
             };
         }).filter((item: any) => item !== null);
 

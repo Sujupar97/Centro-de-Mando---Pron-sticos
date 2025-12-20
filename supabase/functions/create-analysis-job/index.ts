@@ -9,18 +9,20 @@ const API_FOOTBALL_BASE = 'https://v3.football.api-sports.io';
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
+  let supabase: any;
+  let job: any;
+
   try {
     const { api_fixture_id } = await req.json();
     console.log(`[JOB-START] Comparable Method Analysis for fixture: ${api_fixture_id}`);
 
     // --- INIT ---
-    // --- INIT ---
     const sbUrl = Deno.env.get('SUPABASE_URL')!;
     const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(sbUrl, sbKey);
+    supabase = createClient(sbUrl, sbKey);
 
     // Create Job (EARLY SAVE for traceability)
-    const { data: job, error: jobError } = await supabase
+    const { data: jobCreated, error: jobError } = await supabase
       .from('analysis_jobs')
       .insert({
         api_fixture_id,
@@ -28,6 +30,9 @@ serve(async (req) => {
         progress_jsonb: { step: 'Validando configuración...', completeness_score: 5 }
       })
       .select().single();
+
+    // Assign to outer var
+    job = jobCreated;
 
     if (jobError) throw jobError;
 
@@ -66,78 +71,123 @@ serve(async (req) => {
 
     // --- STAGE 1: ETL & COLLECTION ---
     // 1. Target Fixture
+    // 1. Target Fixture
     const fixtureData = await fetchFootball(`fixtures?id=${api_fixture_id}`);
     if (!fixtureData || fixtureData.length === 0) throw new Error("Fixture not found");
     const game = fixtureData[0];
     const { home: homeTeam, away: awayTeam } = game.teams;
     const leagueId = game.league.id;
-    const season = game.league.season;
+
+    // FETCH CORRECT SEASON (Robust Date-Match Logic)
+    // We match the fixture date against the league's season coverage (start/end)
+    let season = game.league.season; // Init with fixture default
+    try {
+      const leagueData = await fetchFootball(`leagues?id=${leagueId}`); // Fetch ALL seasons
+      if (leagueData && leagueData.length > 0 && leagueData[0].seasons) {
+        const seasonsList = leagueData[0].seasons;
+        const matchDate = new Date(game.fixture.date);
+
+        // Strategy 1: Find season covering the date
+        const matchedSeason = seasonsList.find((s: any) => {
+          const start = new Date(s.start);
+          const end = new Date(s.end);
+          // Add buffer? usually api dates are precise. 
+          return matchDate >= start && matchDate <= end;
+        });
+
+        if (matchedSeason) {
+          season = matchedSeason.year;
+          console.log(`[SEASON-LOGIC] Match Date ${game.fixture.date} falls in Season ${season}`);
+        } else {
+          // Strategy 2: If future/past, find the 'current' season (active now)
+          const currentSeason = seasonsList.find((s: any) => s.current);
+          if (currentSeason) {
+            season = currentSeason.year;
+            console.log(`[SEASON-LOGIC] No date match, using active CURRENT season ${season}`);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to calculate season by date, referencing fixture default", e);
+    }
+
 
     // 2. Fetch Blocks (Parallel)
-    console.log(`[ETL] Fetching Comparable Blocks for ${homeTeam.name} vs ${awayTeam.name}...`);
-
-    // H_home_last10: Home Team at Home
-    // H_away_last10: Home Team Away
-    // A_home_last10: Away Team at Home
-    // A_away_last10: Away Team Away
-    // H2H: Head to Head
+    console.log(`[ETL] Fetching Extended Data for ${homeTeam.name} vs ${awayTeam.name} (Season ${season})...`);
 
     const [
-      h_home, h_away,
-      a_home, a_away,
+      last15_H, last15_A,
       h2h,
-      standingsData
+      standingsData,
+      injuriesData,
+      predictionsData,
+      statsHome,
+      statsAway
     ] = await Promise.all([
-      fetchFootball(`fixtures?team=${homeTeam.id}&last=10&venue=${homeTeam.id}`), // Aprox venue, better to filter by team-home
-      fetchFootball(`fixtures?team=${homeTeam.id}&last=10`), // Filter later
-      fetchFootball(`fixtures?team=${awayTeam.id}&last=10`), // Filter later
-      fetchFootball(`fixtures?team=${awayTeam.id}&last=10&status=FT`), // Just last 10 games
-      fetchFootball(`fixtures/headtohead?h2h=${homeTeam.id}-${awayTeam.id}&last=10`),
-      fetchFootball(`standings?league=${leagueId}&season=${season}`)
-    ]);
-
-    // Refine Blocks (Strict 'Home vs Away' logic isn't perfect via API alone, 
-    // so API returns 'last 10 games involving team'. We must filter conceptually if needed, 
-    // but for now we trust the "Last 10 form" generally. 
-    // Wait, user asked for: "H como local", "H como visitante".
-    // API endpoint `fixtures?team={id}&last=10` returns mixed.
-    // Correct refactor: Fetch last 20 and filter? Or rely on API parameters?
-    // API has `venue` param but it takes ID. Team ID != Venue ID.
-    // We will separate manually from a larger fetch if needed, 
-    // BUT for stability/speed we'll fetch general form and classify in memory.
-
-    // Revised Strategy: Fetch last 20 matches for each team to ensure we have enough Home/Away splits.
-    // But to save quota, let's stick to the 'last 10 total' the user sees, OR obey the prompt "last 10 where H played home".
-    // API doesn't strictly support "last 10 where team was home". It supports "last X".
-    // I will fetch last 15 for each to get a good mix.
-
-    // Redoing fetches for better block accuracy:
-    const [last15_H, last15_A] = await Promise.all([
       fetchFootball(`fixtures?team=${homeTeam.id}&last=15&status=FT`),
-      fetchFootball(`fixtures?team=${awayTeam.id}&last=15&status=FT`)
+      fetchFootball(`fixtures?team=${awayTeam.id}&last=15&status=FT`),
+      fetchFootball(`fixtures/headtohead?h2h=${homeTeam.id}-${awayTeam.id}&last=10`),
+      fetchFootball(`standings?league=${leagueId}&season=${season}`),
+      fetchFootball(`injuries?fixture=${api_fixture_id}`),
+      fetchFootball(`predictions?fixture=${api_fixture_id}`),
+      fetchFootball(`teams/statistics?league=${leagueId}&season=${season}&team=${homeTeam.id}`),
+      fetchFootball(`teams/statistics?league=${leagueId}&season=${season}&team=${awayTeam.id}`)
     ]);
 
     // Build Blocks in Memory
     const blocks = {
       H_home_last10: last15_H.filter((f: any) => f.teams.home.id === homeTeam.id).slice(0, 10),
       H_away_last10: last15_H.filter((f: any) => f.teams.away.id === homeTeam.id).slice(0, 10),
-      A_home_last10: last15_A.filter((f: any) => f.teams.home.id === awayTeam.id).slice(0, 10),
-      A_away_last10: last15_A.filter((f: any) => f.teams.away.id === awayTeam.id).slice(0, 10),
+      A_home_last10: last15_H.filter((f: any) => f.teams.home.id === awayTeam.id).slice(0, 10),
+      A_away_last10: last15_H.filter((f: any) => f.teams.away.id === awayTeam.id).slice(0, 10),
       H2H_last10: h2h || []
     };
 
+    // ... (unchanged blocks)
+
+
+
+
     // --- STAGE 2: CONTEXT & STAKES ---
-    const standings = standingsData?.[0]?.league?.standings?.[0] || []; // Simple table
+    const allStandings = standingsData?.[0]?.league?.standings?.[0] || [];
+
+    // Intelligent Standings Slice (Contextual Table)
+    let relevantStandings = [];
+    if (allStandings.length > 0) {
+      const homeIdx = allStandings.findIndex((s: any) => s.team.id === homeTeam.id);
+      const awayIdx = allStandings.findIndex((s: any) => s.team.id === awayTeam.id);
+
+      // Get generic key positions
+      const top3 = allStandings.slice(0, 3);
+      const bottom3 = allStandings.slice(-3);
+
+      // Get neighbors for home and away
+      const getNeighbors = (idx: number) => {
+        if (idx === -1) return [];
+        const start = Math.max(0, idx - 2);
+        const end = Math.min(allStandings.length, idx + 3);
+        return allStandings.slice(start, end);
+      };
+
+      const homeNeighbors = getNeighbors(homeIdx);
+      const awayNeighbors = getNeighbors(awayIdx);
+
+      // Merge and deduplicate
+      const merged = [...top3, ...bottom3, ...homeNeighbors, ...awayNeighbors];
+      const unique = new Map();
+      merged.forEach((item: any) => unique.set(item.rank, item));
+      relevantStandings = Array.from(unique.values()).sort((a: any, b: any) => a.rank - b.rank);
+    }
 
     // Calculate Pressure/Stakes
     let pressure = 'Unknown';
     let pressure_reason = 'No standings data';
     let priority = 'League'; // Default
 
-    if (standings.length > 0) {
-      const homeRank = standings.find((s: any) => s.team.id === homeTeam.id)?.rank;
-      const awayRank = standings.find((s: any) => s.team.id === awayTeam.id)?.rank;
-      const total = standings.length;
+    if (allStandings.length > 0) {
+      const homeRank = allStandings.find((s: any) => s.team.id === homeTeam.id)?.rank;
+      const awayRank = allStandings.find((s: any) => s.team.id === awayTeam.id)?.rank;
+      const total = allStandings.length;
 
       if (homeRank <= 4 || awayRank <= 4) {
         pressure = 'High';
@@ -170,7 +220,29 @@ serve(async (req) => {
         pressure_level: pressure,
         reason: pressure_reason,
         priority_competition: priority,
-        standings_snippet: standings.slice(0, 5).map((s: any) => `${s.rank}. ${s.team.name} (${s.points}pts)`) // Top 5 context
+        standings_context_snippet: relevantStandings.map((s: any) => `${s.rank}. ${s.team.name} (${s.points}pts, GD: ${s.goalsDiff})`)
+      },
+      injuries: injuriesData?.map((i: any) => `${i.team.name}: ${i.player.name} (${i.type})`) || [],
+      season_stats: {
+        home: {
+          form: statsHome?.form,
+          goals_for_avg: statsHome?.goals?.for?.average?.total,
+          goals_against_avg: statsHome?.goals?.against?.average?.total,
+          clean_sheets: statsHome?.clean_sheet?.total,
+          failed_to_score: statsHome?.failed_to_score?.total
+        },
+        away: {
+          form: statsAway?.form,
+          goals_for_avg: statsAway?.goals?.for?.average?.total,
+          goals_against_avg: statsAway?.goals?.against?.average?.total,
+          clean_sheets: statsAway?.clean_sheet?.total,
+          failed_to_score: statsAway?.failed_to_score?.total
+        }
+      },
+      api_prediction: {
+        winner: predictionsData?.[0]?.predictions?.winner,
+        advice: predictionsData?.[0]?.predictions?.advice,
+        percent: predictionsData?.[0]?.predictions?.percent
       },
       comparable_blocks: {
         H_home_last10_summary: blocks.H_home_last10.map((f: any) => `${f.score.fulltime.home}-${f.score.fulltime.away} vs ${f.teams.away.name}`),
@@ -191,6 +263,11 @@ serve(async (req) => {
 
     const prompt = `
     ACT AS AN ELITE SPORTS ANALYST. ANALYZE THIS MATCH USING THE "COMPARABLE METHOD".
+    
+    CRITICAL INSTRUCTIONS:
+    1. INJURIES: You MUST check the 'injuries' list. If key players are missing, this is a major factor.
+    2. STANDINGS: Use the 'standings_context_snippet' to understand the TRUE table pressure (relegation gap, title race) beyond just rank.
+    3. PREDICTIONS: Review 'api_prediction' as a second opinion, but form your own conclusions.
     
     STRICT DATA SOURCE:
     ${JSON.stringify(gameContext)}
@@ -241,19 +318,19 @@ serve(async (req) => {
     const requestBody = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5 } };
     const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${geminiKey}`;
 
-    console.log("[AI-START] Sending prompt to Gemini...");
+    console.log("[AI-START] Sending prompt to Gemini 3 Pro Preview...");
     const genRes = await fetch(genUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody)
     });
 
     if (!genRes.ok) {
+      // ... (error handling remains same, handled by outer catch mostly)
       const errText = await genRes.text();
       console.error(`[AI-ERROR] Gemini API Failed: ${genRes.status} - ${errText}`);
       throw new Error(`Gemini API Error (${genRes.status}): ${errText}`);
     }
 
     const genJson = await genRes.json();
-
     if (!genJson.candidates || genJson.candidates.length === 0) {
       console.error("[AI-ERROR] No candidates returned.", JSON.stringify(genJson));
       throw new Error("Gemini returned no candidates. Potential Refusal or Empty response.");
@@ -273,16 +350,24 @@ serve(async (req) => {
 
     // --- STAGE 4: PERSISTENCE (Evidence & Context) ---
     console.log(`[DB-SAVE] Saving Analysis and Evidence for Job ${job.id}`);
-
     // 1. Save Run
     const { data: run, error: runErr } = await supabase.from('analysis_runs').insert({
       job_id: job.id,
-      fixture_id: job.id, // Using Job ID as Fixture ID per your schema pattern? Or api_fixture_id?
-      // Note: Schema analysis_runs.fixture_id is UUID/Text? Need to check. 
-      // Logic: job.id is UUID. analysis_runs.job_id is UUID.
-      model_version: 'gemini-1.5-flash-comparable',
+      fixture_id: job.id, // Reverted to UUID to match schema
+      league_name: game.league.name, // NEW: Persist League Name
+      league_id: game.league.id,     // NEW: Persist League ID
+      model_version: 'gemini-3-pro',
       summary_pre_text: aiData.resumen_ejecutivo?.frase_principal || 'Análisis Completo',
-      report_pre_jsonb: aiData
+      report_pre_jsonb: {
+        ...aiData,
+        _raw_evidence: {
+          injuries: injuriesData,
+          api_predictions: predictionsData,
+          stats_home: statsHome,
+          stats_away: statsAway,
+          standings_context: relevantStandings
+        }
+      }
     }).select().single();
 
     if (runErr) throw runErr;
@@ -331,7 +416,21 @@ serve(async (req) => {
 
   } catch (err: any) {
     console.error("FATAL ERROR IN FUNCTION:", err);
-    // Return 200 for debugging
+
+    // CRITICAL FIX: Update Job Status to FAILED in DB
+    if (supabase && job?.id) {
+      try {
+        await supabase.from('analysis_jobs').update({
+          status: 'failed',
+          last_error: err.message || 'Fatal Error',
+          progress_jsonb: { step: 'Error Crítico del Sistema', error: err.message, completeness_score: 0 }
+        }).eq('id', job.id);
+        console.log(`[ERROR-HANDLER] Marked Job ${job.id} as FAILED in DB.`);
+      } catch (dbErr) {
+        console.error("Failed to update job status to failed:", dbErr);
+      }
+    }
+
     return new Response(JSON.stringify({ error: err.message, detailed_error: JSON.stringify(err), success: false }), { status: 200, headers: corsHeaders });
   }
 });

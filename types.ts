@@ -4,16 +4,16 @@ import { GroundingChunk } from "@google/genai";
 // --- ENUMS & BASIC TYPES ---
 
 export enum BetStatus {
-  Pending = 'Pendiente',
-  Won = 'Ganada',
-  Lost = 'Perdida',
+    Pending = 'Pendiente',
+    Won = 'Ganada',
+    Lost = 'Perdida',
 }
 
 export enum LegStatus {
-  Won = 'Ganadora',
-  Lost = 'Perdida',
-  Pending = 'Pendiente',
-  Void = 'Anulada',
+    Won = 'Ganadora',
+    Lost = 'Perdida',
+    Pending = 'Pendiente',
+    Void = 'Anulada',
 }
 
 export type ConfidenceLevel = 'Alta' | 'Media' | 'Baja';
@@ -52,6 +52,7 @@ export interface PredictionDB {
     confidence: number; // 0-100 score numérico
     signal_strength: number;
     evidence_jsonb: any;
+    is_won?: boolean | null; // Added for retro analysis result
 }
 
 export interface AnalysisRun {
@@ -62,64 +63,80 @@ export interface AnalysisRun {
     report_pre_jsonb: any; // Reporte completo estructurado
     created_at: string;
     predictions?: PredictionDB[];
+    post_match_analysis?: PostMatchAnalysis; // New structured analysis
+    actual_outcome?: MatchOutcome;        // New: Data real del partido
+}
+
+export interface PostMatchAnalysis {
+    tactical_analysis: string;
+    statistical_breakdown: string;
+    key_moments: string;
+    performance_review: string;
+    learning_feedback: string;
+}
+
+export interface MatchOutcome {
+    score: { home: number; away: number };
+    status: string;
+    winner: string;
 }
 
 // --- LEGACY / FRONTEND TYPES (Mantenidos para compatibilidad visual temporal) ---
 
 export interface BetLeg {
-  sport: string; 
-  league: string;
-  event: string;
-  market: string;
-  status: LegStatus;
-  odds: number;
+    sport: string;
+    league: string;
+    event: string;
+    market: string;
+    status: LegStatus;
+    odds: number;
 }
 
 export interface Bet {
-  id: number;
-  user_id: string;
-  date: string;
-  event: string;
-  market: string;
-  stake: number;
-  odds: number;
-  status: BetStatus;
-  payout: number;
-  image?: string;
-  legs?: BetLeg[];
+    id: number;
+    user_id: string;
+    date: string;
+    event: string;
+    market: string;
+    stake: number;
+    odds: number;
+    status: BetStatus;
+    payout: number;
+    image?: string;
+    legs?: BetLeg[];
 }
 
 export interface ExtractedBetInfo {
-  date: string;
-  stake: number;
-  totalOdds: number;
-  status: BetStatus;
-  legs: BetLeg[];
+    date: string;
+    stake: number;
+    totalOdds: number;
+    status: BetStatus;
+    legs: BetLeg[];
 }
 
 export interface ChatMessage {
-  role: 'user' | 'model';
-  text: string;
-  sources?: GroundingChunk[];
+    role: 'user' | 'model';
+    text: string;
+    sources?: GroundingChunk[];
 }
 
 export interface PeriodStats {
-  period: string;
-  totalBets: number;
-  combinedBets: number;
-  singleBets: number;
-  wonBets: number;
-  lostBets: number;
-  winRate: number;
-  totalLegs: number;
-  wonLegs: number;
-  lostLegs: number;
-  legWinRate: number;
-  totalStaked: number;
-  totalPayout: number;
-  profitLoss: number;
-  roi: number;
-  averageOdds: number;
+    period: string;
+    totalBets: number;
+    combinedBets: number;
+    singleBets: number;
+    wonBets: number;
+    lostBets: number;
+    winRate: number;
+    totalLegs: number;
+    wonLegs: number;
+    lostLegs: number;
+    legWinRate: number;
+    totalStaked: number;
+    totalPayout: number;
+    profitLoss: number;
+    roi: number;
+    averageOdds: number;
 }
 
 // --- DASHBOARD / AI TYPES ---
@@ -191,7 +208,7 @@ export interface DashboardAnalysisJSON {
     };
     graficos_sugeridos: GraficoSugerido[];
     predicciones_finales: {
-        tabla_resumen?: any; 
+        tabla_resumen?: any;
         detalle: DetallePrediccion[];
     };
     advertencias?: {
@@ -204,9 +221,9 @@ export interface DashboardAnalysisJSON {
 
 // Wrapper para el resultado que consume la UI
 export interface VisualAnalysisResult {
-    analysisText: string; 
+    analysisText: string;
     sources?: GroundingChunk[];
-    dashboardData?: DashboardAnalysisJSON | null; 
+    dashboardData?: DashboardAnalysisJSON | null;
     analysisRun?: AnalysisRun; // Nuevo campo: Data cruda de DB
     visualData?: any; // Legacy support
 }
@@ -252,14 +269,14 @@ export interface ChartDataPoint {
 // --- API-FOOTBALL MIRROR TYPES ---
 
 export interface APITeam {
-  id: number;
-  name: string;
-  logo: string;
+    id: number;
+    name: string;
+    logo: string;
 }
 
 export interface APIGoals {
-  home: number | null;
-  away: number | null;
+    home: number | null;
+    away: number | null;
 }
 
 export interface APIFixtureStatus {
@@ -269,45 +286,45 @@ export interface APIFixtureStatus {
 }
 
 export interface APIFixture {
-  id: number;
-  referee: string | null;
-  timezone: string;
-  date: string;
-  timestamp: number;
-  venue: { id: number | null; name: string | null; city: string | null; };
-  status: APIFixtureStatus;
+    id: number;
+    referee: string | null;
+    timezone: string;
+    date: string;
+    timestamp: number;
+    venue: { id: number | null; name: string | null; city: string | null; };
+    status: APIFixtureStatus;
 }
 
 export interface APILeague {
-  id: number;
-  name: string;
-  country: string;
-  logo: string;
-  flag: string | null;
-  season: number;
-  round?: string;
+    id: number;
+    name: string;
+    country: string;
+    logo: string;
+    flag: string | null;
+    season: number;
+    round?: string;
 }
 
 export interface Game {
-  fixture: APIFixture;
-  league: APILeague;
-  teams: { home: APITeam; away: APITeam; };
-  goals: APIGoals;
+    fixture: APIFixture;
+    league: APILeague;
+    teams: { home: APITeam; away: APITeam; };
+    goals: APIGoals;
 }
 
 export interface League {
-  id: number;
-  name: string;
-  country: string;
-  logo: string;
-  season: number;
-  games: Game[];
+    id: number;
+    name: string;
+    country: string;
+    logo: string;
+    season: number;
+    games: Game[];
 }
 
 export interface Country {
-  name: string;
-  flag: string | null;
-  leagues: League[];
+    name: string;
+    flag: string | null;
+    leagues: League[];
 }
 
 export interface APIStanding {
@@ -417,8 +434,8 @@ export interface APITeamSeasonStats {
 
 // --- TYPES FOR DASHBOARD DATA ---
 export interface DashboardData {
-  importantLeagues: League[];
-  countryLeagues: Country[];
+    importantLeagues: League[];
+    countryLeagues: Country[];
 }
 
 // Tipos legacy necesarios para evitar errores de compilación en componentes viejos
@@ -430,7 +447,7 @@ export interface GameDetails {
     events: APIEvent[] | null;
     lineups: APILineup[] | null;
     statistics: APIFixtureStatistics[] | null;
-    h2h: Game[] | null; 
+    h2h: Game[] | null;
     standings: APIStanding[][] | null;
     teamStats: { home: APITeamSeasonStats | null; away: APITeamSeasonStats | null; };
     lastMatches: { home: Game[] | null; away: Game[] | null; };
@@ -442,8 +459,8 @@ export interface GameAnalysis { league: string; matchup: string; time: string; o
 export type GamedayAnalysisResult = GameAnalysis[];
 export interface LegAnalysis { legSummary: { event: string; market: string; prediction: string; }; analysis: { conclusion: string; confidence: ConfidenceLevel; probability: number; tacticalSynopsis: string; playerImpact: string; keyDataPoints: string[]; }; }
 export interface BetTicketAnalysisResult { overallVerdict: string; strongestPick: string; riskiestPick: string; legAnalyses: LegAnalysis[]; }
-export interface PerformanceReportResult { executiveSummary: string; keyMetrics: any; strengths: string[]; weaknesses: string[]; actionableRecommendations: string[]; chartsData: any; performanceBySport: any[]; performanceByMarket: any[]; }
+export interface PerformanceReportResult { executiveSummary: string; keyMetrics: any; strengths: string[]; weaknesses: string[]; actionableRecommendations: string[]; chartsData: any; performanceBySport: any[]; performanceByMarket: any[]; learningAnalysis?: string; }
 export interface PerformanceReportDB { id: number; user_id: string; created_at: string; start_date: string; end_date: string; report_data: PerformanceReportResult; }
 export interface AnalyzedGameDB { partido_id: number; resultado_analisis: VisualAnalysisResult; partidos: any; }
-export interface TopPickItem { gameId: number; matchup: string; date: string; league: string; teams: { home: { name: string; logo: string }; away: { name: string; logo: string }; }; bestRecommendation: BettingRecommendationVisual; }
+export interface TopPickItem { gameId: number; analysisRunId?: string; matchup: string; date: string; league: string; teams: { home: { name: string; logo: string }; away: { name: string; logo: string }; }; bestRecommendation: BettingRecommendationVisual; result?: 'Won' | 'Lost' | 'Pending' | 'Void'; }
 export type CreateBetPayload = Omit<Bet, 'id' | 'user_id'>;

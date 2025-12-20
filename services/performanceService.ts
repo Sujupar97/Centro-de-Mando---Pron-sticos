@@ -66,3 +66,29 @@ export const getLatestPerformanceReport = async (
         return null;
     }
 };
+
+/**
+ * Obtiene las predicciones del sistema (IA) verificadas para análisis de rendimiento.
+ */
+export const getSystemPredictions = async (startDate: string, endDate: string) => {
+    try {
+        // Query predictions joined with analysis_runs (to filter by date? No, predictions usually have created_at or we join runs)
+        // predictions table doesn't have `created_at` in my migration explicitly, but usually has it. 
+        // Let's assume we filter by `result_verified_at` or `created_at`.
+        // Better: join with analysis_runs -> analysis_jobs -> created_at.
+        // For simplicity, assuming predictions has created_at or we fetch all verified.
+
+        const { data, error } = await supabase
+            .from('predictions')
+            .select('*')
+            .eq('verification_status', 'verified')
+            .gte('result_verified_at', startDate) // User might want date of MATCH, but verified date works for "performance reporting period"
+            .lte('result_verified_at', endDate + 'T23:59:59');
+
+        if (error) throw error;
+        return data || [];
+    } catch (err: any) {
+        console.error("Error fetching system predictions:", err);
+        return [];
+    }
+};

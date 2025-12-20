@@ -160,7 +160,7 @@ export const FixturesFeed: React.FC = () => {
                             .from('analysis_jobs')
                             .select('api_fixture_id, status, id')
                             .in('api_fixture_id', fixtureIds)
-                            .in('status', ['done', 'analyzing', 'queued', 'ingesting'])
+                            .in('status', ['done', 'analyzing', 'queued', 'ingesting', 'data_ready', 'collecting_evidence'])
                     );
 
                     if (existingJobs) {

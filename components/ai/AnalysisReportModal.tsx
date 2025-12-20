@@ -23,6 +23,272 @@ const HeaderSection: React.FC<{ data: DashboardAnalysisJSON['header_partido'] }>
     );
 };
 
+
+import { PostMatchAnalysis, MatchOutcome } from '../../types';
+import { ArrowDownTrayIcon, ClipboardDocumentCheckIcon } from '../icons/Icons';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+const PostMatchSection: React.FC<{ analysis: PostMatchAnalysis | string; outcome?: MatchOutcome; headerData: any }> = ({ analysis, outcome, headerData }) => {
+    if (!analysis) return null;
+
+    const handleDownloadFinalPDF = () => {
+        const doc = new jsPDF();
+
+        // --- CONSTANTS & HELPERS ---
+        const colors = {
+            bg: [15, 23, 42], // Slate 900
+            cardBg: [30, 41, 59], // Slate 800
+            textMain: [255, 255, 255],
+            textSec: [148, 163, 184], // Slate 400
+            accent: [74, 222, 128], // Green
+            accentBlue: [96, 165, 250], // Blue
+        };
+
+        const drawPageBackground = () => {
+            doc.setFillColor(colors.bg[0], colors.bg[1], colors.bg[2]);
+            doc.rect(0, 0, 210, 297, 'F');
+        };
+
+        const drawHeader = (title: string) => {
+            doc.setFillColor(20, 30, 50);
+            doc.rect(0, 0, 210, 25, 'F');
+            doc.setTextColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+            doc.setFontSize(10);
+            doc.text("BETCOMMAND INTELLIGENCE", 14, 16);
+            doc.setTextColor(colors.textSec[0], colors.textSec[1], colors.textSec[2]);
+            doc.text(title, 200, 16, { align: 'right' });
+        };
+
+        // --- PAGE 1: COVER ---
+        drawPageBackground();
+
+        // Logo / Branding Placeholder
+        doc.setDrawColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+        doc.setLineWidth(1);
+        doc.line(70, 90, 140, 90);
+
+        doc.setFontSize(28);
+        doc.setTextColor(colors.textMain[0], colors.textMain[1], colors.textMain[2]);
+        doc.text("INFORME FINAL", 105, 80, { align: 'center' });
+        doc.text("DE PARTIDO", 105, 105, { align: 'center' });
+
+        doc.setFontSize(16);
+        doc.setTextColor(colors.accentBlue[0], colors.accentBlue[1], colors.accentBlue[2]);
+        doc.text(headerData.titulo, 105, 130, { align: 'center' });
+
+        if (outcome) {
+            doc.setFillColor(colors.cardBg[0], colors.cardBg[1], colors.cardBg[2]);
+            doc.roundedRect(65, 145, 80, 25, 3, 3, 'F');
+
+            doc.setFontSize(22);
+            doc.setTextColor(255, 255, 255);
+            doc.text(`${outcome.score?.home ?? 0}  -  ${outcome.score?.away ?? 0}`, 105, 162, { align: 'center' });
+
+            doc.setFontSize(10);
+            doc.setTextColor(colors.textSec[0], colors.textSec[1], colors.textSec[2]);
+            doc.text(`Ganador: ${outcome.winner}`, 105, 185, { align: 'center' });
+        }
+
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text("Generado por IA - BetCommand Engine v2.0", 105, 280, { align: 'center' });
+
+        // --- PAGE 2: ANALYSIS CONTENT ---
+        doc.addPage();
+        drawPageBackground();
+        drawHeader("Análisis 360°");
+
+        let y = 40;
+        const leftMargin = 14;
+        const cardWidth = 182;
+        const contentWidth = 172;
+
+        const drawSection = (title: string, text: string, color: number[]) => {
+            // Check Page Break
+            const splitText = doc.splitTextToSize(text || 'N/A', contentWidth);
+            const textHeight = splitText.length * 5; // 5 units per line approx
+            const boxHeight = textHeight + 25;
+
+            if (y + boxHeight > 280) {
+                doc.addPage();
+                drawPageBackground();
+                drawHeader("Análisis 360° (Cont.)");
+                y = 40;
+            }
+
+            // Card Background
+            doc.setFillColor(colors.cardBg[0], colors.cardBg[1], colors.cardBg[2]);
+            doc.setDrawColor(color[0], color[1], color[2]);
+            doc.roundedRect(leftMargin, y, cardWidth, boxHeight, 2, 2, 'FD');
+
+            // Title
+            doc.setFontSize(12);
+            doc.setTextColor(color[0], color[1], color[2]);
+            doc.text(title.toUpperCase(), leftMargin + 5, y + 10);
+
+            // Content
+            doc.setFontSize(10);
+            doc.setTextColor(200, 200, 200);
+            doc.text(splitText, leftMargin + 5, y + 20);
+
+            y += boxHeight + 10;
+        };
+
+        if (typeof analysis === 'string') {
+            drawSection("Análisis General", analysis, colors.accentBlue);
+        } else {
+            drawSection("Análisis Táctico", analysis.tactical_analysis, colors.accent); // Green
+            drawSection("Desglose Estadístico", analysis.statistical_breakdown, colors.accentBlue); // Blue
+            drawSection("Momentos Clave", analysis.key_moments, [168, 85, 247]); // Purple
+            drawSection("Feedback del Sistema", analysis.learning_feedback, [234, 179, 8]); // Yellow
+        }
+
+        // --- SECTION: PREDICTION RESULTS (NEW) ---
+        // Force new page if low on space
+        if (y > 220) {
+            doc.addPage();
+            drawPageBackground();
+            drawHeader("Evaluación de Pronósticos");
+            y = 40;
+        } else {
+            y += 10;
+        }
+
+        const predictions = analysis.analysisRun?.predictions || [];
+        if (predictions.length > 0) {
+            doc.setFontSize(14);
+            doc.setTextColor(colors.textMain[0], colors.textMain[1], colors.textMain[2]);
+            doc.text("RESULTADOS DE PRONÓSTICOS", 14, y);
+            y += 15;
+
+            predictions.forEach(pred => {
+                // Check Page Break
+                if (y > 270) {
+                    doc.addPage();
+                    drawPageBackground();
+                    drawHeader("Evaluación de Pronósticos (Cont.)");
+                    y = 40;
+                }
+
+                // Determine Status Color & Text
+                let statusText = "PENDIENTE";
+                let statusColor = [100, 116, 139]; // Gray
+
+                if (pred.is_won === true) {
+                    statusText = "ACERTADA";
+                    statusColor = colors.accent; // Green
+                } else if (pred.is_won === false) {
+                    statusText = "FALLADA";
+                    statusColor = [239, 68, 68]; // Red
+                }
+
+                // Draw Row Box
+                doc.setFillColor(colors.cardBg[0], colors.cardBg[1], colors.cardBg[2]);
+                doc.setDrawColor(statusColor[0], statusColor[1], statusColor[2]);
+                doc.roundedRect(14, y, 182, 20, 2, 2, 'FD');
+
+                // Prediction Text
+                doc.setFontSize(11);
+                doc.setTextColor(255, 255, 255);
+                doc.text(`${pred.market_code} - ${pred.selection}`, 20, y + 13);
+
+                // Probability
+                doc.setFontSize(9);
+                doc.setTextColor(colors.textSec[0], colors.textSec[1], colors.textSec[2]);
+                doc.text(`Prob: ${pred.probability}%`, 130, y + 13);
+
+                // Status Badge
+                doc.setFillColor(statusColor[0], statusColor[1], statusColor[2]);
+                doc.roundedRect(160, y + 5, 30, 10, 2, 2, 'F');
+                doc.setTextColor(20, 30, 50); // Dark text for contrast
+                doc.setFontSize(8);
+                doc.text(statusText, 175, y + 11, { align: 'center', baseline: 'middle' });
+
+                y += 25;
+            });
+        }
+
+        doc.save(`BetCommand_Report_${headerData.titulo.replace(/[^a-z0-9]/gi, '_').substring(0, 20)}.pdf`);
+    };
+
+    const isStructured = typeof analysis !== 'string';
+
+    return (
+        <div className="bg-gradient-to-br from-blue-900/50 to-slate-900 border border-blue-500/30 p-6 rounded-xl shadow-lg mb-6 animate-pulse-fade-in relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-10">
+                <ClipboardDocumentCheckIcon className="w-32 h-32 text-blue-400" />
+            </div>
+
+            <div className="flex justify-between items-start relative z-10 mb-6">
+                <div className="flex items-center">
+                    <div className="bg-blue-500/20 p-3 rounded-lg mr-4">
+                        <TrophyIcon className="w-8 h-8 text-blue-400" />
+                    </div>
+                    <div>
+                        <h3 className="text-2xl font-bold text-white">Análisis Post-Partido</h3>
+                        <p className="text-blue-300 text-sm">Evaluación final y feedback del sistema</p>
+                    </div>
+                </div>
+                <button
+                    onClick={handleDownloadFinalPDF}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold transition-all shadow-lg hover:shadow-blue-500/20"
+                >
+                    <ArrowDownTrayIcon className="w-5 h-5" />
+                    Descargar Informe Final
+                </button>
+            </div>
+
+            {outcome && (
+                <div className="flex items-center justify-center py-6 bg-black/30 rounded-lg mb-6 border border-white/5 relative z-10">
+                    <div className="text-center">
+                        <span className="block text-gray-400 text-sm uppercase tracking-widest mb-2">Resultado Final</span>
+                        <div className="text-5xl font-black text-white tracking-tight flex items-center justify-center gap-4">
+                            <span>{outcome.score?.home ?? '-'}</span>
+                            <span className="text-gray-600">-</span>
+                            <span>{outcome.score?.away ?? '-'}</span>
+                        </div>
+                        <div className="mt-2 inline-block px-3 py-1 bg-white/10 rounded-full text-sm font-medium text-blue-200">
+                            {outcome.winner === 'Home' ? 'Ganador Local' : outcome.winner === 'Away' ? 'Ganador Visitante' : 'Empate'} {outcome.status}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+                {!isStructured ? (
+                    <div className="prose prose-invert prose-sm max-w-none col-span-2">
+                        <p className="text-gray-200 leading-relaxed whitespace-pre-wrap">{analysis as string}</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="bg-gray-800/50 p-5 rounded-lg border border-gray-700/50">
+                            <h4 className="text-green-400 font-bold mb-3 uppercase text-xs tracking-wider">Análisis Táctico</h4>
+                            <p className="text-gray-300 text-sm leading-relaxed">{(analysis as PostMatchAnalysis).tactical_analysis}</p>
+                        </div>
+                        <div className="bg-gray-800/50 p-5 rounded-lg border border-gray-700/50">
+                            <h4 className="text-blue-400 font-bold mb-3 uppercase text-xs tracking-wider">Desglose Estadístico</h4>
+                            <p className="text-gray-300 text-sm leading-relaxed">{(analysis as PostMatchAnalysis).statistical_breakdown}</p>
+                        </div>
+                        <div className="bg-gray-800/50 p-5 rounded-lg border border-gray-700/50">
+                            <h4 className="text-purple-400 font-bold mb-3 uppercase text-xs tracking-wider">Momentos Clave</h4>
+                            <p className="text-gray-300 text-sm leading-relaxed">{(analysis as PostMatchAnalysis).key_moments}</p>
+                        </div>
+                        <div className="bg-gray-800/50 p-5 rounded-lg border border-gray-700/50">
+                            <h4 className="text-yellow-400 font-bold mb-3 uppercase text-xs tracking-wider">Feedback del Sistema</h4>
+                            <p className="text-gray-300 text-sm leading-relaxed">{(analysis as PostMatchAnalysis).learning_feedback}</p>
+                        </div>
+                        <div className="col-span-1 md:col-span-2 bg-gradient-to-r from-gray-800 to-gray-700 p-5 rounded-lg border border-gray-600">
+                            <h4 className="text-white font-bold mb-2">Revisión de Rendimiento</h4>
+                            <p className="text-gray-200 italic">"{(analysis as PostMatchAnalysis).performance_review}"</p>
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const ExecutiveSummary: React.FC<{ data: DashboardAnalysisJSON['resumen_ejecutivo'] }> = ({ data }) => {
     if (!data) return null;
     return (
@@ -222,6 +488,14 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                     {data.header_partido && <HeaderSection data={data.header_partido} />}
 
                     <div className="p-4 md:p-8 space-y-8">
+
+                        {/* 0. Post-Match Analysis (Si existe) */}
+                        {/* 0. Post-Match Analysis (Si existe) */}
+                        <PostMatchSection
+                            analysis={analysis.analysisRun?.post_match_analysis as any}
+                            outcome={analysis.analysisRun?.actual_outcome as any}
+                            headerData={data.header_partido}
+                        />
 
                         {/* 1. Resumen Ejecutivo */}
                         {data.resumen_ejecutivo && <ExecutiveSummary data={data.resumen_ejecutivo} />}

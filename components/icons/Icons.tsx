@@ -57,6 +57,12 @@ export const DocumentArrowUpIcon: React.FC<IconProps> = (props) => (
   </svg>
 );
 
+export const DocumentArrowDownIcon: React.FC<IconProps> = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+  </svg>
+);
+
 export const BrainIcon: React.FC<IconProps> = (props) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" {...props}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.998 15.998 0 011.622-3.385m5.043.025a15.998 15.998 0 001.622-3.385m3.388 1.62a15.998 15.998 0 00-1.622-3.385m-5.043.025a15.998 15.998 0 01-3.388-1.621m-2.245 8.4a4.5 4.5 0 007.437 4.468 4.5 4.5 0 003.388-1.62m-10.825-4.468a4.5 4.5 0 00-2.245-8.4 4.5 4.5 0 00-4.468 7.437m15.334 2.245a4.5 4.5 0 00-4.468-7.437m-2.245 8.4a15.998 15.998 0 01-1.622 3.385m-5.043-.025a15.998 15.998 0 00-3.388 1.621m10.825-4.468a4.5 4.5 0 003.388 1.62" />
@@ -165,9 +171,9 @@ export const UsersIcon: React.FC<IconProps> = (props) => (
   </svg>
 );
 export const ArrowLeftOnRectangleIcon: React.FC<IconProps> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l-3-3m0 0l-3 3m3-3V9" />
-    </svg>
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l-3-3m0 0l-3 3m3-3V9" />
+  </svg>
 );
 export const PaperClipIcon: React.FC<IconProps> = (props) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" {...props}>
@@ -243,10 +249,10 @@ export const NewspaperIcon: React.FC<IconProps> = (props) => (
   </svg>
 );
 export const WhistleIcon: React.FC<IconProps> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 6.087c0-.69.56-1.25 1.25-1.25h.01a1.25 1.25 0 011.25 1.25v.01M16.5 10.5a2.25 2.25 0 10-4.5 0 2.25 2.25 0 004.5 0z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15.75c-3.036 0-5.5 2.464-5.5 5.5S8.964 26.75 12 26.75s5.5-2.464 5.5-5.5-2.464-5.5-5.5-5.5z" clipPath="url(#whistleClip)" />
-    </svg>
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 6.087c0-.69.56-1.25 1.25-1.25h.01a1.25 1.25 0 011.25 1.25v.01M16.5 10.5a2.25 2.25 0 10-4.5 0 2.25 2.25 0 004.5 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15.75c-3.036 0-5.5 2.464-5.5 5.5S8.964 26.75 12 26.75s5.5-2.464 5.5-5.5-2.464-5.5-5.5-5.5z" clipPath="url(#whistleClip)" />
+  </svg>
 );
 export const ArrowPathIcon: React.FC<IconProps> = (props) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" {...props}>
@@ -284,5 +290,22 @@ export const PresentationChartLineIcon: React.FC<IconProps> = (props) => (
 export const ExclamationTriangleIcon: React.FC<IconProps> = (props) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" {...props}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+  </svg>
+);
+export const PlayIcon: React.FC<IconProps> = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6" {...props}>
+    <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
+  </svg>
+);
+
+export const ArrowDownTrayIcon: React.FC<IconProps> = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+  </svg>
+);
+
+export const ClipboardDocumentCheckIcon: React.FC<IconProps> = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-1.125 0-2.062.938-2.062 2.062V19.5c0 1.125.937 2.062 2.062 2.062h11.25c1.125 0 2.062-.937 2.062-2.062v-9.25m-6.375 0h6.375m-6.375 0l-.082-.12a2.25 2.25 0 01-.527-1.357c0-.986.666-1.815 1.579-2.08m5.403 0c.913.265 1.579 1.094 1.579 2.08a2.25 2.25 0 01-.527 1.357l-.082.12M13.5 16.5l2.25 2.25 4.5-5.25" />
   </svg>
 );

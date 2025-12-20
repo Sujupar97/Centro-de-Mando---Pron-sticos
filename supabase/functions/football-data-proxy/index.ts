@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { endpoint, params, fixtureId, homeTeamId, awayTeamId, leagueId, season, ...otherParams } = await req.json();
+    const { endpoint, params, fixtureId, homeTeamId, awayTeamId, leagueId, season, fixtureDate, ...otherParams } = await req.json();
 
     // Compatibilidad: Si 'params' viene explícito, úsalo. Si no, usa el resto de propiedades del body.
     const finalParams = params || otherParams;
@@ -23,7 +23,7 @@ serve(async (req) => {
     if (!keysString) {
       throw new Error("Configuración del servidor incompleta: Faltan claves de API.");
     }
-    const apiKeys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0);
+    const apiKeys = keysString.split(',').map((k: string) => k.trim()).filter((k: string) => k.length > 0);
 
     // Función auxiliar para llamar a la API con rotación
     const fetchWithRotation = async (urlPath: string) => {
@@ -77,18 +77,63 @@ serve(async (req) => {
     if (endpoint === 'full-dossier') {
       if (!fixtureId || !homeTeamId || !awayTeamId || !leagueId) throw new Error("Faltan parámetros para dossier.");
 
-      // Ejecutar promesas en paralelo para velocidad
+      // --- SEASON CALCULATION LOGIC ---
+      let calculatedSeason = season; // Fallback to passed param if available
+      const dateToCheck = fixtureDate ? new Date(fixtureDate) : (params?.fixtureDate ? new Date(params.fixtureDate) : new Date());
+
+      try {
+        console.log(`[PROXY] Calculating season for League ${leagueId} @ ${dateToCheck.toISOString()}`);
+        // Fetch League Seasons directly (Single call, fast enough)
+        const leagueRes = await fetchWithRotation(`leagues?id=${leagueId}`);
+
+        if (leagueRes && leagueRes.length > 0 && leagueRes[0].seasons) {
+          const seasonsList = leagueRes[0].seasons;
+
+          // 1. Precise Match
+          const matched = seasonsList.find((s: any) => {
+            return dateToCheck >= new Date(s.start) && dateToCheck <= new Date(s.end);
+          });
+
+          if (matched) {
+            calculatedSeason = matched.year;
+            console.log(`[PROXY] Found EXACT season: ${calculatedSeason}`);
+          } else {
+            // 2. Current fallback
+            const current = seasonsList.find((s: any) => s.current);
+            if (current) {
+              calculatedSeason = current.year;
+              console.log(`[PROXY] Using CURRENT season: ${calculatedSeason}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[PROXY] Season calc failed, using fallback:", calculatedSeason, e);
+      }
+
+      const targetSeason = calculatedSeason || season || 2024; // Ultimate fallback
+
+      // Helper: Soft Fail Wrapper
+      const safeFetch = async (path: string) => {
+        try {
+          return await fetchWithRotation(path);
+        } catch (e) {
+          console.warn(`[PROXY-SOFT-FAIL] Failed to fetch ${path}:`, e);
+          return null;
+        }
+      };
+
+      // Ejecutar promesas en paralelo para velocidad (usando safeFetch para datos no críticos)
       const [fixture, stats, lineups, events, h2h, standings, teamStatsHome, teamStatsAway, lastHome, lastAway] = await Promise.all([
-        fetchWithRotation(`fixtures?id=${fixtureId}`),
-        fetchWithRotation(`fixtures/statistics?fixture=${fixtureId}`),
-        fetchWithRotation(`fixtures/lineups?fixture=${fixtureId}`),
-        fetchWithRotation(`fixtures/events?fixture=${fixtureId}`),
-        fetchWithRotation(`fixtures/headtohead?h2h=${homeTeamId}-${awayTeamId}`),
-        fetchWithRotation(`standings?league=${leagueId}&season=${season}`),
-        fetchWithRotation(`teams/statistics?league=${leagueId}&season=${season}&team=${homeTeamId}`),
-        fetchWithRotation(`teams/statistics?league=${leagueId}&season=${season}&team=${awayTeamId}`),
-        fetchWithRotation(`fixtures?team=${homeTeamId}&last=10`),
-        fetchWithRotation(`fixtures?team=${awayTeamId}&last=10`),
+        fetchWithRotation(`fixtures?id=${fixtureId}`), // Critical: Must succeed
+        safeFetch(`fixtures/statistics?fixture=${fixtureId}`),
+        safeFetch(`fixtures/lineups?fixture=${fixtureId}`),
+        safeFetch(`fixtures/events?fixture=${fixtureId}`),
+        safeFetch(`fixtures/headtohead?h2h=${homeTeamId}-${awayTeamId}`),
+        safeFetch(`standings?league=${leagueId}&season=${targetSeason}`),
+        safeFetch(`teams/statistics?league=${leagueId}&season=${targetSeason}&team=${homeTeamId}`),
+        safeFetch(`teams/statistics?league=${leagueId}&season=${targetSeason}&team=${awayTeamId}`),
+        safeFetch(`fixtures?team=${homeTeamId}&last=10`),
+        safeFetch(`fixtures?team=${awayTeamId}&last=10`),
       ]);
 
       resultData = {
@@ -118,7 +163,7 @@ serve(async (req) => {
       status: 200,
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error en proxy:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

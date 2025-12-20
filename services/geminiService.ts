@@ -582,11 +582,39 @@ export async function analyzeBetTicket(image: { base64: string, mimeType: string
   return JSON.parse(res.text);
 }
 
-export async function generatePerformanceReport(bets: any[]): Promise<PerformanceReportResult> {
-  const request = {
+export async function generatePerformanceReport(bets: any[], feedbacks: string[] = []): Promise<PerformanceReportResult> {
+  const prompt = `
+  ANALYZE THE FOLLOWING BETTING HISTORY:
+  ${JSON.stringify(bets)}
+
+  AND THE FOLLOWING SYSTEM FEEDBACK LOGS (POST-MORTEM ANALYSES):
+  ${feedbacks.length > 0 ? feedbacks.join('\n\n') : "No feedback logs available."}
+
+  TASK:
+  1. Generate the standard performance report (Win Rate, ROI, etc.).
+  2. Perform a META-ANALYSIS of the "System Feedback Logs".
+     - Identify recurring patterns in the AI's mistakes (e.g., "Consistently underestimates away teams in cup matches").
+     - Synthesize the "Learning Feedback".
+  
+  OUTPUT JSON MUST MATCH 'PerformanceReportResult' interface, adding a new field "learningAnalysis":
+  {
+     "executiveSummary": "...",
+     "keyMetrics": {...},
+     "strengths": [...],
+     "weaknesses": [...],
+     "actionableRecommendations": [...],
+     "chartsData": {...},
+     "learningAnalysis": "A detailed paragraph synthesizing the system's self-reflection from the feedback logs. What did the system learn this period?"
+  }
+  `;
+
+  const request: GenerateContentParameters = {
     model: 'gemini-2.5-pro',
-    contents: { parts: [{ text: JSON.stringify(bets) }] },
-    config: { responseMimeType: 'application/json', systemInstruction: "Genera reporte rendimiento." }
+    contents: { parts: [{ text: prompt }] },
+    config: {
+      responseMimeType: 'application/json',
+      systemInstruction: "You are a High-Performance Betting Analyst. Generate a detailed, constructive performance report in JSON. Synthesize system feedback intelligently."
+    }
   };
   const res = await generateWithRetry(request);
   return JSON.parse(res.text) as PerformanceReportResult;
