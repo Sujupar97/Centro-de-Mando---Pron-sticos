@@ -9,6 +9,7 @@ import { AnalysisInProgressModal } from './ai/AnalysisInProgressModal';
 import { AnalysisReportModal } from './ai/AnalysisReportModal';
 import { GameCard as DetailsGameCard } from './live/GameCard';
 import { TopPicks } from './ai/TopPicks';
+import { useAuth } from '../hooks/useAuth';
 
 // --- COMPONENTES AUXILIARES ---
 
@@ -25,10 +26,12 @@ const AnalysisGameCard: React.FC<{
     onAnalyze: () => void;
     onViewReport: () => void;
     jobStatus?: 'queued' | 'ingesting' | 'data_ready' | 'analyzing' | 'done' | 'failed' | 'insufficient_data';
-    hasReport: boolean
-}> = ({ game, onAnalyze, onViewReport, jobStatus, hasReport }) => {
+    hasReport: boolean;
+    userRole?: string;
+}> = ({ game, onAnalyze, onViewReport, jobStatus, hasReport, userRole }) => {
     const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
     const scoreAvailable = game.goals.home !== null && game.goals.away !== null;
+    const isAdmin = userRole === 'admin' || userRole === 'superadmin';
 
     // Determinar estado visual del botón
     const isProcessing = jobStatus && ['queued', 'ingesting', 'data_ready', 'analyzing'].includes(jobStatus);
@@ -78,29 +81,35 @@ const AnalysisGameCard: React.FC<{
                                 Procesando...
                             </button>
                         ) : hasReport ? (
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-grow">
                                 <button
                                     onClick={onViewReport}
                                     className="py-2 px-3 text-xs bg-green-accent/20 text-green-accent font-semibold rounded-md flex items-center justify-center gap-1.5 hover:bg-green-accent/30 transition-colors flex-grow"
                                 >
                                     <CheckCircleIcon className="w-4 h-4" /> Ver Informe
                                 </button>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onAnalyze(); }}
-                                    title="Regenerar Análisis"
-                                    className="p-2 text-xs bg-gray-700 text-gray-300 hover:text-white hover:bg-gray-600 font-semibold rounded-md transition-colors"
-                                >
-                                    <ArrowPathIcon className="w-4 h-4" />
-                                </button>
+                                {isAdmin && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onAnalyze(); }}
+                                        title="Regenerar Análisis"
+                                        className="p-2 text-xs bg-gray-700 text-gray-300 hover:text-white hover:bg-gray-600 font-semibold rounded-md transition-colors"
+                                    >
+                                        <ArrowPathIcon className="w-4 h-4" />
+                                    </button>
+                                )}
                             </div>
                         ) : isFailed ? (
-                            <button onClick={(e) => { e.stopPropagation(); onAnalyze(); }} className="py-2 px-3 text-xs bg-red-500/20 text-red-400 font-semibold rounded-md flex items-center justify-center gap-1.5 hover:bg-red-500/30 flex-grow">
-                                Reintentar
-                            </button>
+                            isAdmin ? (
+                                <button onClick={(e) => { e.stopPropagation(); onAnalyze(); }} className="py-2 px-3 text-xs bg-red-500/20 text-red-400 font-semibold rounded-md flex items-center justify-center gap-1.5 hover:bg-red-500/30 flex-grow">
+                                    Reintentar
+                                </button>
+                            ) : null
                         ) : (
-                            <button onClick={(e) => { e.stopPropagation(); onAnalyze(); }} className="py-2 px-3 text-xs bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-md transition duration-200 flex items-center justify-center gap-1.5">
-                                <SparklesIcon className="w-4 h-4" /> Analizar
-                            </button>
+                            isAdmin ? (
+                                <button onClick={(e) => { e.stopPropagation(); onAnalyze(); }} className="py-2 px-3 text-xs bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-md transition duration-200 flex items-center justify-center gap-1.5 flex-grow">
+                                    <SparklesIcon className="w-4 h-4" /> Analizar
+                                </button>
+                            ) : null
                         )}
                     </div>
                 )}
@@ -114,6 +123,7 @@ const AnalysisGameCard: React.FC<{
 // --- LOGICA PRINCIPAL ---
 
 export const FixturesFeed: React.FC = () => {
+    const { profile } = useAuth();
     const [data, setData] = useState<DashboardData>({ importantLeagues: [], countryLeagues: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
@@ -413,6 +423,7 @@ export const FixturesFeed: React.FC = () => {
                                             onViewReport={(gameId) => handleViewReport(gameId)}
                                             gameJobStatus={gameJobStatus}
                                             reportsAvailable={reportsAvailable}
+                                            userRole={profile?.role}
                                         />
                                     ))}
                                 </div>
@@ -429,6 +440,7 @@ export const FixturesFeed: React.FC = () => {
                                         onViewReport={handleViewReport}
                                         gameJobStatus={gameJobStatus}
                                         reportsAvailable={reportsAvailable}
+                                        userRole={profile?.role}
                                     />
                                 ))}
                             </div>
@@ -452,7 +464,8 @@ const CountrySection: React.FC<{
     onViewReport: (gameId: number) => void;
     gameJobStatus: Record<number, AnalysisJob['status']>;
     reportsAvailable: Record<number, boolean>;
-}> = ({ country, onAnalyzeGame, onAnalyzeLeague, onViewReport, gameJobStatus, reportsAvailable }) => {
+    userRole?: string;
+}> = ({ country, onAnalyzeGame, onAnalyzeLeague, onViewReport, gameJobStatus, reportsAvailable, userRole }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     return (
@@ -486,6 +499,7 @@ const CountrySection: React.FC<{
                             onViewReport={onViewReport}
                             gameJobStatus={gameJobStatus}
                             reportsAvailable={reportsAvailable}
+                            userRole={userRole}
                         />
                     ))}
                 </div>
@@ -501,8 +515,10 @@ const LeagueSection: React.FC<{
     onViewReport: (gameId: number) => void;
     gameJobStatus: Record<number, AnalysisJob['status']>;
     reportsAvailable: Record<number, boolean>;
-}> = ({ league, onAnalyzeGame, onAnalyzeLeague, onViewReport, gameJobStatus, reportsAvailable }) => {
+    userRole?: string;
+}> = ({ league, onAnalyzeGame, onAnalyzeLeague, onViewReport, gameJobStatus, reportsAvailable, userRole }) => {
     const [isExpanded, setIsExpanded] = useState(true);
+    const isAdmin = userRole === 'admin' || userRole === 'superadmin';
 
     return (
         <div className="mb-2 last:mb-0">
@@ -512,7 +528,7 @@ const LeagueSection: React.FC<{
                     <h3 className="text-xl font-bold text-white truncate">{league.name}</h3>
                 </div>
                 <div className="flex items-center gap-2">
-                    {onAnalyzeLeague && (
+                    {onAnalyzeLeague && isAdmin && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onAnalyzeLeague(); }}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-md transition-colors shadow-sm"
@@ -537,6 +553,7 @@ const LeagueSection: React.FC<{
                             onViewReport={() => onViewReport(game.fixture.id)}
                             jobStatus={gameJobStatus[game.fixture.id]}
                             hasReport={!!reportsAvailable[game.fixture.id]}
+                            userRole={userRole}
                         />
                     ))}
                 </div>
