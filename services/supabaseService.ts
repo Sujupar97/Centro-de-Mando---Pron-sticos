@@ -15,7 +15,7 @@ import { createClient } from '@supabase/supabase-js';
 // variables en la configuración del sitio.
 
 // FIX: Se utiliza optional chaining (?.) para evitar errores si `import.meta.env` no existe en el entorno de ejecución.
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://gcfmdkieomoapayekklx.supabase.co';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://nokejmhlpsaoerhddcyc.supabase.co';
 // FIX: Se ha reemplazado la clave de 'service_role' por la clave 'anon' pública correcta para el cliente del navegador.
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdjZm1ka2llb21vYXBheWVra2x4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3MTc0ODUsImV4cCI6MjA3NzI5MzQ4NX0.XGITe9fvMk4F-wwfB3xG5BzwFFeTdOyXwRCJpMZFKN8';
 
