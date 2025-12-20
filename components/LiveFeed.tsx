@@ -10,6 +10,7 @@ import { AnalysisReportModal } from './ai/AnalysisReportModal';
 import { GameCard as DetailsGameCard } from './live/GameCard';
 import { TopPicks } from './ai/TopPicks';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../services/supabaseService';
 
 // --- COMPONENTES AUXILIARES ---
 
@@ -165,13 +166,16 @@ export const FixturesFeed: React.FC = () => {
                 ];
 
                 if (fixtureIds.length > 0) {
-                    const { data: existingJobs } = await import('../services/supabaseService').then(({ supabase }) =>
-                        supabase
-                            .from('analysis_jobs')
-                            .select('api_fixture_id, status, id')
-                            .in('api_fixture_id', fixtureIds)
-                            .in('status', ['done', 'analyzing', 'queued', 'ingesting', 'data_ready', 'collecting_evidence'])
-                    );
+                    // FIX: Use static supabase instance directly instead of dynamic import to avoid bundling issues
+                    const { data: existingJobs, error: fetchError } = await supabase
+                        .from('analysis_jobs')
+                        .select('api_fixture_id, status, id')
+                        .in('api_fixture_id', fixtureIds)
+                        .in('status', ['done', 'analyzing', 'queued', 'ingesting', 'data_ready', 'collecting_evidence']);
+
+                    if (fetchError) {
+                        console.error("Error fetching existing jobs:", fetchError);
+                    }
 
                     if (existingJobs) {
                         const newReportsAvailable: Record<number, boolean> = {};
