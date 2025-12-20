@@ -14,17 +14,11 @@ import { createClient } from '@supabase/supabase-js';
 // En tu plataforma de despliegue (Vercel, Netlify, etc.), añade estas mismas
 // variables en la configuración del sitio.
 
-// FIX: Se utiliza optional chaining (?.) para evitar errores si `import.meta.env` no existe en el entorno de ejecución.
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://nokejmhlpsaoerhddcyc.supabase.co';
-// FIX: Se ha reemplazado la clave de 'service_role' por la clave 'anon' pública correcta para el cliente del navegador.
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5va2VqbWhscHNhb2VyaGRkY3ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4MTYwMDcsImV4cCI6MjA4MTM5MjAwN30.EorEQF3lnm5NbQtwTnipy95gNkbEhR8Xz7ecMlt-0Ac';
+// FIX: Forzamos el uso de las credenciales "quemadas" que sabemos que funcionan, ignorando las variables de entorno de Netlify
+// ya que el usuario reporta que en local (con estas credenciales) funciona bien, pero en Netlify (con variables posiblemente erróneas) falla.
+const supabaseUrl = 'https://nokejmhlpsaoerhddcyc.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5va2VqbWhscHNhb2VyaGRkY3ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4MTYwMDcsImV4cCI6MjA4MTM5MjAwN30.EorEQF3lnm5NbQtwTnipy95gNkbEhR8Xz7ecMlt-0Ac';
 
-if (supabaseUrl === 'https://gcfmdkieomoapayekklx.supabase.co') {
-    console.warn(
-        `%c¡ATENCIÓN! Estás usando las credenciales de ejemplo de Supabase.`,
-        `color: yellow; background: black; font-size: 14px; padding: 8px; border-radius: 4px;`,
-        `\nLa aplicación se cargará, pero no podrá conectarse a la base de datos. \nPor favor, configura tus variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.`
-    );
-}
+// (Bloque de advertencia eliminado ya que las credenciales son válidas y forzadas)
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
