@@ -2,7 +2,8 @@
 import { GoogleGenAI, GenerateContentParameters, GenerateContentResponse, Chat, GroundingChunk } from "@google/genai";
 import { GameDetails, VisualAnalysisResult, PerformanceReportResult, Game, ParlayAnalysisResult, GamedayAnalysisResult, BetTicketAnalysisResult, ExtractedBetInfo, DashboardAnalysisJSON } from '../types';
 
-export const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// FIX: Hardcoded API Key to ensure functionality in production without env vars.
+export const ai = new GoogleGenAI({ apiKey: 'AIzaSyDg85u-LTuSTKby1sq_FFj_v-XpbiaikLg' });
 
 // --- CONSTANTS & HELPERS ---
 const MAX_RETRIES = 3;
