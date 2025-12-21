@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { HomeIcon, ChartBarIcon, PlusCircleIcon, SparklesIcon, CogIcon, CalendarDaysIcon, UsersIcon, ArrowLeftOnRectangleIcon, TicketIcon } from './icons/Icons';
 import { useAuth } from '../hooks/useAuth';
+import { OrganizationSwitcher } from './OrganizationSwitcher';
 import { Page } from '../App';
 
 interface LayoutProps {
@@ -32,11 +33,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
       <aside className="hidden md:flex flex-col w-64 h-full glass backdrop-blur-xl border-r border-white/5 fixed left-0 top-0 z-30 transition-transform duration-300">
         <div className="p-6 flex items-center justify-center border-b border-white/5">
           <h1 className="text-2xl font-display font-bold text-white tracking-tight">
-            <span className="text-brand drop-shadow-[0_0_10px_rgba(16,185,129,0.4)]">Bet</span>Command
           </h1>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1">
+        <div className="px-3 pt-4">
+          <OrganizationSwitcher />
+        </div>
+
+        <nav className="flex-1 overflow-y-auto py-2 px-3 space-y-1">
           {availableNavItems.map((item) => {
             const isActive = currentPage === item.id;
             return (

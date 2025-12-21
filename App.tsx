@@ -11,6 +11,7 @@ import { useSettings } from './hooks/useSettings';
 import { Bet } from './types';
 import { FixturesFeed } from './components/LiveFeed';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { OrganizationProvider } from './contexts/OrganizationContext';
 import { AuthPage } from './components/Auth';
 import { AdminPage } from './components/Admin';
 
@@ -90,7 +91,9 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <AppContent />
+      <OrganizationProvider>
+        <AppContent />
+      </OrganizationProvider>
     </AuthProvider>
   );
 };

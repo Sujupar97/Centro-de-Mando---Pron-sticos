@@ -20,6 +20,57 @@ export type ConfidenceLevel = 'Alta' | 'Media' | 'Baja';
 
 // --- DATABASE TYPES (SUPABASE REFLECTION) ---
 
+export type OrganizationRole = 'owner' | 'admin' | 'usuario';
+export type OrganizationStatus = 'active' | 'suspended' | 'trial' | 'cancelled';
+export type SubscriptionPlan = 'free' | 'basic' | 'pro' | 'enterprise';
+
+export interface Organization {
+    id: string;
+    name: string;
+    slug: string;
+    status: OrganizationStatus;
+    subscription_plan: SubscriptionPlan;
+    created_at: string;
+    updated_at: string;
+    metadata?: Record<string, any>;
+    settings?: Record<string, any>;
+}
+
+export interface OrganizationMember {
+    id: string;
+    organization_id: string;
+    user_id: string;
+    role: OrganizationRole;
+    joined_at: string;
+    profile?: {
+        full_name: string;
+        email: string;
+        avatar_url?: string;
+    };
+}
+
+export interface OrganizationInvitation {
+    id: string;
+    organization_id: string;
+    email: string;
+    role: OrganizationRole;
+    token: string;
+    invited_by: string;
+    created_at: string;
+    expires_at: string;
+    accepted_at?: string;
+}
+
+export interface UserProfile {
+    id: string;
+    email: string;
+    role: 'superadmin' | 'admin' | 'user';
+    full_name?: string;
+    avatar_url?: string;
+    organization_id?: string;
+    is_org_owner?: boolean;
+}
+
 export type JobStatus = 'queued' | 'ingesting' | 'data_ready' | 'analyzing' | 'done' | 'insufficient_data' | 'failed';
 
 export interface JobProgress {

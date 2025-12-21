@@ -16,9 +16,9 @@ export const PerformanceReports: React.FC = () => {
         if (!startDate || !endDate) return alert("Selecciona un rango de fechas.");
         setLoading(true);
         try {
-            const startStr = new Date(startDate);
-            const endStr = new Date(endDate);
-            endStr.setHours(23, 59, 59, 999);
+            // Fix: Construct explicit UTC strings to avoid Local Timezone shifts (e.g. setHours converting to previous day)
+            const startStr = new Date(`${startDate}T00:00:00.000Z`);
+            const endStr = new Date(`${endDate}T23:59:59.999Z`);
 
             const data = await fetchPerformanceStats(startStr, endStr);
             setStats(data);
@@ -36,7 +36,9 @@ export const PerformanceReports: React.FC = () => {
         if (confidenceFilter === 'ALL') return stats;
 
         const filteredPreds = stats.rawPredictions.filter(p => {
-            const prob = p.probability || 0;
+            let prob = p.probability || 0;
+            if (prob > 0 && prob <= 1) prob *= 100; // Normalize decimal to percentage
+
             if (confidenceFilter === 'HIGH') return prob >= 80;
             if (confidenceFilter === 'MEDIUM') return prob >= 60 && prob < 80;
             if (confidenceFilter === 'LOW') return prob < 60;

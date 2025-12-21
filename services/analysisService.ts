@@ -41,12 +41,13 @@ export const resetStuckJobs = async (): Promise<number> => {
 /**
  * Inicia un trabajo de análisis llamando a la Edge Function segura.
  */
-export const createAnalysisJob = async (apiFixtureId: number, timezone: string = 'America/Bogota'): Promise<string> => {
+export const createAnalysisJob = async (apiFixtureId: number, timezone: string = 'America/Bogota', organizationId?: string): Promise<string> => {
     try {
         const { data, error } = await supabase.functions.invoke('create-analysis-job', {
             body: {
                 api_fixture_id: apiFixtureId,
                 timezone,
+                organization_id: organizationId,
                 last_n: 10,
                 threshold: 70
             }
@@ -292,7 +293,12 @@ export const aggregateStats = (predictions: any[]): PerformanceStats => {
         if (!byLeague[leagueName]) byLeague[leagueName] = { total: 0, wins: 0, winRate: 0 };
 
         // Probability Buckets
-        const prob = p.probability || 0;
+        let prob = p.probability || 0;
+        // Auto-detect decimal probability (e.g. 0.85) and convert to percentage
+        if (prob > 0 && prob <= 1) {
+            prob = prob * 100;
+        }
+
         const probBucket = getProbBucket(prob);
         if (!byProbability[probBucket]) byProbability[probBucket] = { total: 0, wins: 0, winRate: 0 };
 

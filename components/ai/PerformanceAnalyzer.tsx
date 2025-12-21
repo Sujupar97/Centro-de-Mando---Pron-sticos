@@ -278,6 +278,9 @@ export const PerformanceAnalyzer: React.FC = () => {
     // New State for Analysis Source
     const [analysisSource, setAnalysisSource] = useState<'user' | 'system'>('user');
 
+    // State for Min Confidence Filter
+    const [minConfidence, setMinConfidence] = useState<number>(0);
+
     const handleAnalyze = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -293,22 +296,38 @@ export const PerformanceAnalyzer: React.FC = () => {
 
         try {
             let betsToAnalyze: any[] = [];
+            const startStr = startDate;
+            const endStr = endDate;
 
             if (analysisSource === 'user') {
                 betsToAnalyze = bets.filter(bet => {
-                    const betDate = new Date(bet.date);
-                    return betDate >= new Date(startDate) && betDate <= new Date(endDate) && bet.status !== BetStatus.Pending;
+                    if (bet.status === BetStatus.Pending) return false;
+
+                    // Fix Date Comparison: Compare Date Strings (YYYY-MM-DD) to include entire days
+                    const betDateStr = new Date(bet.date).toISOString().split('T')[0];
+                    return betDateStr >= startStr && betDateStr <= endStr;
                 });
+
+                // User bets might not have confidence, but if they did (custom field?), we could filter.
+                // Currently generic Bet type doesn't have it, so we skip or warn? 
+                // We'll leave it as is for user bets unless we find a field.
+
             } else {
                 // Fetch System Predictions
                 const systemPreds = await getSystemPredictions(startDate, endDate);
                 if (!systemPreds) throw new Error("Error fetching system predictions");
 
+                // Filter by Confidence if set
+                const filteredPreds = systemPreds.filter((p: any) => {
+                    const conf = p.confidence || (p.probability ? p.probability * 100 : 0);
+                    return conf >= minConfidence;
+                });
+
                 // Map to Bet format for the AI
-                betsToAnalyze = systemPreds.map((p: any) => ({
+                betsToAnalyze = filteredPreds.map((p: any) => ({
                     date: p.result_verified_at || p.created_at || startDate,
                     sport: 'Fútbol',
-                    market: p.market,
+                    market: p.market_code || p.market || 'Unknown',
                     selection: p.selection,
                     odds: p.probability ? (1 / (p.probability / 100)) : 1.90,
                     stake: 100, // Standard unit
@@ -317,8 +336,14 @@ export const PerformanceAnalyzer: React.FC = () => {
                 }));
             }
 
+            if (betsToAnalyze.length === 0) {
+                throw new Error(`No se encontraron ${analysisSource === 'user' ? 'apuestas' : 'predicciones'} en este rango de fechas y filtros.`);
+            }
+
             if (betsToAnalyze.length < 5) {
-                throw new Error(`Se necesitan al menos 5 ${analysisSource === 'user' ? 'apuestas' : 'predicciones verificadas'} en el rango para analizar.`);
+                // Warn but maybe allow if user insists? The prompt said "giving incorrect data", so maybe they want to see the 2 bets.
+                // But the original code threw error. Let's keep the error but clarify.
+                throw new Error(`Se encontraron solo ${betsToAnalyze.length} registros. Se necesitan al menos 5 para un análisis confiable.`);
             }
 
             // Fetch Feedbacks if analysing System
@@ -355,7 +380,7 @@ export const PerformanceAnalyzer: React.FC = () => {
         <div className="flex flex-col h-full">
             <h3 className="text-xl font-semibold text-white mb-2">Análisis de Rendimiento a Detalle</h3>
             <p className="text-sm text-gray-400 mb-4">
-                Selecciona un rango de fechas y la IA analizará tu historial para generar un informe sobre tu rendimiento, fortalezas, debilidades y recomendaciones. Este informe se guardará para personalizar tus futuros análisis.
+                Selecciona un rango de fechas y filtros para generar un informe detallado.
             </p>
             <div className="flex bg-gray-800 p-1 rounded-lg mb-6 w-fit mx-auto sm:mx-0">
                 <button
@@ -381,7 +406,7 @@ export const PerformanceAnalyzer: React.FC = () => {
                             id="start-date"
                             value={startDate}
                             onChange={(e) => setStartDate(e.target.value)}
-                            className="w-full bg-gray-700 border border-gray-600 rounded-md p-2.5 text-white"
+                            className="w-full bg-gray-700 border border-gray-600 rounded-md p-2.5 text-white focus:ring-2 focus:ring-green-500 outline-none"
                         />
                     </div>
                     <div className="flex-1">
@@ -391,14 +416,39 @@ export const PerformanceAnalyzer: React.FC = () => {
                             id="end-date"
                             value={endDate}
                             onChange={(e) => setEndDate(e.target.value)}
-                            className="w-full bg-gray-700 border border-gray-600 rounded-md p-2.5 text-white"
+                            className="w-full bg-gray-700 border border-gray-600 rounded-md p-2.5 text-white focus:ring-2 focus:ring-green-500 outline-none"
                         />
                     </div>
                 </div>
+
+                {analysisSource === 'system' && (
+                    <div>
+                        <div className="flex justify-between text-xs text-gray-400 mb-1">
+                            <label htmlFor="confidence-filter">Confianza Mínima IA</label>
+                            <span>{minConfidence}%</span>
+                        </div>
+                        <input
+                            type="range"
+                            id="confidence-filter"
+                            min="0"
+                            max="90"
+                            step="5"
+                            value={minConfidence}
+                            onChange={(e) => setMinConfidence(Number(e.target.value))}
+                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+                        />
+                        <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+                            <span>0% (Todas)</span>
+                            <span>50%</span>
+                            <span>90% (Solo Alta Confianza)</span>
+                        </div>
+                    </div>
+                )}
+
                 <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full sm:w-auto bg-green-accent hover:bg-green-600 text-white font-bold py-2.5 px-6 rounded-md transition duration-300 disabled:bg-gray-600"
+                    className="w-full sm:w-auto bg-green-accent hover:bg-green-600 text-white font-bold py-2.5 px-6 rounded-md transition duration-300 disabled:bg-gray-600 shadow-md"
                 >
                     {isLoading ? 'Analizando...' : 'Generar Informe de Rendimiento'}
                 </button>
