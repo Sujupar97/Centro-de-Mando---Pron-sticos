@@ -1,122 +1,382 @@
-import React, { useState } from 'react';
-import { generateParlayAnalysis } from '../../services/geminiService';
-import { ParlayAnalysisResult, ParlayLeg } from '../../types';
-import { BrainIcon, PuzzlePieceIcon, TrophyIcon } from '../icons/Icons';
-
-const LoadingState: React.FC = () => (
-    <div className="text-center py-10">
-        <BrainIcon className="w-12 h-12 mx-auto text-green-accent animate-pulse" />
-        <p className="mt-4 text-lg font-semibold text-white">Construyendo el parlay de la jornada...</p>
-        <p className="text-sm text-gray-400">Gemini está investigando mercados de nicho y correlacionando estadísticas.</p>
-    </div>
-);
-
-const ResultDisplay: React.FC<{ result: ParlayAnalysisResult }> = ({ result }) => (
-    <div className="space-y-6 animate-fade-in">
-        <div>
-            <h2 className="text-2xl font-bold text-center text-white">{result.parlayTitle}</h2>
-            <p className="text-sm text-center text-gray-400 mt-1">{result.overallStrategy}</p>
-        </div>
-
-        <div className="bg-gray-900/50 p-4 rounded-lg border border-green-accent/50 text-center">
-            <h3 className="font-semibold text-white text-sm">Cuota Final Estimada</h3>
-            <p className="text-5xl font-bold text-green-accent my-1">x{(result.finalOdds || 0).toFixed(2)}</p>
-            <p className="text-xs text-gray-400">Una apuesta de $10.000 COP podría retornar {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(10000 * (result.finalOdds || 0))}.</p>
-        </div>
-
-        <div>
-            <h3 className="font-semibold text-white mb-3 text-lg">Selecciones del Parlay</h3>
-            <div className="space-y-4">
-                {(result.legs || []).map((leg: ParlayLeg, i) => (
-                    <div key={i} className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 hover:border-green-accent/50 transition-colors">
-                        <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-2">
-                             <h4 className="font-bold text-white text-base">{leg.game}</h4>
-                             <span className="px-2 py-0.5 text-xs font-mono rounded-full bg-gray-700 text-white mt-1 sm:mt-0">Cuota: {(leg.odds || 0).toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-start">
-                             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-accent/20 flex items-center justify-center mr-3 mt-1">
-                                <TrophyIcon className="w-5 h-5 text-green-accent" />
-                             </div>
-                             <div>
-                                <p className="font-semibold text-green-accent text-lg">{leg.market}: <span className="text-white">{leg.prediction}</span></p>
-                                <p className="text-sm text-gray-400 mt-1">{leg.reasoning}</p>
-                             </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    </div>
-);
+import React, { useState, useEffect } from 'react';
+import { getAnalysesByDate } from '../../services/analysisService';
+import { generateDailyParlay } from '../../services/geminiService';
+import { getParlaysByDate, saveParlays, verifyParlays, ParlayDB } from '../../services/parlayService';
+import { ParlayAnalysisResult } from '../../types';
+import { PuzzlePieceIcon, SparklesIcon, CalendarDaysIcon, ArrowPathIcon, DocumentArrowDownIcon } from '../icons/Icons';
+// import { formatDate } from '../../utils/formatters'; // Not available, using raw date string
+import { useOrganization } from '../../contexts/OrganizationContext';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export const ParlayBuilder: React.FC = () => {
-    const [prompt, setPrompt] = useState('');
+    const { currentOrg: organization } = useOrganization();
     const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [result, setResult] = useState<ParlayAnalysisResult | null>(null);
-    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [analyzing, setAnalyzing] = useState(false);
+    const [parlays, setParlays] = useState<ParlayAnalysisResult[]>([]);
+    const [statusMessage, setStatusMessage] = useState('');
+    const [matchCount, setMatchCount] = useState(0);
 
-    const handleAnalyze = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!prompt.trim()) {
-            setError('Por favor, introduce una jornada para analizar (ej: "Partidos de hoy").');
-            return;
-        }
-        setIsLoading(true);
-        setResult(null);
-        setError('');
+    // Initial Load & Date Change
+    useEffect(() => {
+        if (!organization?.id) return;
+        loadSavedParlays();
+    }, [selectedDate, organization?.id]);
 
+    const loadSavedParlays = async () => {
+        if (!organization?.id) return;
+        setLoading(true);
         try {
-            const analysisResult = await generateParlayAnalysis(prompt, selectedDate);
-            setResult(analysisResult);
-        } catch (err) {
-            console.error(err);
-            const errorMessage = err instanceof Error ? err.message : 'Ocurrió un error desconocido.';
-            setError(`No se pudo generar el parlay. ${errorMessage}`);
+            const saved = await getParlaysByDate(selectedDate, organization.id);
+            if (saved && saved.length > 0) {
+                const mapped: ParlayAnalysisResult[] = saved.map(s => ({
+                    parlayTitle: s.title,
+                    finalOdds: s.total_odds,
+                    overallStrategy: s.strategy || s.justification || '',
+                    legs: s.legs,
+                    winProbability: s.win_probability || 0 // Default to 0 if not present
+                }));
+                setParlays(mapped);
+            } else {
+                setParlays([]);
+            }
+        } catch (e) {
+            console.warn("No se pudo cargar historial (posiblemente falta migración):", e);
+            // Don't block usage, just show empty
+            setParlays([]);
         } finally {
-            setIsLoading(false);
+            setLoading(false);
         }
     };
 
+    const handleVerify = async () => {
+        if (!organization?.id) return;
+        setLoading(true);
+        setStatusMessage('Verificando resultados oficiales y actualizando estados...');
+        try {
+            const result = await verifyParlays(organization.id);
+            if (result.updated > 0) {
+                alert(`Se han verificado ${result.checked} parlays y actualizado ${result.updated} con nuevos resultados.`);
+            } else {
+                alert(`Se verificaron ${result.checked} parlays pendientes, pero no hubo cambios de estado (quizás los partidos aun no terminan).`);
+            }
+            await loadSavedParlays(); // Reload to see green checks
+        } catch (e) {
+            console.error("Error verifying parlays:", e);
+            alert("Error al verificar parlays.");
+        } finally {
+            setLoading(false);
+            setStatusMessage('');
+        }
+    };
+
+    const handleGenerate = async () => {
+        if (!organization?.id) return;
+
+        setLoading(true);
+        setStatusMessage('Buscando análisis completados del día...');
+        setParlays([]);
+
+        try {
+            // 1. Fetch analyzed matches for the date
+            const matches = await getAnalysesByDate(selectedDate);
+            setMatchCount(matches.length);
+
+            if (matches.length === 0) {
+                // FORCE UI FEEDBACK for 0 matches
+                alert(`No se encontraron análisis para el ${selectedDate}. \n\nPor favor ve al Dashboard y analiza algunos partidos antes de generar un Parlay.`);
+                setStatusMessage('No hay análisis completados. Ve al Dashboard y analiza partidos primero.');
+                setLoading(false);
+                return;
+            }
+
+            if (matches.length < 2) {
+                setStatusMessage(`Advertencia: Solo hay ${matches.length} partido analizado.`);
+            }
+
+            // 2. Call Super Prompt
+            setAnalyzing(true);
+            setStatusMessage(`Analizando ${matches.length} partidos con Super IA... Buscando la combinada perfecta.`);
+
+            const results = await generateDailyParlay(selectedDate, matches);
+
+            if (results.length > 0) {
+                setParlays(results); // SHOW RESULTS IMMEDIATELY
+
+                // 3. Try to Save to DB (Non-blocking)
+                setStatusMessage('Guardando en historial...');
+                try {
+                    await saveParlays(selectedDate, organization.id, results);
+                    setStatusMessage(''); // Clear message on success
+                } catch (saveError) {
+                    console.error("Persistencia falló, pero se muestran resultados:", saveError);
+                    setStatusMessage('Nota: Los parlays se generaron pero no se pudieron guardar en el historial.');
+                }
+            } else {
+                setStatusMessage('La IA no encontró combinaciones de alto valor con los partidos actuales.');
+            }
+
+        } catch (error) {
+            console.error(error);
+            setStatusMessage('Error generando Parlays. Intenta nuevamente.');
+            alert('Ocurrió un error al generar los parlays. Revisa la consola para más detalles.');
+        } finally {
+            setLoading(false);
+            setAnalyzing(false);
+        }
+    };
+
+    const generatePDF = (parlay: ParlayAnalysisResult) => {
+        const doc = new jsPDF();
+
+        // Colors
+        const brandColor = [0, 255, 128]; // Brand Green (approx)
+        const darkBg = [20, 25, 40];
+
+        // Header
+        doc.setFillColor(darkBg[0], darkBg[1], darkBg[2]);
+        doc.rect(0, 0, 210, 40, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(22);
+        doc.text("Reporte de Parlay - BetCommand IA", 14, 25);
+
+        doc.setFontSize(10);
+        doc.text(`Fecha: ${selectedDate}`, 170, 25);
+
+        // Parlay Details
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(16);
+        doc.text(parlay.parlayTitle, 14, 55);
+
+        doc.setFontSize(12);
+        doc.setTextColor(100);
+        const splitStrategy = doc.splitTextToSize(`Estrategia: ${parlay.overallStrategy}`, 180);
+        doc.text(splitStrategy, 14, 65);
+
+        let currentY = 65 + (splitStrategy.length * 5) + 10;
+
+        // Stats Box
+        doc.setDrawColor(200);
+        doc.setFillColor(250, 250, 250);
+        doc.roundedRect(14, currentY, 180, 25, 3, 3, 'FD');
+
+        doc.setFontSize(14);
+        doc.setTextColor(50);
+        doc.text(`Cuota Total: ${parlay.finalOdds.toFixed(2)}`, 24, currentY + 17);
+        doc.text(`Probabilidad de Acierto: ${parlay.winProbability}%`, 100, currentY + 17);
+
+        currentY += 40;
+
+        // Legs Table
+        const tableData = parlay.legs.map((leg, index) => [
+            `Leg #${index + 1}`,
+            leg.game,
+            leg.market,
+            leg.prediction,
+            `@${leg.odds}`,
+            leg.reasoning
+        ]);
+
+        autoTable(doc, {
+            startY: currentY,
+            head: [['#', 'Partido', 'Mercado', 'Predicción', 'Cuota', 'Análisis']],
+            body: tableData,
+            theme: 'grid',
+            headStyles: { fillColor: [40, 40, 50], textColor: 255, fontStyle: 'bold' },
+            columnStyles: {
+                0: { cellWidth: 15, fontStyle: 'bold' }, // #
+                1: { cellWidth: 35 }, // Game
+                2: { cellWidth: 30 }, // Market
+                3: { cellWidth: 25, fontStyle: 'bold' }, // Prediction
+                4: { cellWidth: 15 }, // Odds
+                5: { cellWidth: 'auto' } // Analysis
+            },
+            styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' },
+        });
+
+        // Footer
+        const pageCount = doc.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFontSize(8);
+            doc.setTextColor(150);
+            doc.text(`Generado por BetCommand IA - Página ${i} de ${pageCount}`, 105, 290, { align: 'center' });
+        }
+
+        doc.save(`Parlay_Report_${selectedDate}.pdf`);
+    };
+
     return (
-        <div className="flex flex-col h-full">
-            <h3 className="text-xl font-semibold text-white mb-2">Constructor de Parlays de Alto Potencial</h3>
-            <p className="text-sm text-gray-400 mb-4">
-                La IA buscará en la jornada seleccionada para construir un parlay de 5+ selecciones, basado en mercados de nicho con alto valor estadístico.
-            </p>
-            <form onSubmit={handleAnalyze} className="space-y-3 mb-4">
-                 <div className="flex flex-col md:flex-row items-center gap-2">
-                    <input
-                        type="text"
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="Ej: 'Jornada de Champions y NBA'"
-                        className="flex-grow w-full bg-gray-700 border border-gray-600 rounded-md p-2.5 text-white focus:ring-green-accent focus:border-green-accent"
-                        disabled={isLoading}
-                    />
+        <div className="h-full flex flex-col space-y-6 animate-fade-in">
+            {/* Control Bar */}
+            <div className="bg-gray-800/50 p-6 rounded-xl border border-white/5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
+                <div className="flex items-center space-x-4 w-full md:w-auto">
+                    <div className="bg-brand/10 p-3 rounded-lg text-brand">
+                        <PuzzlePieceIcon className="w-8 h-8" />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-bold text-white font-display">Constructor de Parlays</h3>
+                        <p className="text-sm text-gray-400">Inteligencia Artificial aplicada a combinadas multi-partido.</p>
+                    </div>
+                </div>
+
+                <div className="flex items-center space-x-3 w-full md:w-auto bg-gray-900/50 p-2 rounded-lg border border-white/10">
+                    <CalendarDaysIcon className="w-5 h-5 text-gray-400 ml-2" />
                     <input
                         type="date"
                         value={selectedDate}
                         onChange={(e) => setSelectedDate(e.target.value)}
-                        className="w-full md:w-auto bg-gray-700 border border-gray-600 rounded-md p-2.5 text-white focus:ring-green-accent focus:border-green-accent"
-                        disabled={isLoading}
+                        className="bg-transparent text-white focus:outline-none font-mono text-sm"
                     />
+                    <button
+                        onClick={handleGenerate}
+                        disabled={loading || analyzing}
+                        className={`
+                            px-6 py-2 rounded-lg font-bold text-sm shadow-lg transition-all flex items-center gap-2
+                            ${loading || analyzing
+                                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-brand to-emerald-500 text-slate-900 hover:scale-105 hover:shadow-brand/20'
+                            }
+                        `}
+                    >
+                        {loading ? (
+                            <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                        ) : (
+                            <SparklesIcon className="w-5 h-5" />
+                        )}
+                        {loading ? 'Procesando...' : 'Generar Parlays'}
+                    </button>
+                    <button
+                        onClick={handleVerify}
+                        disabled={loading || analyzing}
+                        className="px-4 py-2 rounded-lg font-bold text-xs bg-slate-800 text-gray-300 hover:text-white border border-white/10 hover:border-brand/40 transition-all flex items-center gap-2"
+                        title="Chequear si los partidos ya terminaron y actualizar ganadores"
+                    >
+                        <ArrowPathIcon className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                    </button>
                 </div>
-                <button
-                    type="submit"
-                    disabled={isLoading || !prompt.trim()}
-                    className="w-full bg-green-accent hover:bg-green-600 text-white font-bold py-2.5 rounded-md transition duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center"
-                >
-                    {isLoading ? ( <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span className="ml-2">Buscando Valor...</span></> ) 
-                               : ( <><PuzzlePieceIcon className="w-5 h-5" /><span className="ml-2">Generar Parlay</span></> )}
-                </button>
-            </form>
-            
-            <div className="flex-grow bg-gray-900 rounded-lg p-4 sm:p-6 overflow-y-auto">
-                 {error && <div className="bg-red-500/20 text-red-accent p-3 rounded-md text-center">{error}</div>}
-                 {isLoading && <LoadingState />}
-                 {result && <ResultDisplay result={result} />}
-                 {!isLoading && !result && !error && ( <div className="text-center py-10 text-gray-500"> <p>El parlay de la jornada aparecerá aquí.</p> </div> )}
+            </div>
+
+            {/* Status / Results Area */}
+            <div className="flex-grow overflow-y-auto">
+                {statusMessage && !parlays.length && (
+                    <div className={`text-center py-20 ${analyzing ? 'animate-pulse' : ''}`}>
+                        {analyzing ? (
+                            <div className="flex flex-col items-center gap-4">
+                                <div className="w-16 h-16 border-4 border-brand border-t-transparent rounded-full animate-spin"></div>
+                                <h3 className="text-xl font-bold text-brand animate-pulse">Consultando al Oráculo...</h3>
+                                <p className="text-gray-400 max-w-md">{statusMessage}</p>
+                            </div>
+                        ) : (
+                            <div className="text-gray-500 flex flex-col items-center">
+                                {loading ? null : <PuzzlePieceIcon className="w-16 h-16 mb-4 opacity-20" />}
+                                <p>{statusMessage}</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Parlay Grid */}
+                {parlays.length > 0 && (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                        {parlays.map((parlay, idx) => (
+                            <div key={idx} className="bg-slate-900 border border-white/10 rounded-2xl overflow-hidden shadow-2xl flex flex-col hover:border-brand/30 transition-colors group">
+                                <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-5 border-b border-white/5 flex justify-between items-start relative overflow-hidden">
+                                    <div className="relative z-10">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="bg-brand text-slate-900 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                                                {parlay.finalOdds < 3 ? 'SEGURO' : parlay.finalOdds < 6 ? 'VALOR' : 'BOMBA'}
+                                            </span>
+                                            {(parlay as any).status && (parlay as any).status !== 'pending' && (
+                                                <span className={`px-2 py-0.5 rounded uppercase tracking-wider text-[10px] font-black ${(parlay as any).status === 'won' ? 'bg-green-500 text-white' :
+                                                    (parlay as any).status === 'lost' ? 'bg-red-500 text-white' : 'bg-gray-500 text-white'
+                                                    }`}>
+                                                    {(parlay as any).status}
+                                                </span>
+                                            )}
+                                            <h4 className="text-lg font-bold text-white">{parlay.parlayTitle}</h4>
+                                        </div>
+                                        <p className="text-xs text-gray-400 italic font-medium w-full max-w-md">"{parlay.overallStrategy}"</p>
+                                    </div>
+                                    <div className="flex flex-col items-end relative z-10 gap-2">
+                                        <div className="text-right">
+                                            <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Cuota Total</div>
+                                            <div className="text-4xl font-black text-brand tracking-tighter loading-none">
+                                                {parlay.finalOdds.toFixed(2)}
+                                            </div>
+                                        </div>
+                                        {parlay.winProbability !== undefined && (
+                                            <div className="text-right bg-black/30 px-2 py-1 rounded">
+                                                <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Probabilidad</div>
+                                                <div className={`text-sm font-bold ${parlay.winProbability > 70 ? 'text-green-400' : 'text-yellow-400'}`}>
+                                                    {parlay.winProbability}%
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* Deco Background */}
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-brand/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                                </div>
+
+                                {/* Legs List */}
+                                <div className="p-0 divide-y divide-white/5 bg-slate-900/50 flex-grow">
+                                    {parlay.legs.map((leg, legIdx) => (
+                                        <div key={legIdx} className="p-4 flex items-start gap-4 hover:bg-white/[0.02] transition-colors">
+                                            <div className="flex flex-col items-center justify-center min-w-[50px]">
+                                                <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-xs font-bold text-gray-400 mb-1">
+                                                    {legIdx + 1}
+                                                </div>
+                                                <span className="text-[10px] text-gray-600 font-mono">LEG</span>
+                                                {leg.status && leg.status !== 'pending' && (
+                                                    <div className={`mt-1 w-2 h-2 rounded-full ${leg.status === 'won' ? 'bg-green-500' : leg.status === 'lost' ? 'bg-red-500' : 'bg-gray-500'}`}></div>
+                                                )}
+                                            </div>
+                                            <div className="flex-grow">
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <h5 className="font-bold text-white text-sm">{leg.game}</h5>
+                                                    <span className="bg-slate-800 text-brand px-2 py-0.5 rounded text-xs font-bold border border-white/5">
+                                                        @{leg.odds}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <span className="text-xs font-bold text-blue-400 bg-blue-900/20 px-1.5 py-0.5 rounded border border-blue-500/20">
+                                                        {leg.market}
+                                                    </span>
+                                                    <span className="text-sm font-medium text-gray-300">
+                                                        👉 {leg.prediction}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-gray-500 leading-relaxed border-l-2 border-slate-700 pl-2">
+                                                    {leg.reasoning}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Ticket Footer */}
+                                <div className="p-4 bg-black/20 border-t border-white/5 flex justify-between items-center">
+                                    <div className="text-xs text-gray-600 font-mono">
+                                        Generated by BetCommand AI
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => generatePDF(parlay)}
+                                            className="text-xs font-bold text-gray-400 hover:text-white transition-colors flex items-center gap-1 uppercase tracking-wider bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg"
+                                        >
+                                            <DocumentArrowDownIcon className="w-4 h-4" /> Download PDF
+                                        </button>
+                                        <button className="text-xs font-bold text-brand hover:text-white transition-colors flex items-center gap-1 uppercase tracking-wider px-3 py-1.5 rounded-lg">
+                                            <SparklesIcon className="w-3 h-3" /> Copiar Ticket
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );

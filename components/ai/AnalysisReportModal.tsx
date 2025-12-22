@@ -357,19 +357,7 @@ const AnalysisBlock: React.FC<{ section: AnalisisSeccion; icon?: React.ReactNode
                     ))}
                 </ul>
             )}
-            {section.escenarios && (
-                <div className="grid grid-cols-1 gap-3">
-                    {section.escenarios.map((esc, idx) => (
-                        <div key={idx} className="bg-gray-800/40 p-3 rounded border border-gray-700">
-                            <div className="flex justify-between items-start mb-1">
-                                <span className="font-bold text-white text-sm">{esc.nombre}</span>
-                                <span className="text-xs bg-blue-900 text-blue-200 px-2 py-0.5 rounded-full">{esc.probabilidad_aproximada}</span>
-                            </div>
-                            <p className="text-xs text-gray-400">{esc.descripcion}</p>
-                        </div>
-                    ))}
-                </div>
-            )}
+
         </div>
     );
 };
@@ -527,9 +515,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                     <AnalysisBlock section={data.analisis_detallado.alineaciones_y_bajas} />
                                     <AnalysisBlock section={data.analisis_detallado.factores_situacionales} />
                                 </div>
-                                <div className="mt-4 pt-4 border-t border-gray-700">
-                                    <AnalysisBlock section={data.analisis_detallado.escenarios_de_partido} />
-                                </div>
+
                             </div>
                         )}
 

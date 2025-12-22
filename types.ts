@@ -41,6 +41,7 @@ export interface OrganizationMember {
     organization_id: string;
     user_id: string;
     role: OrganizationRole;
+    permissions?: Record<string, boolean>; // Granular permissions
     joined_at: string;
     profile?: {
         full_name: string;
@@ -503,8 +504,8 @@ export interface GameDetails {
     teamStats: { home: APITeamSeasonStats | null; away: APITeamSeasonStats | null; };
     lastMatches: { home: Game[] | null; away: Game[] | null; };
 }
-export interface ParlayLeg { game: string; market: string; prediction: string; odds: number; reasoning: string; }
-export interface ParlayAnalysisResult { parlayTitle: string; legs: ParlayLeg[]; finalOdds: number; overallStrategy: string; }
+export interface ParlayLeg { fixtureId?: number; game: string; market: string; prediction: string; odds: number; reasoning: string; status?: 'pending' | 'won' | 'lost' | 'void'; }
+export interface ParlayAnalysisResult { parlayTitle: string; legs: ParlayLeg[]; finalOdds: number; overallStrategy: string; winProbability: number; }
 export interface GamedayBettingOpportunity { market: string; prediction: string; probability: number; reasoning: string; confidence: ConfidenceLevel; }
 export interface GameAnalysis { league: string; matchup: string; time: string; overallContext: string; topOpportunities: GamedayBettingOpportunity[]; }
 export type GamedayAnalysisResult = GameAnalysis[];

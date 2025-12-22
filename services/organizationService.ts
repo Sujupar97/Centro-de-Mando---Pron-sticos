@@ -54,6 +54,15 @@ export const organizationService = {
         return data as Organization[];
     },
 
+    async updateOrganization(orgId: string, updates: Partial<{ name: string, settings: any }>): Promise<void> {
+        const { error } = await supabase
+            .from('organizations')
+            .update(updates)
+            .eq('id', orgId);
+
+        if (error) throw error;
+    },
+
     /**
      * Crea una nueva organización 
      */
@@ -84,22 +93,32 @@ export const organizationService = {
      * Obtiene los miembros de una organización
      */
     async getOrganizationMembers(orgId: string): Promise<OrganizationMember[]> {
-        const { data, error } = await supabase
+        // Step 1: Get members info (without joining profiles yet to avoid FK error)
+        const { data: members, error: membersError } = await supabase
             .from('organization_members')
-            .select(`
-        *,
-        profile:profiles (
-          full_name, email, avatar_url
-        )
-      `)
+            .select('*')
             .eq('organization_id', orgId);
 
-        if (error) throw error;
+        if (membersError) throw membersError;
 
-        // Mapear respuesta plana a estructura anidada si es necesario
-        return data.map((item: any) => ({
+        if (!members || members.length === 0) return [];
+
+        // Step 2: Get profiles for these users
+        const userIds = members.map((m: any) => m.user_id);
+
+        const { data: profiles, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, full_name, email, avatar_url')
+            .in('id', userIds);
+
+        if (profilesError) throw profilesError;
+
+        // Step 3: Map profiles to members
+        const profilesMap = new Map(profiles?.map((p: any) => [p.id, p]));
+
+        return members.map((item: any) => ({
             ...item,
-            profile: item.profile
+            profile: profilesMap.get(item.user_id) || { full_name: 'Usuario', email: '' }
         })) as OrganizationMember[];
     },
 
@@ -181,6 +200,7 @@ export const organizationService = {
         if (error) throw error;
     },
 
+
     /**
      * Actualiza el rol de un miembro
      */
@@ -188,6 +208,18 @@ export const organizationService = {
         const { error } = await supabase
             .from('organization_members')
             .update({ role: newRole })
+            .eq('id', memberId);
+
+        if (error) throw error;
+    },
+
+    /**
+     * Update permissions for a member
+     */
+    async updateMemberPermissions(memberId: string, permissions: Record<string, boolean>): Promise<void> {
+        const { error } = await supabase
+            .from('organization_members')
+            .update({ permissions })
             .eq('id', memberId);
 
         if (error) throw error;
@@ -205,4 +237,6 @@ export const organizationService = {
         if (error) throw error;
         return data as OrganizationInvitation[];
     },
+
+
 };

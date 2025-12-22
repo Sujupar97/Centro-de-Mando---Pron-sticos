@@ -620,3 +620,158 @@ export async function generatePerformanceReport(bets: any[], feedbacks: string[]
   const res = await generateWithRetry(request);
   return JSON.parse(res.text) as PerformanceReportResult;
 }
+
+/**
+ * SUPER PROMPT PARLAY GENERATOR
+ * Analiza TODA la data de los partidos del día para encontrar combinadas de alto valor.
+ */
+export async function generateDailyParlay(date: string, analyzedMatches: VisualAnalysisResult[]): Promise<ParlayAnalysisResult[]> {
+  // 1. Preparar el resumen comprimido de los partidos
+  const matchesSummary = analyzedMatches.map((m, idx) => {
+    const r = m.analysisRun;
+    const d = m.dashboardData;
+    if (!r || !d) return null;
+
+    // Extract Fixture ID ensuring it's available
+    const fixtureId = r.fixture_id;
+
+    const preds = d.predicciones_finales?.detalle?.map(p =>
+      `   - ${p.mercado}: ${p.seleccion} (${p.probabilidad_estimado_porcentaje}%)`
+    ).join('\n') || "   - Sin predicciones claras";
+
+    // Extraer contexto clave (solo bullets)
+    const contexto = d.analisis_detallado?.contexto_competitivo?.bullets?.join('; ') || "";
+
+    return `
+PARTIDO #${idx + 1}: ${d.header_partido?.titulo || 'Desconocido'} (ID: ${fixtureId})
+CONTEXTO: ${contexto.substring(0, 200)}...
+PREDICCIONES DEL MODELO INDIVIDUAL:
+${preds}
+`;
+  }).filter(Boolean).join('\n------------------------------------------------\n');
+
+  if (!matchesSummary) throw new Error("No hay datos suficientes para generar parlays.");
+
+  const prompt = `
+  FECHA DEL ANÁLISIS: ${date}
+  
+  ACTÚA COMO EL MEJOR EXPERTO EN APUESTAS DEPORTIVAS DEL MUNDO (EL "SUPER TIPSTER").
+  Tu tarea es analizar el conjunto global de partidos de hoy (proporcionados abajo) y construir las MEJORES APUESTAS COMBINADAS (PARLAYS) posibles.
+
+  OBJETIVO:
+  Crear 2 o 3 Parlays distintos (Estrategias diferentes) que maximicen el valor esperado, buscando MERCADOS ALTERNATIVOS y POCO COMPETIDOS donde tengamos ventaja estadística.
+
+  DATOS DISPONIBLES (RESUMEN DE ${analyzedMatches.length} PARTIDOS):
+  ${matchesSummary}
+
+  INSTRUCCIONES DE "SUPER PROMPT":
+  1. **Busca Correlaciones Ocultas:** No te limites a "Ganador del Partido". Busca patrones:
+     - ¿Muchos partidos con equipos ofensivos? -> Parlay de Goles (Over 1.5 en varios, o BTTS).
+     - ¿Partidos de eliminación directa tensos? -> Parlay de Tarjetas o Unders.
+     - ¿Desequilibrios enormes? -> Hándicaps Asiáticos o Córners.
+
+  2. **Mercados Alternativos (PRIORIDAD ALTA):**
+     - En lugar de "Real Madrid Gana", prefiere "Real Madrid Over 1.5 Goles" o "Real Madrid gana al descanso" si la data lo apoya.
+     - Busca "Córners Over", "Tarjetas Over", "Jugador X anota" si el contexto textual lo sugiere (aunque la data numérica cruda sea limitada en este resumen, usa las pistas del texto).
+
+  3. **Gestión de Riesgo:**
+     - Un Parlay "SEGURO" (Cuota total ~2.00 - 3.00): Alta probabilidad, picks sólidos.
+     - Un Parlay "VALOR/ARRIESGADO" (Cuota total ~5.00 - 15.00): Busca el "batazo" con lógica.
+
+  FORMATO DE SALIDA (JSON ARRAY):
+  Devuelve UN ARRAY de objetos "ParlayAnalysisResult".
+  IMPORTANTE: Incluye el "fixtureId" (ID) de cada partido en los "legs".
+  [
+    {
+      "parlayTitle": "El Ticket Seguro del Día (Estrategia de Goles)",
+      "finalOdds": 2.85, 
+      "winProbability": 75,
+      "overallStrategy": "Explicación de por qué esta combinación tiene sentido hoy...",
+      "legs": [
+        {
+           "fixtureId": 12345,
+           "game": "Equipo A vs Equipo B",
+           "market": "Total Goles MÁS DE 2.5",
+           "prediction": "Over 2.5",
+           "odds": 1.70, 
+           "reasoning": "Data muestra ambos equipos promediando..."
+        },
+        ...
+      ]
+    },
+    ...
+  ]
+
+  IMPORTANTE:
+  - Estima las cuotas (odds) de cada leg basándote en la probabilidad (1/prob).
+  - Sé selectivo. No incluyas partidos "tóxicos" o impredecibles.
+  - ¡SORPRENDEME CON TU CAPACIDAD DE CONECTAR PUNTOS ENTRE PARTIDOS DISTINTOS!
+  `;
+
+  const request: GenerateContentParameters = {
+    model: 'gemini-2.5-pro',
+    contents: { parts: [{ text: prompt }] },
+    config: {
+      responseMimeType: 'application/json',
+      systemInstruction: "Eres el DIOS de los Parlays. Genera JSON array estricto.",
+      temperature: 0.7 // Un poco más creativo para encontrar alpha
+    }
+  };
+
+  const res = await generateWithRetry(request);
+  try {
+    // Limpieza extra por si acaso
+    const clean = res.text.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(clean) as ParlayAnalysisResult[];
+  } catch (e) {
+    console.error("Error parsing Daily Parlay JSON", e);
+    return [];
+  }
+}
+
+/**
+ * Juez de IA para validar si un Leg de Parlay se cumplió o no.
+ */
+export async function verifyParlayLeg(predictionText: string, marketReceived: string, matchResultContext: string): Promise<'won' | 'lost' | 'void' | 'pending'> {
+  // matchResultContext debe ser algo como: "Real Madrid 2 - 1 Barcelona. Goles en min 10, 50, 90. Tarjetas: 3."
+
+  const prompt = `
+  ERES UN JUEZ IMPARCIAL DE APUESTAS.
+  Tu trabajo es determinar si una apuesta se ganó o perdió basándote en el resultado del partido.
+
+  APUESTA:
+   Mercado: ${marketReceived}
+   Predicción: ${predictionText}
+
+  RESULTADO DEL PARTIDO:
+  ${matchResultContext}
+
+  DECISIÓN:
+  Devuelve SOLO una de las siguientes palabras:
+  "WON" (Si la apuesta se cumplió)
+  "LOST" (Si la apuesta falló)
+  "VOID" (Si el partido se suspendió o la apuesta es nula)
+  "PENDING" (Si no hay suficiente info en el resultado para decidir)
+  `;
+
+  const request: GenerateContentParameters = {
+    model: 'gemini-1.5-flash', // Modelo rápido y barato para esto
+    contents: { parts: [{ text: prompt }] },
+    config: {
+      responseMimeType: 'text/plain',
+      temperature: 0.1
+    }
+  };
+
+  try {
+    const res = await generateWithRetry(request);
+    const verdict = res.text?.trim().toUpperCase();
+    if (verdict?.includes('WON')) return 'won';
+    if (verdict?.includes('LOST')) return 'lost';
+    if (verdict?.includes('VOID')) return 'void';
+    return 'pending';
+  } catch (e) {
+    console.error("Error verifying leg:", e);
+    return 'pending';
+  }
+}

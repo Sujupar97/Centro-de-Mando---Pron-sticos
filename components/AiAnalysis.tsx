@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
-import { ScenarioAnalyzer } from './ai/ScenarioAnalyzer';
+// import { ScenarioAnalyzer } from './ai/ScenarioAnalyzer';
 import { ComparativeAnalysis } from './ai/ComparativeAnalysis';
 import { ParlayBuilder } from './ai/ParlayBuilder';
 import { ApiTestRunner } from './ai/ApiTestRunner';
 import { PerformanceAnalyzer } from './ai/PerformanceAnalyzer';
-import { MagnifyingGlassIcon, TableCellsIcon, PuzzlePieceIcon, ListBulletIcon, PresentationChartLineIcon } from './icons/Icons';
+import { TableCellsIcon, PuzzlePieceIcon, ListBulletIcon, PresentationChartLineIcon } from './icons/Icons';
 
 type AiTab = 'scenario' | 'parlay' | 'performance' | 'compare' | 'test';
 
 const TABS: { id: AiTab, name: string, icon: React.ReactNode }[] = [
-    { id: 'scenario', name: 'Escenarios', icon: <MagnifyingGlassIcon className="w-4 h-4" /> },
     { id: 'parlay', name: 'Parlay Builder', icon: <PuzzlePieceIcon className="w-4 h-4" /> },
     { id: 'performance', name: 'Rendimiento', icon: <PresentationChartLineIcon className="w-4 h-4" /> },
     { id: 'compare', name: 'Comparador', icon: <TableCellsIcon className="w-4 h-4" /> },
@@ -17,12 +16,10 @@ const TABS: { id: AiTab, name: string, icon: React.ReactNode }[] = [
 ];
 
 export const AiAnalysis: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<AiTab>('scenario');
+    const [activeTab, setActiveTab] = useState<AiTab>('parlay');
 
     const renderContent = () => {
         switch (activeTab) {
-            case 'scenario':
-                return <ScenarioAnalyzer />;
             case 'parlay':
                 return <ParlayBuilder />;
             case 'performance':
@@ -54,8 +51,8 @@ export const AiAnalysis: React.FC = () => {
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`flex items-center space-x-2 px-4 py-2 text-sm font-bold rounded-lg transition-all duration-200 whitespace-nowrap ${isActive
-                                    ? 'bg-slate-700 text-white shadow-md shadow-black/20 ring-1 ring-white/10'
-                                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                ? 'bg-slate-700 text-white shadow-md shadow-black/20 ring-1 ring-white/10'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                                 }`}
                         >
                             <span className={isActive ? 'text-brand' : ''}>{tab.icon}</span>

@@ -1,25 +1,20 @@
-
 import React, { useState } from 'react';
-import { ScenarioAnalyzer } from './ScenarioAnalyzer';
 import { ComparativeAnalysis } from './ComparativeAnalysis';
 import { ParlayBuilder } from './ParlayBuilder';
-import { MagnifyingGlassIcon, TableCellsIcon, PuzzlePieceIcon } from '../icons/Icons';
+import { TableCellsIcon, PuzzlePieceIcon } from '../icons/Icons';
 
-type AiTab = 'scenario' | 'parlay' | 'compare';
+type AiTab = 'parlay' | 'compare';
 
 const TABS: { id: AiTab, name: string, icon: React.ReactNode }[] = [
-    { id: 'scenario', name: 'Análisis de Escenarios', icon: <MagnifyingGlassIcon /> },
     { id: 'parlay', name: 'Constructor de Parlays', icon: <PuzzlePieceIcon /> },
     { id: 'compare', name: 'Análisis Comparativo', icon: <TableCellsIcon /> },
 ];
 
 export const AiAnalysis: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<AiTab>('scenario');
+    const [activeTab, setActiveTab] = useState<AiTab>('parlay');
 
     const renderContent = () => {
         switch (activeTab) {
-            case 'scenario':
-                return <ScenarioAnalyzer />;
             case 'parlay':
                 return <ParlayBuilder />;
             case 'compare':
@@ -37,11 +32,10 @@ export const AiAnalysis: React.FC = () => {
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center space-x-2 py-3 px-4 text-sm font-medium transition-colors flex-shrink-0 ${
-                            activeTab === tab.id
-                                ? 'border-b-2 border-green-accent text-green-accent'
-                                : 'text-gray-400 hover:text-white'
-                        }`}
+                        className={`flex items-center space-x-2 py-3 px-4 text-sm font-medium transition-colors flex-shrink-0 ${activeTab === tab.id
+                            ? 'border-b-2 border-green-accent text-green-accent'
+                            : 'text-gray-400 hover:text-white'
+                            }`}
                     >
                         {tab.icon}
                         <span>{tab.name}</span>

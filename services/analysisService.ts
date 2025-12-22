@@ -135,6 +135,40 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
 };
 
 /**
+ * Obtiene todos los resultados visuales validados de una fecha específica.
+ * Optimizado para el Parlay Builder (solo data esencial).
+ */
+export const getAnalysesByDate = async (date: string): Promise<VisualAnalysisResult[]> => {
+    // Range: 00:00 to 23:59 of selected date
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+
+    const { data: runs, error } = await supabase
+        .from('analysis_runs')
+        .select('*, predictions(*)')
+        .gte('created_at', start.toISOString())
+        .lte('created_at', end.toISOString());
+
+    if (error) {
+        console.error("Error fetching daily analyses:", error);
+        return [];
+    }
+
+    if (!runs) return [];
+
+    // Filter runs that have at least one prediction and return formatted result
+    return runs
+        .filter(r => r.predictions && r.predictions.length > 0)
+        .map(r => ({
+            analysisText: r.summary_pre_text || '',
+            dashboardData: r.report_pre_jsonb as DashboardAnalysisJSON,
+            analysisRun: r as AnalysisRun
+        }));
+};
+
+/**
  * Obtiene el resultado (Reporte) directamente por ID de Ejecución (Run ID).
  * Útil para Top Picks que ya tienen el ID del run.
  */

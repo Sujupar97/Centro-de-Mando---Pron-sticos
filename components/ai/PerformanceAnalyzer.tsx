@@ -8,7 +8,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { formatCurrency } from '../../utils/formatters';
 import { useAuth } from '../../hooks/useAuth';
 import { savePerformanceReport, getSystemPredictions } from '../../services/performanceService';
-import { ChartBarIcon, UserIcon, ArrowDownTrayIcon } from '../icons/Icons';
+import { ChartBarIcon, UserIcon, ArrowDownTrayIcon, InformationCircleIcon, ExclamationTriangleIcon } from '../icons/Icons';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -337,13 +337,16 @@ export const PerformanceAnalyzer: React.FC = () => {
             }
 
             if (betsToAnalyze.length === 0) {
-                throw new Error(`No se encontraron ${analysisSource === 'user' ? 'apuestas' : 'predicciones'} en este rango de fechas y filtros.`);
+                // Instead of error, we can just return and show a message in the UI
+                setReport(null);
+                setSuccessMessage('');
+                setError(`No hay partidos verificados (finalizados) en este rango. Prueba con fechas anteriores o espera a que terminen los partidos de hoy.`);
+                return;
             }
 
             if (betsToAnalyze.length < 5) {
-                // Warn but maybe allow if user insists? The prompt said "giving incorrect data", so maybe they want to see the 2 bets.
-                // But the original code threw error. Let's keep the error but clarify.
-                throw new Error(`Se encontraron solo ${betsToAnalyze.length} registros. Se necesitan al menos 5 para un análisis confiable.`);
+                // Just log warning but proceed, or clearer message
+                console.warn("Low data volume for analysis");
             }
 
             // Fetch Feedbacks if analysing System
@@ -455,7 +458,12 @@ export const PerformanceAnalyzer: React.FC = () => {
             </form>
 
             <div className="flex-grow bg-gray-900 rounded-lg p-4 sm:p-6 overflow-y-auto">
-                {error && <div className="bg-red-500/20 text-red-accent p-3 rounded-md text-center mb-4">{error}</div>}
+                {error && (
+                    <div className={`${error.includes('No hay partidos') ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-accent'} p-3 rounded-md text-center mb-4 flex items-center justify-center gap-2`}>
+                        {error.includes('No hay partidos') ? <InformationCircleIcon className="w-5 h-5" /> : <ExclamationTriangleIcon className="w-5 h-5" />}
+                        {error}
+                    </div>
+                )}
                 {successMessage && <div className="bg-green-500/20 text-green-accent p-3 rounded-md text-center mb-4 flex items-center justify-center gap-2"><CheckCircleIcon className="w-5 h-5" />{successMessage}</div>}
                 {isLoading && <LoadingState />}
                 {report && <ReportDisplay report={report} dateRange={{ start: startDate, end: endDate }} />}

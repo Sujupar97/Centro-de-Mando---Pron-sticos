@@ -22,6 +22,7 @@ export const OrganizationProvider = ({ children }: { children: ReactNode }) => {
     const [userRole, setUserRole] = useState<OrganizationRole | null>(null);
     const [userOrganizations, setUserOrganizations] = useState<{ org: Organization, role: OrganizationRole }[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isImpersonating, setIsImpersonating] = useState(false);
 
     // Cargar organizaciones al iniciar o cambiar usuario
     const refreshOrganizations = async () => {
@@ -37,6 +38,10 @@ export const OrganizationProvider = ({ children }: { children: ReactNode }) => {
             setIsLoading(true);
             const orgs = await organizationService.getUserOrganizations();
             setUserOrganizations(orgs);
+
+            // Si estamos impersonando, no sobrescribimos con la lógica de usuario normal
+            // EXCEPTO que stopImpersonation llame a refreshOrganizations explícitamente
+            if (isImpersonating) return;
 
             // Lógica de "Last Used Org" o "Default"
             // Si ya hay una seleccionada y sigue siendo válida, mantenerla
@@ -75,21 +80,44 @@ export const OrganizationProvider = ({ children }: { children: ReactNode }) => {
         refreshOrganizations();
     }, [user]);
 
-    // Guardar preferencia al cambiar
+    // Guardar preferencia al cambiar (solo si NO es impersonación)
     useEffect(() => {
-        if (currentOrg) {
+        if (currentOrg && !isImpersonating) {
             localStorage.setItem('last_org_id', currentOrg.id);
         }
-    }, [currentOrg]);
+    }, [currentOrg, isImpersonating]);
 
     const switchOrganization = async (orgId: string) => {
         const found = userOrganizations.find(o => o.org.id === orgId);
         if (found) {
             setCurrentOrg(found.org);
             setUserRole(found.role);
+            setIsImpersonating(false); // Switching normally disables impersonation
         } else {
             console.warn("Intento de cambiar a una organización inválida");
         }
+    };
+
+    const impersonateOrganization = async (orgId: string) => {
+        setIsLoading(true);
+        try {
+            const org = await organizationService.getOrganizationById(orgId);
+            if (org) {
+                setCurrentOrg(org);
+                setUserRole('owner'); // Give full access while impersonating
+                setIsImpersonating(true);
+            }
+        } catch (e) {
+            console.error("Impersonation failed:", e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const stopImpersonation = async () => {
+        setIsImpersonating(false);
+        // Refresh will pick up the real user's default org
+        await refreshOrganizations();
     };
 
     return (
@@ -98,8 +126,11 @@ export const OrganizationProvider = ({ children }: { children: ReactNode }) => {
             userRole,
             userOrganizations,
             isLoading,
+            isImpersonating,
             switchOrganization,
-            refreshOrganizations
+            refreshOrganizations,
+            impersonateOrganization,
+            stopImpersonation
         }}>
             {children}
         </OrganizationContext.Provider>
