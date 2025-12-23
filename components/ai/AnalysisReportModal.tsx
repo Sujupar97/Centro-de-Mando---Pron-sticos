@@ -329,9 +329,9 @@ const DynamicTable: React.FC<{ data: TablaComparativaData }> = ({ data }) => (
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
-                    {data.filas.map((fila, fIdx) => (
+                    {(data.filas || []).map((fila, fIdx) => (
                         <tr key={fIdx} className="hover:bg-gray-800/30 transition-colors">
-                            {fila.map((celda, cIdx) => (
+                            {(Array.isArray(fila) ? fila : []).map((celda, cIdx) => (
                                 <td key={cIdx} className={`px-4 py-3 text-gray-300 ${cIdx === 0 ? 'font-medium text-white' : ''}`}>
                                     {celda}
                                 </td>

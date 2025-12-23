@@ -13,120 +13,12 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700;800&display=swap"
     rel="stylesheet">
 
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-            display: ['Outfit', 'sans-serif'],
-          },
-          colors: {
-            // Base "Luxury Dark" Palette
-            slate: {
-              850: '#151e2e', // Custom between 800 and 900
-              950: '#020617',
-            },
-            // Semantic Colors
-            dark: {
-              bg: '#0f172a', // Slate 900 base
-              card: 'rgba(30, 41, 59, 0.7)', // Glassy Slate 800
-              border: 'rgba(148, 163, 184, 0.1)', // Subtle border
-            },
-            brand: {
-              DEFAULT: '#10b981', // Emerald 500
-              hover: '#059669',   // Emerald 600
-              glow: 'rgba(16, 185, 129, 0.5)',
-            },
-            accent: {
-              blue: '#3b82f6',
-              purple: '#8b5cf6',
-            }
-          },
-          backdropBlur: {
-            xs: '2px',
-          },
-          animation: {
-            'fade-in': 'fadeIn 0.5s ease-out forwards',
-            'slide-up': 'slideUp 0.5s ease-out forwards',
-            'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            'float': 'float 6s ease-in-out infinite',
-            'scale-in': 'scaleIn 0.5s ease-out forwards',
-            'fade-in-up': 'fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-          },
-          keyframes: {
-            fadeIn: {
-              '0%': { opacity: '0' },
-              '100%': { opacity: '1' },
-            },
-            slideUp: {
-              '0%': { transform: 'translateY(20px)', opacity: '0' },
-              '100%': { transform: 'translateY(0)', opacity: '1' },
-            },
-            fadeInUp: {
-              '0%': { transform: 'translateY(40px)', opacity: '0' },
-              '100%': { transform: 'translateY(0)', opacity: '1' },
-            },
-            float: {
-              '0%, 100%': { transform: 'translateY(0)' },
-              '50%': { transform: 'translateY(-20px)' },
-            },
-            scaleIn: {
-              '0%': { transform: 'scale(0.9)', opacity: '0' },
-              '100%': { transform: 'scale(1)', opacity: '1' },
-            }
-          }
-        }
-      }
-    }
-  </script>
-  <style type="text/tailwindcss">
-    @layer utilities {
-            .glass {
-                @apply backdrop-blur-md bg-slate-900/70 border border-white/5 shadow-xl;
-            }
-            .glass-hover {
-                @apply hover:bg-slate-800/80 transition-all duration-300;
-            }
-            .text-glow {
-                text-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
-            }
-        }
-        
-        /* Global Reset & Scrollbar */
-        body {
-            @apply bg-slate-950 text-slate-200 antialiased selection:bg-brand selection:text-white;
-        }
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700;800&display=swap"
+    rel="stylesheet">
 
-        /* Sleek Scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-            @apply bg-slate-700/50 rounded-full hover:bg-slate-600;
-        }
-    </style>
 
-  <script type="importmap">
-    {
-      "imports": {
-        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.26.0",
-        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-        "react/": "https://aistudiocdn.com/react@^19.2.0/",
-        "react": "https://aistudiocdn.com/react@^19.2.0",
-        "recharts": "https://aistudiocdn.com/recharts@^3.3.0",
-        "marked": "https://aistudiocdn.com/marked@^16.4.1",
-        "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.77.0"
-      }
-    }
-    </script>
-</head>
+
 
 <body>
   <!-- Ambient Background Lighting -->
