@@ -175,33 +175,46 @@ export const fetchTopPicks = async (date: string) => {
 
         if (error) throw error;
 
-        // 3. Cruzar datos (Join en memoria)
-        const topPicks = predictions.map((pred: any) => {
+        // 3. Cruzar datos (Join en memoria) - STRICT SINGLE PICK PER MATCH DEDUPLICATION
+        // We use a Map keyed by fixture_id to ensure only ONE pick (the best one) per match exists.
+        const bestPickPerMatch = new Map<number, any>();
+
+        predictions.forEach((pred: any) => {
             const game = games.find(g => g.fixture.id === pred.fixture_id);
-            if (!game) return null;
+            if (!game) return;
 
-            return {
-                gameId: pred.fixture_id,
-                analysisRunId: pred.analysis_run_id,
-                matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
-                date: game.fixture.date,
-                league: game.league.name,
-                teams: {
-                    home: { name: game.teams.home.name, logo: game.teams.home.logo },
-                    away: { name: game.teams.away.name, logo: game.teams.away.logo }
-                },
-                bestRecommendation: {
-                    market: pred.market,
-                    prediction: pred.selection,
-                    probability: pred.probability,
-                    confidence: pred.confidence,
-                    reasoning: pred.reasoning
-                },
-                result: pred.is_won === true ? 'Won' : (pred.is_won === false ? 'Lost' : 'Pending')
-            };
-        }).filter((item: any) => item !== null);
+            const currentProb = pred.probability || 0;
+            const existing = bestPickPerMatch.get(pred.fixture_id);
 
-        return topPicks;
+            // If no existing pick for this match OR current has higher probability, replace it.
+            if (!existing || currentProb > (existing.bestRecommendation.probability || 0)) {
+                bestPickPerMatch.set(pred.fixture_id, {
+                    gameId: pred.fixture_id,
+                    analysisRunId: pred.analysis_run_id,
+                    matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
+                    date: game.fixture.date,
+                    league: game.league.name,
+                    teams: {
+                        home: { name: game.teams.home.name, logo: game.teams.home.logo },
+                        away: { name: game.teams.away.name, logo: game.teams.away.logo }
+                    },
+                    bestRecommendation: {
+                        market: pred.market,
+                        prediction: pred.selection,
+                        probability: pred.probability,
+                        confidence: pred.confidence,
+                        reasoning: pred.reasoning
+                    },
+                    result: pred.is_won === true ? 'Won' : (pred.is_won === false ? 'Lost' : 'Pending'),
+                    odds: pred.odds // Mapped from DB
+                });
+            }
+        });
+
+        const topPicks = Array.from(bestPickPerMatch.values());
+
+        // Sort by probability desc
+        return topPicks.sort((a: any, b: any) => (b.bestRecommendation.probability || 0) - (a.bestRecommendation.probability || 0));
 
     } catch (error: any) {
         console.error('Error al obtener Top Picks:', error.message);

@@ -3,6 +3,7 @@ import { HomeIcon, ChartBarIcon, PlusCircleIcon, SparklesIcon, CogIcon, Calendar
 import { useAuth } from '../hooks/useAuth';
 import { OrganizationSwitcher } from './OrganizationSwitcher';
 import { Page } from '../App';
+import { CreateSubAccountModal } from './agency/CreateSubAccountModal';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -12,6 +13,7 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurrentPage }) => {
   const { profile, signOut } = useAuth();
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <HomeIcon className="w-5 h-5" />, roles: ['superadmin', 'admin', 'usuario'] },
@@ -37,7 +39,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
         </div>
 
         <div className="px-3 pt-4">
-          <OrganizationSwitcher />
+          <OrganizationSwitcher onCreateClick={() => setIsCreateModalOpen(true)} />
         </div>
 
         <nav className="flex-1 overflow-y-auto py-2 px-3 space-y-1">
@@ -123,6 +125,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
           {/* Mobile Menu 'More' button logic could go here if >5 items needed, skipping for now per simplicity */}
         </nav>
       </div>
+
+      <CreateSubAccountModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={() => setIsCreateModalOpen(false)}
+      />
 
     </div>
   );

@@ -54,7 +54,7 @@ export const organizationService = {
         return data as Organization[];
     },
 
-    async updateOrganization(orgId: string, updates: Partial<{ name: string, settings: any }>): Promise<void> {
+    async updateOrganization(orgId: string, updates: Partial<{ name: string, settings: any, metadata: any }>): Promise<void> {
         const { error } = await supabase
             .from('organizations')
             .update(updates)

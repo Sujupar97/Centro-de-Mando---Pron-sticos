@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { BetTable } from './components/BetTable';
@@ -11,38 +12,27 @@ import { useSettings } from './hooks/useSettings';
 import { Bet } from './types';
 import { FixturesFeed } from './components/LiveFeed';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { LanguageProvider } from './contexts/LanguageContext';
 import { OrganizationProvider } from './contexts/OrganizationContext';
 import { AuthPage } from './components/Auth';
+import { LandingPage } from './components/LandingPage';
 import { AdminPage } from './components/Admin';
 
 export type Page = 'dashboard' | 'bets' | 'add' | 'ai' | 'live' | 'scan' | 'settings' | 'admin';
 
-const AppContent: React.FC = () => {
-  const { session, profile } = useAuth();
+// --- PLATFORM (PROTECTED APP) ---
+const Platform: React.FC = () => {
+  const { profile } = useAuth();
   const [currentPage, setCurrentPage] = React.useState<Page>('dashboard');
   const { bets, addBet, deleteBet } = useBets();
   const { initialCapital, setInitialCapital } = useSettings();
 
-  // La sesión es la única fuente de verdad para la autenticación.
-  // Si no hay sesión, se muestra la página de login.
-  if (!session) {
-    return <AuthPage />;
-  }
-
-  // Si hay sesión pero el perfil no se cargó (debido a un error de red, etc.),
-  // se muestra un estado de error claro en lugar de expulsar al usuario,
-  // lo cual previene el problema de quedarse atascado en el login.
+  // Error safety for profile loading
   if (!profile) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-4">
-        <h2 className="text-2xl font-bold mb-4 text-center">Error al Cargar Perfil</h2>
-        <p className="text-gray-400 mb-6 text-center">No pudimos cargar los datos de tu perfil, posiblemente por un problema de red. Tu sesión sigue activa.</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="bg-green-accent hover:bg-green-600 text-white font-bold py-2 px-6 rounded-md transition duration-300"
-        >
-          Refrescar la Página
-        </button>
+        <h2 className="text-2xl font-bold mb-4 text-center">Cargando Perfil...</h2>
+        <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -69,11 +59,9 @@ const AppContent: React.FC = () => {
       case 'settings':
         return <Settings initialCapital={initialCapital} setInitialCapital={setInitialCapital} />;
       case 'admin':
-        // Solo renderiza la página de admin si el rol es el adecuado
         if (profile.role === 'superadmin' || profile.role === 'admin') {
           return <AdminPage />;
         }
-        // Redirige al dashboard si no tiene permisos
         setCurrentPage('dashboard');
         return <Dashboard />;
       default:
@@ -88,11 +76,71 @@ const AppContent: React.FC = () => {
   );
 };
 
+// --- ROUTE WRAPPERS ---
+
+const LandingRoute = () => {
+  const { session } = useAuth();
+  const navigate = useNavigate();
+
+  if (session) {
+    return <Navigate to="/app" replace />;
+  }
+
+  return (
+    <LandingPage
+      onGetStarted={() => navigate('/login')}
+      onLoginClick={() => navigate('/login')}
+    />
+  );
+};
+
+const LoginRoute = () => {
+  const { session } = useAuth();
+
+  if (session) {
+    return <Navigate to="/app" replace />;
+  }
+
+  return <AuthPage />;
+};
+
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { session, loading } = useAuth();
+
+  if (loading) return null; // Or a spinner
+  if (!session) return <Navigate to="/login" replace />;
+
+  return <>{children}</>;
+};
+
+// --- MAIN APP ---
+
+const AppContent: React.FC = () => {
+  return (
+    <Routes>
+      <Route path="/" element={<LandingRoute />} />
+      <Route path="/login" element={<LoginRoute />} />
+      <Route
+        path="/app/*"
+        element={
+          <ProtectedRoute>
+            <Platform />
+          </ProtectedRoute>
+        }
+      />
+      {/* Catch all redirect */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+};
+
 const App: React.FC = () => {
   return (
     <AuthProvider>
       <OrganizationProvider>
-        <AppContent />
+        <LanguageProvider>
+          <AppContent />
+        </LanguageProvider>
       </OrganizationProvider>
     </AuthProvider>
   );

@@ -4,7 +4,11 @@ import { useOrganization } from '../contexts/OrganizationContext';
 import { useAuth } from '../hooks/useAuth';
 import { ChevronDownIcon, CheckIcon, PlusIcon, BuildingOfficeIcon } from './icons/Icons';
 
-export const OrganizationSwitcher: React.FC = () => {
+interface OrganizationSwitcherProps {
+    onCreateClick?: () => void;
+}
+
+export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({ onCreateClick }) => {
     const { currentOrg, userOrganizations, switchOrganization, isLoading } = useOrganization();
     const { profile } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
@@ -87,9 +91,12 @@ export const OrganizationSwitcher: React.FC = () => {
                     {profile?.role === 'superadmin' && (
                         <div className="p-2 border-t border-white/5">
                             <button
-                                // Placeholder for "Create Org" - maybe open a modal later
                                 onClick={() => {
-                                    alert("Crear organización: Próximamente");
+                                    if (onCreateClick) {
+                                        onCreateClick();
+                                    } else {
+                                        alert("Crear organización: Próximamente");
+                                    }
                                     setIsOpen(false);
                                 }}
                                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"

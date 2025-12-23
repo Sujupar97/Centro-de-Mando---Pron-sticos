@@ -105,6 +105,7 @@ export interface PredictionDB {
     signal_strength: number;
     evidence_jsonb: any;
     is_won?: boolean | null; // Added for retro analysis result
+    odds?: number | null; // Real-time odds
 }
 
 export interface AnalysisRun {
@@ -514,5 +515,5 @@ export interface BetTicketAnalysisResult { overallVerdict: string; strongestPick
 export interface PerformanceReportResult { executiveSummary: string; keyMetrics: any; strengths: string[]; weaknesses: string[]; actionableRecommendations: string[]; chartsData: any; performanceBySport: any[]; performanceByMarket: any[]; learningAnalysis?: string; }
 export interface PerformanceReportDB { id: number; user_id: string; created_at: string; start_date: string; end_date: string; report_data: PerformanceReportResult; }
 export interface AnalyzedGameDB { partido_id: number; resultado_analisis: VisualAnalysisResult; partidos: any; }
-export interface TopPickItem { gameId: number; analysisRunId?: string; matchup: string; date: string; league: string; teams: { home: { name: string; logo: string }; away: { name: string; logo: string }; }; bestRecommendation: BettingRecommendationVisual; result?: 'Won' | 'Lost' | 'Pending' | 'Void'; }
+export interface TopPickItem { gameId: number; analysisRunId?: string; matchup: string; date: string; league: string; teams: { home: { name: string; logo: string }; away: { name: string; logo: string }; }; bestRecommendation: BettingRecommendationVisual; result?: 'Won' | 'Lost' | 'Pending' | 'Void'; odds?: number; }
 export type CreateBetPayload = Omit<Bet, 'id' | 'user_id'>;

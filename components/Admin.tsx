@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { TeamManagement } from './admin/TeamManagement';
-import { SuperAdminDashboard } from './superadmin/SuperAdminDashboard';
+import { AgencyLayout } from './agency/AgencyLayout';
 import { SparklesIcon } from './icons/Icons';
 
 export const AdminPage: React.FC = () => {
     const { profile } = useAuth();
-    const [showSuperAdmin, setShowSuperAdmin] = useState(false);
+    const [showAgencySuite, setShowAgencySuite] = useState(false);
 
-    // Si el usuario activa la consola de superadmin
-    if (showSuperAdmin) {
-        return <SuperAdminDashboard onBack={() => setShowSuperAdmin(false)} />;
+    // Si el usuario activa la suite de agencia
+    if (showAgencySuite) {
+        return <AgencyLayout onBack={() => setShowAgencySuite(false)} />;
     }
 
     return (
@@ -23,11 +23,11 @@ export const AdminPage: React.FC = () => {
 
                 {profile?.role === 'superadmin' && (
                     <button
-                        onClick={() => setShowSuperAdmin(true)}
+                        onClick={() => setShowAgencySuite(true)}
                         className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-xl hover:shadow-lg hover:shadow-purple-500/20 transition-all transform hover:scale-[1.02] active:scale-95"
                     >
                         <SparklesIcon className="w-5 h-5" />
-                        Consola Superadmin
+                        Agency Suite
                     </button>
                 )}
             </div>

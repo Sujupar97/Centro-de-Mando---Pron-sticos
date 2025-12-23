@@ -1,9 +1,12 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { VisualAnalysisResult, DashboardAnalysisJSON, TablaComparativaData, AnalisisSeccion, DetallePrediccion, GraficoSugerido } from '../../types';
+import { VisualAnalysisResult, DashboardAnalysisJSON, TablaComparativaData, AnalisisSeccion, DetallePrediccion, GraficoSugerido, PredictionDB } from '../../types';
 import { XMarkIcon, TrophyIcon, ChartBarIcon, ListBulletIcon, LightBulbIcon, ExclamationTriangleIcon, LinkIcon } from '../icons/Icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { supabase } from '../../services/supabaseService';
+import { mapLeagueToSportKey, fastBatchOddsCheck, findPriceInEvent } from '../../services/oddsService';
+import { useState, useEffect } from 'react';
 
 // --- COMPONENTES AUXILIARES DEL DASHBOARD ---
 
@@ -408,9 +411,15 @@ const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
                     <span className="text-xs uppercase font-bold text-gray-400 tracking-wider">{pred.mercado}</span>
                     <h3 className="text-xl font-bold text-white mt-1">{pred.seleccion}</h3>
                 </div>
-                <div className="flex flex-col items-center justify-center bg-gray-900 rounded-lg p-2 min-w-[70px]">
+                <div className="flex flex-col items-center justify-center bg-gray-900 rounded-lg p-2 min-w-[80px]">
                     <span className={`text-2xl font-bold ${color}`}>{prob}%</span>
                     <span className="text-[10px] text-gray-500 uppercase">Prob.</span>
+                    {/* Odds Badge - IMPROVED VISIBILITY */}
+                    {pred.odds && (
+                        <div className="mt-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-3 py-1 rounded-md text-sm font-black shadow-[0_0_10px_rgba(59,130,246,0.5)] animate-pulse-slow border border-blue-400">
+                            @{pred.odds.toFixed(2)}
+                        </div>
+                    )}
                 </div>
             </div>
             <div className="p-5">
@@ -441,9 +450,125 @@ const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
 // --- COMPONENTE PRINCIPAL ---
 
 export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | null; onClose: () => void }> = ({ analysis, onClose }) => {
-    if (!analysis) return null;
+    // Local state to handle real-time updates (like odds) without mutating props directly (though standard React props are read-only)
+    // We wrap the analysis data in state to trigger re-renders when odds are fetched.
+    const [currentAnalysis, setCurrentAnalysis] = useState<VisualAnalysisResult | null>(analysis);
 
-    const data = analysis.dashboardData;
+    useEffect(() => {
+        setCurrentAnalysis(analysis);
+    }, [analysis]);
+
+    // EFFECT: Fetch Real Odds for High Confidence Predictions
+    useEffect(() => {
+        const fetchOdds = async () => {
+            if (!currentAnalysis || !currentAnalysis.analysisRun || !currentAnalysis.dashboardData) return;
+
+            const run = currentAnalysis.analysisRun;
+            // Get predictions from the dashboard data (which drives the UI) or the run persistence
+            // We need to map UI predictions back to DB predictions to update them
+            const uiPredictions = currentAnalysis.dashboardData.predicciones_finales?.detalle || [];
+
+            // Check if we already have odds in the DB run (persisted)
+            // Or if we need to fetch them.
+            // Simplified logic: If UI prediction doesn't have odds, try to fetch.
+
+            // Note: DetallePrediccion interface doesn't have 'odds' yet in types.ts? 
+            // We should check if we updated DetallePrediccion.
+            // Actually, we updated PredictionDB, but DashboardAnalysisJSON uses DetallePrediccion.
+            // Let's cast for now or update types. 
+            // Just in case, we'll store odds in the 'pred' object in the local state.
+
+            const usefulPredictions = uiPredictions.filter((p: any) => !p.odds && p.probabilidad_estimado_porcentaje >= 60);
+
+            if (usefulPredictions.length === 0) return;
+
+            console.log(`[Odds] Checking for ${usefulPredictions.length} predictions in analysis...`);
+
+            // Context for API
+            const leaguePart = run.league_name || currentAnalysis.dashboardData?.header_partido?.titulo || 'Unknown';
+            const homeTeam = currentAnalysis.dashboardData?.tablas_comparativas?.forma?.filas?.[0]?.[0] as string || 'Home';
+            const awayTeam = currentAnalysis.dashboardData?.tablas_comparativas?.forma?.filas?.[1]?.[0] as string || 'Away';
+
+            // Note: We need the DATE. We can get it from header or run created_at (approx) or context
+            // Ideally we iterate the 'AnalysisRun' object which has fixture_id.
+            // BUT we don't have the fixture DATE easily available in VisualAnalysisResult unless we dig into dash data or fetch fixture.
+            // WORKAROUND: Use 'created_at' of the run as proxy for "upcoming" if it's recent, OR try to find date in header subtitles.
+            // Better: We have `analysisRun.fixture_id`. We can rely on `fastBatchOddsCheck` which usually requires date, BUT we can try without date if we trust the league/team match? No, date is needed for accurate matching.
+
+            // Let's assume the run is for an UPCOMING match or RECENT match.
+            // We can try to extract date from the header "Fecha: ..." usually found in context bullets?
+            // Or just use today/tomorrow if it's a new analysis.
+            const matchDate = new Date().toISOString(); // Default to now (for upcoming check)
+
+            const sportKey = mapLeagueToSportKey(leaguePart);
+
+            const checkItem = {
+                fixtureId: parseInt(run.fixture_id), // UUID or Int? DB says UUID for foreign key, but API fixture is Int. 
+                // Wait, analysis_runs.fixture_id is UUID in DB schema? No, it's text/uuid referencing the TABLE fixture_id?
+                // Let's check the code: AnalysisJob uses api_fixture_id (int). 
+                // We'll use the ID we have. The Odds Service just uses it as a key for the Map.
+                sportKey: sportKey,
+                home: homeTeam,
+                away: awayTeam,
+                date: matchDate // This might be loose, but logic has fuzzy matching
+            };
+
+            try {
+                // We just pass one item to the batch function
+                const realOddsMap = await fastBatchOddsCheck([checkItem]);
+
+                if (realOddsMap.size > 0) {
+                    const event = realOddsMap.get(checkItem.fixtureId);
+                    if (event) {
+                        let updates = 0;
+                        const updatedData = { ...currentAnalysis.dashboardData };
+
+                        // Update UI Predictions
+                        updatedData.predicciones_finales.detalle = updatedData.predicciones_finales.detalle.map((pred: any) => {
+                            if (!pred.odds) {
+                                const price = findPriceInEvent(event, pred.mercado, pred.seleccion);
+                                if (price) {
+                                    updates++;
+                                    // Persist to DB!
+                                    // We need the Prediction ID from the DB. 
+                                    // The UI 'pred' might not have the DB ID if it came purely from JSON.
+                                    // However, typical flow saves predictions to DB and THEN returns.
+                                    // Let's assume we can match by selection text if ID is missing or match by run_id + selection.
+
+                                    if (run.id && run.id !== 'temporary') {
+                                        supabase
+                                            .from('predictions')
+                                            .update({ odds: price })
+                                            .eq('analysis_run_id', run.id)
+                                            .eq('selection', pred.seleccion)
+                                            .then(({ error }) => {
+                                                if (error) console.error("Failed to persist odds:", error);
+                                            });
+                                    }
+                                    return { ...pred, odds: price };
+                                }
+                            }
+                            return pred;
+                        });
+
+                        if (updates > 0) {
+                            console.log(`[Odds] Updated ${updates} predictions with real odds.`);
+                            setCurrentAnalysis({ ...currentAnalysis, dashboardData: updatedData });
+                        }
+                    }
+                }
+
+            } catch (e) {
+                console.error("[Odds] Error fetching single match odds:", e);
+            }
+        };
+
+        fetchOdds();
+    }, [analysis?.analysisRun?.id]); // Only run when the Analysis Run ID changes (load)
+
+    if (!currentAnalysis) return null;
+
+    const data = currentAnalysis.dashboardData;
 
     console.log("[DEBUG] Report Data Received:", data);
     if (!data) console.error("[DEBUG] No dashboardData found in analysis object");
@@ -459,7 +584,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                     </div>
                     <div className="p-6 overflow-y-auto">
                         <p className="text-gray-300 mb-4">La IA generó el análisis pero no siguió el formato visual estricto. Aquí está el texto crudo:</p>
-                        <pre className="whitespace-pre-wrap text-sm text-gray-400 font-mono bg-gray-800 p-4 rounded">{analysis.analysisText}</pre>
+                        <pre className="whitespace-pre-wrap text-sm text-gray-400 font-mono bg-gray-800 p-4 rounded">{currentAnalysis.analysisText}</pre>
                     </div>
                 </div>
             </div>
@@ -481,8 +606,8 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                         {/* 0. Post-Match Analysis (Si existe) */}
                         {/* 0. Post-Match Analysis (Si existe) */}
                         <PostMatchSection
-                            analysis={analysis.analysisRun?.post_match_analysis as any}
-                            outcome={analysis.analysisRun?.actual_outcome as any}
+                            analysis={currentAnalysis.analysisRun?.post_match_analysis as any}
+                            outcome={currentAnalysis.analysisRun?.actual_outcome as any}
                             headerData={data.header_partido}
                         />
 
@@ -546,11 +671,11 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                         )}
 
                         {/* Fuentes */}
-                        {analysis.sources && analysis.sources.length > 0 && (
+                        {currentAnalysis.sources && currentAnalysis.sources.length > 0 && (
                             <div className="pt-6 border-t border-gray-800">
                                 <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Fuentes Verificadas</h4>
                                 <div className="flex flex-wrap gap-4">
-                                    {analysis.sources.map((source, i) => (
+                                    {currentAnalysis.sources.map((source, i) => (
                                         <a key={i} href={source.web?.uri} target="_blank" rel="noopener noreferrer" className="flex items-center text-xs text-blue-500 hover:text-blue-400">
                                             <LinkIcon className="w-3 h-3 mr-1" />
                                             {source.web?.title || 'Fuente Externa'}

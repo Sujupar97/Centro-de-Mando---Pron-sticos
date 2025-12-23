@@ -329,17 +329,31 @@ export const FixturesFeed: React.FC = () => {
 
     // 3.1 Iniciar Análisis de Liga (Batch)
     const handleAnalyzeLeague = (league: League) => {
+        console.log(`[Batch] Analyzing league ${league.name} with ${league.games.length} games`);
+
         const gamesToAnalyze = league.games.filter(g => {
-            const hasReport = reportsAvailable[g.fixture.id];
-            const isProcessing = ['queued', 'ingesting', 'data_ready', 'analyzing'].includes(gameJobStatus[g.fixture.id] || '');
+            const hasReport = !!reportsAvailable[g.fixture.id];
+            const status = gameJobStatus[g.fixture.id] || '';
+            const isProcessing = ['queued', 'ingesting', 'data_ready', 'analyzing', 'collecting_evidence'].includes(status); // Added collecting_evidence
             const isInQueue = analysisQueue.some(q => q.fixture.id === g.fixture.id);
             const isCurrentBatch = g.fixture.id === processingFixtureId;
 
-            return !hasReport && !isProcessing && !isInQueue && !isCurrentBatch;
+            const shouldAnalyze = !hasReport && !isProcessing && !isInQueue && !isCurrentBatch;
+
+            if (!shouldAnalyze) {
+                // Console log only for debugging if needed, but keeping it clean for now unless issues persist
+                console.log(`[Batch] Skipping ${g.teams.home.name} vs ${g.teams.away.name}: Report=${hasReport}, Status=${status}, Queue=${isInQueue}, Current=${isCurrentBatch}`);
+            }
+
+            return shouldAnalyze;
         });
+
+        console.log(`[Batch] Games to analyze: ${gamesToAnalyze.length}`);
 
         if (gamesToAnalyze.length === 0) {
             alert("No hay partidos pendientes de análisis en esta liga o ya están en proceso.");
+            // If the user insists, maybe we should check if there are failed ones?
+            // Failed ones should pass the check above if status is 'failed'.
             return;
         }
 

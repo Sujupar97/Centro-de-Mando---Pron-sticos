@@ -3,6 +3,8 @@ import { getAnalysesByDate } from '../../services/analysisService';
 import { generateDailyParlay } from '../../services/geminiService';
 import { getParlaysByDate, saveParlays, verifyParlays, ParlayDB } from '../../services/parlayService';
 import { ParlayAnalysisResult } from '../../types';
+import { fetchFixturesList } from '../../services/liveDataService';
+import { fastBatchOddsCheck, mapLeagueToSportKey, findPriceInEvent } from '../../services/oddsService';
 import { PuzzlePieceIcon, SparklesIcon, CalendarDaysIcon, ArrowPathIcon, DocumentArrowDownIcon } from '../icons/Icons';
 // import { formatDate } from '../../utils/formatters'; // Not available, using raw date string
 import { useOrganization } from '../../contexts/OrganizationContext';
@@ -102,6 +104,74 @@ export const ParlayBuilder: React.FC = () => {
             const results = await generateDailyParlay(selectedDate, matches);
 
             if (results.length > 0) {
+                // --- NEW INTEGRATION: FETCH REAL ODDS ---
+                try {
+                    setStatusMessage('Buscando cuotas reales en casas de apuestas...');
+
+                    // 1. Collect all Fixture IDs from generated parlays
+                    const fixtureIds = new Set<number>();
+                    results.forEach(p => p.legs.forEach(l => {
+                        if (l.fixtureId) fixtureIds.add(l.fixtureId);
+                    }));
+
+                    if (fixtureIds.size > 0) {
+                        // 2. Fetch official fixture details to get precise names for matching
+                        // Note: matches (analyzedMatches) passed to generateDailyParlay has run details but maybe not full team names handy structured
+                        // So we fetch again to be robust for the fuzzy matcher
+                        const fixtures = await fetchFixturesList(Array.from(fixtureIds));
+
+                        // 3. Prepare items for Batch Odds Check
+                        const checkItems = fixtures.map(f => ({
+                            fixtureId: f.fixture.id,
+                            sportKey: mapLeagueToSportKey(f.league.name),
+                            home: f.teams.home.name,
+                            away: f.teams.away.name,
+                            date: f.fixture.date // ISO string
+                        }));
+
+                        // 4. Exec Batch Check
+                        const realOddsMap = await fastBatchOddsCheck(checkItems);
+
+                        // 5. Update Legs with Real Odds
+                        let matchesFound = 0;
+                        results.forEach(parlay => {
+                            let newTotalOdds = 1;
+
+                            parlay.legs.forEach(leg => {
+                                if (leg.fixtureId && realOddsMap.has(leg.fixtureId)) {
+                                    const event = realOddsMap.get(leg.fixtureId);
+                                    // Try to find the specific market price
+                                    // We check both the exact market name and simple fallbacks
+                                    const realPrice = findPriceInEvent(event!, leg.market, leg.prediction);
+
+                                    if (realPrice) {
+                                        leg.odds = realPrice;
+                                        // Add indicator to the reasoning so user knows it is LIVE
+                                        if (!leg.reasoning.includes('✅ Cuota Real')) {
+                                            leg.reasoning += " | ✅ Cuota Real (Live)";
+                                        }
+                                        matchesFound++;
+                                    }
+                                }
+                                newTotalOdds *= leg.odds;
+                            });
+
+                            // Re-calc total odds for the parlay
+                            parlay.finalOdds = parseFloat(newTotalOdds.toFixed(2));
+                        });
+
+                        if (matchesFound > 0) {
+                            console.log(`Updated ${matchesFound} legs with real odds.`);
+                            setStatusMessage("Parlays optimizados con cuotas reales.");
+                        } else {
+                            console.log("No real odds found matching the predicted markets.");
+                        }
+                    }
+
+                } catch (oddsError) {
+                    console.error("Failed to fetch real odds, sticking to AI estimates.", oddsError);
+                }
+
                 setParlays(results); // SHOW RESULTS IMMEDIATELY
 
                 // 3. Try to Save to DB (Non-blocking)

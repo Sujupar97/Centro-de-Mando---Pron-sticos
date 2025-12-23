@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { TopPickItem } from '../../types';
 import { fetchTopPicks } from '../../services/liveDataService';
+import { supabase } from '../../services/supabaseService';
+import { mapLeagueToSportKey, fastBatchOddsCheck, findPriceInEvent } from '../../services/oddsService';
 import { TrophyIcon, ChartBarIcon, CheckCircleIcon, XCircleIcon } from '../icons/Icons';
 
 interface TopPicksProps {
@@ -54,6 +56,78 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
         loadData();
     }, [date]);
 
+    // EFECTO: Buscar Cuotas Reales si faltan (Post-Load)
+    useEffect(() => {
+        if (isLoading || topPicks.length === 0) return;
+
+        const checkAndFetchOdds = async () => {
+            const picksMissingOdds = topPicks.filter(p => !p.odds && p.result === 'Pending'); // Solo pendientes
+
+            if (picksMissingOdds.length === 0) return;
+
+            console.log(`Buscando cuotas reales para ${picksMissingOdds.length} top picks...`);
+
+            // 1. Preparar items para el batch
+            const checkItems = picksMissingOdds.map(p => ({
+                fixtureId: p.gameId,
+                sportKey: mapLeagueToSportKey(p.league),
+                home: p.teams.home.name,
+                away: p.teams.away.name,
+                date: p.date // ISO string
+            }));
+
+            try {
+                // 2. Ejecutar Batch Check
+                const realOddsMap = await fastBatchOddsCheck(checkItems);
+
+                if (realOddsMap.size > 0) {
+                    let updatesCount = 0;
+                    const updatedPicks = [...topPicks];
+
+                    for (const pick of updatedPicks) {
+                        if (!pick.odds && realOddsMap.has(pick.gameId)) {
+                            const event = realOddsMap.get(pick.gameId);
+                            const realPrice = findPriceInEvent(event!, pick.bestRecommendation.market, pick.bestRecommendation.prediction);
+
+                            if (realPrice) {
+                                pick.odds = realPrice;
+                                updatesCount++;
+
+                                // 3. PERSISTENCIA EN DB
+                                // Necesitamos encontrar el ID de la predicción.
+                                // Nota: TopPickItem tiene analysisRunId, pero la predicción es una sub-entidad.
+                                // Asumiremos que el "bestRecommendation" es la predicción principal guardada.
+                                // Para actualizarla robustamente necesitaríamos el ID de la predicción en TopPickItem.
+                                // Como parche, haremos un update basado en analysis_run_id + selection (o simplificamos si agregamos PredictionID a TopPick)
+
+                                // Mejora: fetchTopPicks debería devolver también el predictionId si es posible.
+                                // Si no, hacemos un update con where match.
+
+                                if (pick.analysisRunId) {
+                                    await supabase
+                                        .from('predictions')
+                                        .update({ odds: realPrice })
+                                        .eq('analysis_run_id', pick.analysisRunId)
+                                        .eq('selection', pick.bestRecommendation.prediction); // Match selection text
+                                }
+                            }
+                        }
+                    }
+
+                    if (updatesCount > 0) {
+                        setTopPicks(updatedPicks);
+                        console.log(`Actualizadas ${updatesCount} cuotas en Top Picks.`);
+                    }
+                }
+
+            } catch (e) {
+                console.error("Error fetching Top Pick odds:", e);
+            }
+        };
+
+        checkAndFetchOdds();
+    }, [topPicks.length, isLoading]); // Run once after load
+
     return (
         <div className="flex flex-col h-full animate-fade-in">
             <div className="mb-6">
@@ -66,7 +140,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                         <p className="text-sm text-gray-400 mt-1">
                             Mostrando únicamente el escenario de <strong>mayor probabilidad</strong> para los partidos analizados del {new Date(date + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}.
                         </p>
-                        
+
                         {/* Filters */}
                         <div className="flex gap-2 mt-3">
                             <button onClick={() => setFilter('HIGH')} className={`px-3 py-1 text-xs font-bold rounded-full border transition-all ${filter === 'HIGH' ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
@@ -78,7 +152,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                             <button onClick={() => setFilter('LOW')} className={`px-3 py-1 text-xs font-bold rounded-full border transition-all ${filter === 'LOW' ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
                                 BAJA (-60%)
                             </button>
-                             <button onClick={() => setFilter('ALL')} className={`px-3 py-1 text-xs font-bold rounded-full border transition-all ${filter === 'ALL' ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
+                            <button onClick={() => setFilter('ALL')} className={`px-3 py-1 text-xs font-bold rounded-full border transition-all ${filter === 'ALL' ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
                                 TODAS
                             </button>
                         </div>
@@ -122,12 +196,12 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
             ) : (
                 <div className="grid gap-4">
                     {filteredPicks.length === 0 ? (
-                         <div className="text-center py-10 text-gray-500">
+                        <div className="text-center py-10 text-gray-500">
                             <p>No hay pronósticos con confianza <strong>{filter}</strong> para esta fecha.</p>
-                         </div>
+                        </div>
                     ) : filteredPicks.map((pick) => (
                         <div
-                            key={pick.gameId}
+                            key={`${pick.gameId}-${pick.bestRecommendation.prediction}`}
                             onClick={() => pick.analysisRunId && onOpenReport && onOpenReport(pick.analysisRunId)}
                             className="relative bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-700 hover:border-green-accent/50 transition-all duration-300 group cursor-pointer hover:bg-gray-750"
                         >
@@ -139,6 +213,14 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                                 <div className={`absolute top-4 right-4 z-20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1 shadow-md ${pick.result === 'Won' ? 'bg-green-500/90 text-white' : 'bg-red-500/90 text-white'}`}>
                                     {pick.result === 'Won' ? <CheckCircleIcon className="w-4 h-4" /> : <XCircleIcon className="w-4 h-4" />}
                                     {pick.result === 'Won' ? 'ACIERTO' : 'FALLO'}
+                                </div>
+                            )}
+
+                            {/* Live Odds Badge (Si hay cuota real) */}
+                            {pick.odds && pick.result === 'Pending' && (
+                                <div className="absolute top-4 right-4 z-20 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-3 py-1.5 rounded-md text-sm font-black shadow-[0_0_15px_rgba(59,130,246,0.5)] animate-pulse-slow border border-blue-400 flex flex-col items-center leading-none">
+                                    <span className="text-[10px] font-normal opacity-80 mb-0.5">CUOTA</span>
+                                    <span>@{pick.odds.toFixed(2)}</span>
                                 </div>
                             )}
 
