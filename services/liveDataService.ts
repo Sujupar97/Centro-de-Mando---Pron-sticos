@@ -162,56 +162,93 @@ export const fetchTopPicks = async (date: string) => {
         ];
 
         const fixtureIds = games.map(g => g.fixture.id);
+        console.log(`[TopPicks] Found ${games.length} games, fixture IDs:`, fixtureIds.slice(0, 10), '...');
 
         if (fixtureIds.length === 0) return [];
 
-        // 2. Obtener Predicciones Relacionales (Direct SQL Select) ✅
         const { supabase } = await import('./supabaseService');
-        const { data: predictions, error } = await supabase
-            .from('predictions')
-            .select('*')
-            .in('fixture_id', fixtureIds)
-            .order('probability', { ascending: false });
 
-        if (error) throw error;
+        // 2. DEDUPLICACIÓN ROBUSTA (Estrategia Jobs -> Runs -> Predictions)
 
-        // 3. Cruzar datos (Join en memoria) - STRICT SINGLE PICK PER MATCH DEDUPLICATION
-        // We use a Map keyed by fixture_id to ensure only ONE pick (the best one) per match exists.
-        const bestPickPerMatch = new Map<number, any>();
+        // A) Obtener Jobs exitosos recientes para estos partidos
+        const { data: jobs, error: jobError } = await supabase
+            .from('analysis_jobs')
+            .select('id, api_fixture_id, created_at')
+            .in('api_fixture_id', fixtureIds)
+            .eq('status', 'done')
+            .order('created_at', { ascending: false });
 
-        predictions.forEach((pred: any) => {
-            const game = games.find(g => g.fixture.id === pred.fixture_id);
-            if (!game) return;
+        if (jobError) throw jobError;
 
-            const currentProb = pred.probability || 0;
-            const existing = bestPickPerMatch.get(pred.fixture_id);
-
-            // If no existing pick for this match OR current has higher probability, replace it.
-            if (!existing || currentProb > (existing.bestRecommendation.probability || 0)) {
-                bestPickPerMatch.set(pred.fixture_id, {
-                    gameId: pred.fixture_id,
-                    analysisRunId: pred.analysis_run_id,
-                    matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
-                    date: game.fixture.date,
-                    league: game.league.name,
-                    teams: {
-                        home: { name: game.teams.home.name, logo: game.teams.home.logo },
-                        away: { name: game.teams.away.name, logo: game.teams.away.logo }
-                    },
-                    bestRecommendation: {
-                        market: pred.market,
-                        prediction: pred.selection,
-                        probability: pred.probability,
-                        confidence: pred.confidence,
-                        reasoning: pred.reasoning
-                    },
-                    result: pred.is_won === true ? 'Won' : (pred.is_won === false ? 'Lost' : 'Pending'),
-                    odds: pred.odds // Mapped from DB
-                });
+        // B) Filtrar para quedarse solo con el ÚLTIMO Job ID por fixture
+        const latestJobIdByFixture = new Map<number, string>();
+        jobs?.forEach((job: any) => {
+            // api_fixture_id es numérico según schema, pero aseguramos
+            const fid = Number(job.api_fixture_id);
+            if (!latestJobIdByFixture.has(fid)) {
+                latestJobIdByFixture.set(fid, job.id);
             }
         });
 
-        const topPicks = Array.from(bestPickPerMatch.values());
+        const validJobIds = Array.from(latestJobIdByFixture.values());
+
+        if (validJobIds.length === 0) return [];
+
+        // C) Obtener los Run IDs asociados a esos Jobs únicos
+        const { data: runs, error: runError } = await supabase
+            .from('analysis_runs')
+            .select('id, job_id')
+            .in('job_id', validJobIds);
+
+        if (runError) throw runError;
+
+        const validRunIds = runs?.map((r: any) => r.id) || [];
+
+        if (validRunIds.length === 0) return [];
+
+        console.log(`[TopPicks] Found ${validJobIds.length} unique jobs -> ${validRunIds.length} valid runs.`);
+
+        // 3. Obtener Predicciones de esos Runs UNICOS
+        const { data: predictions, error } = await supabase
+            .from('predictions')
+            .select('*')
+            .in('analysis_run_id', validRunIds)
+            .order('probability', { ascending: false });
+
+        console.log(`[TopPicks] Predictions query result:`, { found: predictions?.length || 0, error: error?.message });
+
+        if (error) throw error;
+
+        // 4. Cruzar datos (Join en memoria)
+        const topPicks: TopPickItem[] = [];
+
+        predictions.forEach((pred: any) => {
+            // Encontrar el juego usando el api_fixture_id del run (o guardado en pred si existe, pero mejor usar el map inverso o buscar en games)
+            // Pred tiene fixture_id (asumimos que es el api id)
+            const game = games.find(g => g.fixture.id === pred.fixture_id);
+            if (!game) return;
+
+            topPicks.push({
+                gameId: pred.fixture_id,
+                analysisRunId: pred.analysis_run_id,
+                matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
+                date: game.fixture.date,
+                league: game.league.name,
+                teams: {
+                    home: { name: game.teams.home.name, logo: game.teams.home.logo },
+                    away: { name: game.teams.away.name, logo: game.teams.away.logo }
+                },
+                bestRecommendation: {
+                    market: pred.market,
+                    prediction: pred.selection,
+                    probability: pred.probability,
+                    confidence: pred.confidence,
+                    reasoning: pred.reasoning
+                },
+                result: pred.is_won === true ? 'Won' : (pred.is_won === false ? 'Lost' : 'Pending'),
+                odds: pred.odds // Mapped from DB
+            });
+        });
 
         // Sort by probability desc
         return topPicks.sort((a: any, b: any) => (b.bestRecommendation.probability || 0) - (a.bestRecommendation.probability || 0));

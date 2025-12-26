@@ -204,12 +204,23 @@ export interface AnalisisEscenario {
     nombre: string;
     descripcion: string;
     probabilidad_aproximada: string;
+    implicacion_apuestas?: string; // New field
 }
 
 export interface AnalisisSeccion {
     titulo: string;
-    bullets: string[];
+    bullets?: string[];
     escenarios?: AnalisisEscenario[];
+}
+
+export interface VeredictoAnalista {
+    decision: "APOSTAR" | "OBSERVAR" | "EVITAR";
+    titulo_accion: string;
+    seleccion_clave?: string;
+    probabilidad?: number;
+    nivel_confianza?: string;
+    razon_principal: string;
+    riesgo_principal: string;
 }
 
 export interface DetallePrediccion {
@@ -222,6 +233,7 @@ export interface DetallePrediccion {
         contexto_competitivo: string[];
         conclusion: string;
     };
+    odds?: number | null;
 }
 
 export interface GraficoSerie {
@@ -240,6 +252,9 @@ export interface GraficoSugerido {
 }
 
 export interface DashboardAnalysisJSON {
+    // New Verdict Section
+    veredicto_analista?: VeredictoAnalista;
+
     header_partido: {
         titulo: string;
         subtitulo: string;
@@ -258,6 +273,9 @@ export interface DashboardAnalysisJSON {
         alineaciones_y_bajas: AnalisisSeccion;
         factores_situacionales: AnalisisSeccion;
         escenarios_de_partido?: AnalisisSeccion;
+        analisis_escenarios?: AnalisisSeccion; // New Explicit Scenario Section
+        impacto_arbitro?: AnalisisSeccion; // Explicit Referee Section
+        analisis_tactico_formaciones?: AnalisisSeccion; // Explicit Formation Section
     };
     graficos_sugeridos: GraficoSugerido[];
     predicciones_finales: {

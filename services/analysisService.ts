@@ -193,6 +193,32 @@ export const getAnalysisResultByRunId = async (runId: string): Promise<VisualAna
     };
 };
 
+/**
+ * Obtiene el resultado (Reporte) por Fixture ID desde la tabla 'analisis' (legacy cache).
+ * Útil para Top Picks donde las predicciones no tienen analysis_run_id.
+ */
+export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<VisualAnalysisResult | null> => {
+    const { data, error } = await supabase
+        .from('analisis')
+        .select('resultado_analisis')
+        .eq('partido_id', fixtureId)
+        .single();
+
+    if (error || !data) {
+        console.error("Error fetching analysis by fixture ID:", error);
+        return null;
+    }
+
+    // El formato en 'analisis' tiene la estructura { dashboardData: {...} }
+    const result = data.resultado_analisis as any;
+
+    return {
+        analysisText: result?.dashboardData?.resumen_ejecutivo?.frase_principal || "Análisis completado.",
+        dashboardData: result?.dashboardData as DashboardAnalysisJSON,
+        analysisRun: undefined // No hay run asociado en esta tabla legacy
+    };
+};
+
 
 /**
  * Invoca el proceso de verificación de pronósticos (Post-Match Analysis).

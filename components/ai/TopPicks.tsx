@@ -8,7 +8,7 @@ import { TrophyIcon, ChartBarIcon, CheckCircleIcon, XCircleIcon } from '../icons
 
 interface TopPicksProps {
     date: string;
-    onOpenReport?: (runId: string) => void;
+    onOpenReport?: (runId: string | null, fixtureId: number) => void;
 }
 
 // Componente de Círculo de Probabilidad
@@ -29,14 +29,28 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [filter, setFilter] = useState<'HIGH' | 'MEDIUM' | 'LOW' | 'ALL'>('HIGH');
+    const [showOnlyHighConfidence, setShowOnlyHighConfidence] = useState(false);
 
     const filteredPicks = topPicks.filter(pick => {
         const prob = pick.bestRecommendation.probability;
         if (filter === 'HIGH') return prob >= 80;
-        if (filter === 'MEDIUM') return prob >= 60 && prob < 80;
+        if (filter === 'MEDIUM') {
+            const inRange = prob >= 60 && prob < 80;
+            if (showOnlyHighConfidence) {
+                // Normalizamos a minúsculas para comparar por seguridad, aunque la UI muestra "Alta"
+                const conf = pick.bestRecommendation.confidence?.toLowerCase() || '';
+                return inRange && (conf === 'alta' || conf === 'high');
+            }
+            return inRange;
+        }
         if (filter === 'LOW') return prob < 60;
         return true;
     });
+
+    // Reset secondary filter when changing main filter
+    useEffect(() => {
+        if (filter !== 'MEDIUM') setShowOnlyHighConfidence(false);
+    }, [filter]);
 
     useEffect(() => {
         const loadData = async () => {
@@ -93,16 +107,6 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                                 pick.odds = realPrice;
                                 updatesCount++;
 
-                                // 3. PERSISTENCIA EN DB
-                                // Necesitamos encontrar el ID de la predicción.
-                                // Nota: TopPickItem tiene analysisRunId, pero la predicción es una sub-entidad.
-                                // Asumiremos que el "bestRecommendation" es la predicción principal guardada.
-                                // Para actualizarla robustamente necesitaríamos el ID de la predicción en TopPickItem.
-                                // Como parche, haremos un update basado en analysis_run_id + selection (o simplificamos si agregamos PredictionID a TopPick)
-
-                                // Mejora: fetchTopPicks debería devolver también el predictionId si es posible.
-                                // Si no, hacemos un update con where match.
-
                                 if (pick.analysisRunId) {
                                     await supabase
                                         .from('predictions')
@@ -142,7 +146,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                         </p>
 
                         {/* Filters */}
-                        <div className="flex gap-2 mt-3">
+                        <div className="flex flex-wrap items-center gap-2 mt-3">
                             <button onClick={() => setFilter('HIGH')} className={`px-3 py-1 text-xs font-bold rounded-full border transition-all ${filter === 'HIGH' ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
                                 ALTA (+80%)
                             </button>
@@ -155,6 +159,19 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                             <button onClick={() => setFilter('ALL')} className={`px-3 py-1 text-xs font-bold rounded-full border transition-all ${filter === 'ALL' ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
                                 TODAS
                             </button>
+
+                            {/* Secondary Filter for MEDIUM */}
+                            {filter === 'MEDIUM' && (
+                                <div className="w-full md:w-auto mt-2 md:mt-0 md:ml-2 md:pl-2 md:border-l border-gray-600 flex items-center animate-fade-in">
+                                    <button
+                                        onClick={() => setShowOnlyHighConfidence(!showOnlyHighConfidence)}
+                                        className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-full border transition-all ${showOnlyHighConfidence ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-500'}`}
+                                    >
+                                        {showOnlyHighConfidence && <CheckCircleIcon className="w-3 h-3" />}
+                                        SOLO CONFIANZA ALTA
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -197,12 +214,12 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                 <div className="grid gap-4">
                     {filteredPicks.length === 0 ? (
                         <div className="text-center py-10 text-gray-500">
-                            <p>No hay pronósticos con confianza <strong>{filter}</strong> para esta fecha.</p>
+                            <p>No hay pronósticos con confianza <strong>{filter}</strong> {showOnlyHighConfidence ? 'y ALTA CONFIANZA' : ''} para esta fecha.</p>
                         </div>
                     ) : filteredPicks.map((pick) => (
                         <div
                             key={`${pick.gameId}-${pick.bestRecommendation.prediction}`}
-                            onClick={() => pick.analysisRunId && onOpenReport && onOpenReport(pick.analysisRunId)}
+                            onClick={() => onOpenReport && onOpenReport(pick.analysisRunId || null, pick.gameId)}
                             className="relative bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-700 hover:border-green-accent/50 transition-all duration-300 group cursor-pointer hover:bg-gray-750"
                         >
                             {/* Barra lateral indicadora de confianza */}

@@ -2,7 +2,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { VisualAnalysisResult, DashboardAnalysisJSON, TablaComparativaData, AnalisisSeccion, DetallePrediccion, GraficoSugerido, PredictionDB } from '../../types';
-import { XMarkIcon, TrophyIcon, ChartBarIcon, ListBulletIcon, LightBulbIcon, ExclamationTriangleIcon, LinkIcon } from '../icons/Icons';
+import { XMarkIcon, TrophyIcon, ChartBarIcon, ListBulletIcon, LightBulbIcon, ExclamationTriangleIcon, LinkIcon, EyeIcon } from '../icons/Icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../services/supabaseService';
 import { mapLeagueToSportKey, fastBatchOddsCheck, findPriceInEvent } from '../../services/oddsService';
@@ -447,15 +447,197 @@ const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
     );
 };
 
+// --- VERDICT SUMMARY COMPONENT (REPLACES TRAFFIC LIGHT) ---
+
+import { VeredictoAnalista } from '../../types';
+
+// Helper for Probability Ring
+const ProbabilityRing: React.FC<{ percentage: number; colorClass: string }> = ({ percentage, colorClass }) => {
+    const radius = 30;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+    return (
+        <div className="relative flex items-center justify-center w-24 h-24 mb-6">
+            <svg className="transform -rotate-90 w-full h-full" viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r={radius} fill="transparent" stroke="rgba(255,255,255,0.1)" strokeWidth="6" />
+                <circle
+                    cx="40"
+                    cy="40"
+                    r={radius}
+                    fill="transparent"
+                    stroke="currentColor"
+                    strokeWidth="6"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round"
+                    className={`${colorClass} transition-all duration-1000 ease-out`}
+                />
+            </svg>
+            <div className="absolute flex flex-col items-center">
+                <span className={`text-2xl font-black text-white`}>{percentage}%</span>
+                <span className="text-[9px] uppercase tracking-widest text-gray-400">Prob.</span>
+            </div>
+        </div>
+    );
+};
+
+const VerdictSummary: React.FC<{
+    data: VeredictoAnalista;
+    onViewFull: () => void;
+    headerData?: any;
+}> = ({ data, onViewFull, headerData }) => {
+
+    // Determine visual style based on decision
+    const isBet = data.decision === 'APOSTAR';
+    const isAvoid = data.decision === 'EVITAR';
+    const isWatch = data.decision === 'OBSERVAR';
+
+    // Theme Config
+    let theme = {
+        bg: "bg-slate-900",
+        border: "border-gray-600",
+        accent: "text-gray-400",
+        iconBg: "bg-gray-700",
+        mainText: "text-gray-200",
+        button: "bg-gray-700 hover:bg-gray-600",
+        glow: "",
+        progressColor: "text-gray-500"
+    };
+
+    if (isBet) {
+        theme = {
+            bg: "bg-gradient-to-br from-emerald-900/80 via-slate-900 to-slate-900",
+            border: "border-emerald-500",
+            accent: "text-emerald-400",
+            iconBg: "bg-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.2)]",
+            mainText: "text-white",
+            button: "bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-500/20",
+            glow: "shadow-[0_0_50px_rgba(16,185,129,0.1)]",
+            progressColor: "text-emerald-500"
+        };
+    } else if (isAvoid) {
+        theme = {
+            bg: "bg-gradient-to-br from-red-900/30 via-slate-900 to-slate-900",
+            border: "border-red-500",
+            accent: "text-red-400",
+            iconBg: "bg-red-500/10",
+            mainText: "text-gray-300",
+            button: "bg-slate-700 hover:bg-slate-600 border border-slate-600",
+            glow: "",
+            progressColor: "text-red-500"
+        };
+    } else if (isWatch) {
+        theme = {
+            bg: "bg-gradient-to-br from-blue-900/40 via-slate-900 to-slate-900",
+            border: "border-blue-400",
+            accent: "text-blue-400",
+            iconBg: "bg-blue-500/20",
+            mainText: "text-blue-100",
+            button: "bg-blue-600 hover:bg-blue-500",
+            glow: "",
+            progressColor: "text-blue-400"
+        };
+    }
+
+    // Default probability if missing (backwards compatibility)
+    const probability = data.probabilidad || (isBet ? 75 : 40);
+    const confidence = data.nivel_confianza || (isBet ? "ALTA" : "BAJA");
+
+    return (
+        <div className={`flex flex-col min-h-full ${theme.bg} text-white p-6 md:p-12 animate-fade-in relative overflow-hidden`}>
+            {/* Background Glow */}
+            <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-full h-1/2 ${theme.glow} pointer-events-none fixed-glow`} />
+
+            {/* Header Mini */}
+            <div className="mb-4 text-center relative z-10 opacity-80 hover:opacity-100 transition-opacity">
+                <span className="text-blue-400 text-xs font-bold uppercase tracking-widest mb-1 block">BetCommand Intelligence</span>
+                <h2 className="text-lg md:text-xl font-bold text-gray-300 truncate">{headerData?.titulo}</h2>
+                <p className="text-gray-500 text-xs">{headerData?.subtitulo}</p>
+            </div>
+
+            {/* MAIN DECISION CARD */}
+            <div className={`flex-grow flex flex-col justify-center items-center text-center relative z-10 max-w-3xl mx-auto w-full border-t-2 ${theme.border} bg-black/40 rounded-3xl p-8 md:p-10 mb-8 backdrop-blur-md shadow-2xl`}>
+
+                <div className="flex flex-row items-center gap-8 mb-6">
+                    {/* Icon / Indicator or Progress Ring */}
+                    {isBet ? (
+                        <ProbabilityRing percentage={probability} colorClass={theme.progressColor} />
+                    ) : (
+                        <div className={`w-20 h-20 rounded-full ${theme.iconBg} flex items-center justify-center mb-6`}>
+                            {isAvoid && <ExclamationTriangleIcon className="w-10 h-10 text-red-500" />}
+                            {isWatch && <EyeIcon className="w-10 h-10 text-blue-400" />}
+                        </div>
+                    )}
+
+                    {/* Confidence Label (Right of ring) */}
+                    {confidence && (
+                        <div className="flex flex-col items-start hidden md:flex">
+                            <span className="text-xs text-gray-400 uppercase tracking-wider mb-1">Nivel de Confianza</span>
+                            <span className={`px-3 py-1 rounded text-xs font-black uppercase tracking-widest border ${isBet ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' : 'border-gray-600 bg-gray-800 text-gray-400'}`}>
+                                {confidence}
+                            </span>
+                        </div>
+                    )}
+                </div>
+
+
+                {/* Main Action Title */}
+                <h1 className={`text-3xl md:text-5xl font-black uppercase mb-4 tracking-tight ${theme.accent} drop-shadow-lg`}>
+                    {data.titulo_accion || (isBet ? "OPORTUNIDAD CLARA" : "NO APOSTAR")}
+                </h1>
+
+                {/* Selection (Only if Bet) */}
+                {isBet && data.seleccion_clave && (
+                    <div className="mb-6 bg-emerald-500/10 px-8 py-5 rounded-xl border border-emerald-500/30 w-full max-w-xl shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+                        <span className="block text-emerald-500/70 text-[10px] font-bold uppercase mb-2 tracking-widest">Apuesta Recomendada</span>
+                        <span className="text-2xl md:text-4xl font-black text-white block leading-none">{data.seleccion_clave}</span>
+                    </div>
+                )}
+
+                {/* Reasoning */}
+                <p className={`text-lg font-medium leading-relaxed max-w-xl mx-auto ${theme.mainText} italic opacity-90`}>
+                    "{data.razon_principal}"
+                </p>
+
+                {/* Risk Warning (If Avoid or Low Prob) */}
+                {(isAvoid || (isBet && probability < 80)) && (
+                    <div className={`mt-6 text-xs px-4 py-2 rounded flex items-center gap-2 ${isAvoid ? 'text-red-300 bg-red-900/20' : 'text-yellow-200 bg-yellow-900/20'}`}>
+                        <ExclamationTriangleIcon className="w-4 h-4" />
+                        <span><span className="font-bold">Riesgo:</span> {data.riesgo_principal || "Volatilidad detectada."}</span>
+                    </div>
+                )}
+            </div>
+
+            {/* ACTION BUTTON */}
+            {/* ACTION BUTTON - Sticky Bottom for Mobile */}
+            <div className={`text-center relative z-20 pb-6 pt-4 mt-auto md:mt-8 sticky bottom-0 -mx-6 md:mx-0 px-6 md:px-0 bg-gradient-to-t from-slate-900 via-slate-900/95 to-transparent`}>
+                <p className="text-gray-500 text-xs mb-3 uppercase tracking-widest opacity-60">
+                    {isBet ? "Ver análisis detallado" : "Explorar datos"}
+                </p>
+                <button
+                    onClick={onViewFull}
+                    className={`group relative inline-flex items-center justify-center px-12 py-4 font-bold text-white transition-all duration-200 ${theme.button} font-pj rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-600 w-full md:w-auto text-lg shadow-xl`}
+                >
+                    {isBet ? "VER INFORME COMPLETO" : "VER ANÁLISIS"}
+                    {isBet && <div className="absolute -inset-3 rounded-xl bg-emerald-400 opacity-20 group-hover:opacity-40 blur-lg transition-opacity duration-200" />}
+                </button>
+            </div>
+        </div>
+    );
+};
+
 // --- COMPONENTE PRINCIPAL ---
 
 export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | null; onClose: () => void }> = ({ analysis, onClose }) => {
     // Local state to handle real-time updates (like odds) without mutating props directly (though standard React props are read-only)
     // We wrap the analysis data in state to trigger re-renders when odds are fetched.
     const [currentAnalysis, setCurrentAnalysis] = useState<VisualAnalysisResult | null>(analysis);
+    const [showFullReport, setShowFullReport] = useState(false);
 
     useEffect(() => {
         setCurrentAnalysis(analysis);
+        setShowFullReport(false);
     }, [analysis]);
 
     // EFFECT: Fetch Real Odds for High Confidence Predictions
@@ -591,111 +773,144 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
         );
     }
 
+    const isStructured = typeof analysis !== 'string';
+    // --- UPDATED LOGIC FOR VERDICT VIEW ---
+    const hasVerdict = !!data.veredicto_analista;
+    const showVerdictView = isStructured && hasVerdict && !showFullReport;
+
     return createPortal(
         <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-0 md:p-6 animate-fade-in backdrop-blur-md" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="bg-slate-900 w-full h-full md:h-[90vh] md:max-w-6xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-white/10" onClick={(e) => e.stopPropagation()}>
 
-                {/* Scrollable Container */}
-                <div className="flex-grow overflow-y-auto custom-scrollbar">
-
-                    {/* Header */}
-                    {data.header_partido && <HeaderSection data={data.header_partido} />}
-
-                    <div className="p-4 md:p-8 space-y-8">
-
-                        {/* 0. Post-Match Analysis (Si existe) */}
-                        {/* 0. Post-Match Analysis (Si existe) */}
-                        <PostMatchSection
-                            analysis={currentAnalysis.analysisRun?.post_match_analysis as any}
-                            outcome={currentAnalysis.analysisRun?.actual_outcome as any}
+                {showVerdictView ? (
+                    <div className="relative h-full flex flex-col overflow-y-auto custom-scrollbar bg-slate-900">
+                        <div className="absolute top-4 right-4 z-50">
+                            <button onClick={onClose} className="p-2 bg-black/40 hover:bg-black/60 rounded-full text-white transition-colors backdrop-blur-sm">
+                                <XMarkIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <VerdictSummary
+                            data={data.veredicto_analista!}
+                            onViewFull={() => setShowFullReport(true)}
                             headerData={data.header_partido}
                         />
+                    </div>
+                ) : (
+                    <>
+                        <div className="flex-grow overflow-y-auto custom-scrollbar">
 
-                        {/* 1. Resumen Ejecutivo */}
-                        {data.resumen_ejecutivo && <ExecutiveSummary data={data.resumen_ejecutivo} />}
+                            {/* Header */}
+                            {data.header_partido && <HeaderSection data={data.header_partido} />}
 
-                        {/* 2. Grid de Tablas y Gráficos */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div className="space-y-6">
-                                <h3 className="text-xl font-bold text-white flex items-center"><ChartBarIcon className="w-5 h-5 mr-2 text-green-accent" /> Datos Clave</h3>
-                                {data.tablas_comparativas && Object.values(data.tablas_comparativas).map((tabla, idx) => (
-                                    <DynamicTable key={idx} data={tabla} />
-                                ))}
-                            </div>
-                            <div className="space-y-6">
-                                <h3 className="text-xl font-bold text-white flex items-center"><TrophyIcon className="w-5 h-5 mr-2 text-blue-400" /> Visualización</h3>
-                                {data.graficos_sugeridos && data.graficos_sugeridos.map((grafico, idx) => (
-                                    <VisualChart key={idx} data={grafico} />
-                                ))}
+                            <div className="p-4 md:p-8 space-y-8">
+
+                                {/* 0. Post-Match Analysis (Si existe) */}
+                                <PostMatchSection
+                                    analysis={currentAnalysis.analysisRun?.post_match_analysis as any}
+                                    outcome={currentAnalysis.analysisRun?.actual_outcome as any}
+                                    headerData={data.header_partido}
+                                />
+
+                                {/* 1. Resumen Ejecutivo */}
+                                {data.resumen_ejecutivo && <ExecutiveSummary data={data.resumen_ejecutivo} />}
+
+                                {/* 2. Grid de Tablas y Visuales */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    <div className="space-y-6">
+                                        <h3 className="text-xl font-bold text-white flex items-center"><ChartBarIcon className="w-5 h-5 mr-2 text-green-accent" /> Datos Clave</h3>
+                                        {data.tablas_comparativas && Object.values(data.tablas_comparativas).map((tabla, idx) => (
+                                            <DynamicTable key={idx} data={tabla} />
+                                        ))}
+                                    </div>
+                                    <div className="space-y-6">
+                                        <h3 className="text-xl font-bold text-white flex items-center"><TrophyIcon className="w-5 h-5 mr-2 text-blue-400" /> Visualización</h3>
+                                        {data.graficos_sugeridos && data.graficos_sugeridos.map((grafico, idx) => (
+                                            <VisualChart key={idx} data={grafico} />
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* 3. Análisis Táctico y Escenarios */}
+                                {data.analisis_detallado && (
+                                    <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
+                                        <h3 className="text-2xl font-bold text-white mb-6 border-b border-gray-700 pb-2">Análisis Profundo</h3>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                                            <AnalysisBlock section={data.analisis_detallado.contexto_competitivo} />
+                                            <AnalysisBlock section={data.analisis_detallado.analisis_tactico_formaciones || data.analisis_detallado.estilo_y_tactica} />
+                                            <AnalysisBlock section={data.analisis_detallado.impacto_arbitro} icon={<ExclamationTriangleIcon className="w-4 h-4 mr-2 text-yellow-500" />} />
+                                            <AnalysisBlock section={data.analisis_detallado.alineaciones_y_bajas} icon={<div className="w-4 h-4 mr-2 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold">!</div>} />
+                                        </div>
+
+                                        {/* NUEVA SECCIÓN: ESCENARIOS DETALLADOS */}
+                                        {(data.analisis_detallado.analisis_escenarios || data.analisis_detallado.escenarios_de_partido) && (
+                                            <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 p-6 rounded-lg border border-blue-500/30">
+                                                <h4 className="text-lg font-bold text-blue-300 mb-4 flex items-center">
+                                                    <LightBulbIcon className="w-5 h-5 mr-2" />
+                                                    {data.analisis_detallado.analisis_escenarios?.titulo || "Escenarios de Partido"}
+                                                </h4>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {(data.analisis_detallado.analisis_escenarios?.escenarios || data.analisis_detallado.escenarios_de_partido?.escenarios || []).map((esc, idx) => (
+                                                        <div key={idx} className="bg-slate-800 p-4 rounded-lg border-l-4 border-blue-500 shadow-md">
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <h5 className="font-bold text-white text-sm uppercase tracking-wide">{esc.nombre}</h5>
+                                                                <span className="text-xs bg-blue-900 text-blue-200 px-2 py-1 rounded font-mono">{esc.probabilidad_aproximada}</span>
+                                                            </div>
+                                                            <p className="text-gray-300 text-sm mb-3">{esc.descripcion}</p>
+                                                            {esc.implicacion_apuestas && (
+                                                                <div className="bg-blue-500/10 p-2 rounded text-xs text-blue-200 mt-2">
+                                                                    <strong className="text-blue-400">Apuesta:</strong> {esc.implicacion_apuestas}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* 4. Predicciones Finales */}
+                                {data.predicciones_finales && data.predicciones_finales.detalle && (
+                                    <div>
+                                        <h3 className="text-2xl font-bold text-white mb-6 flex items-center">
+                                            <TrophyIcon className="w-8 h-8 text-green-accent mr-3" />
+                                            Predicciones del Modelo
+                                        </h3>
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            {data.predicciones_finales.detalle.map((pred, idx) => (
+                                                <PredictionCard key={pred.id || idx} pred={pred} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 5. Advertencias */}
+                                {data.advertencias && data.advertencias.bullets && data.advertencias.bullets.length > 0 && (
+                                    <div className="bg-yellow-900/20 border border-yellow-700/50 p-4 rounded-lg flex items-start">
+                                        <ExclamationTriangleIcon className="w-6 h-6 text-yellow-500 mr-3 flex-shrink-0" />
+                                        <div>
+                                            <h4 className="font-bold text-yellow-500 mb-1">{data.advertencias.titulo}</h4>
+                                            <ul className="list-disc pl-4 text-yellow-200/80 text-sm">
+                                                {data.advertencias.bullets.map((w, i) => <li key={i}>{w}</li>)}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
-                        {/* 3. Análisis Detallado (Texto Estructurado) */}
-                        {data.analisis_detallado && (
-                            <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-                                <h3 className="text-2xl font-bold text-white mb-6 border-b border-gray-700 pb-2">Análisis Profundo</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <AnalysisBlock section={data.analisis_detallado.contexto_competitivo} />
-                                    <AnalysisBlock section={data.analisis_detallado.estilo_y_tactica} />
-                                    <AnalysisBlock section={data.analisis_detallado.alineaciones_y_bajas} />
-                                    <AnalysisBlock section={data.analisis_detallado.factores_situacionales} />
-                                </div>
-
-                            </div>
-                        )}
-
-                        {/* 4. Predicciones Finales (La Carne) */}
-                        {data.predicciones_finales && data.predicciones_finales.detalle && (
-                            <div>
-                                <h3 className="text-2xl font-bold text-white mb-6 flex items-center">
-                                    <TrophyIcon className="w-8 h-8 text-green-accent mr-3" />
-                                    Predicciones del Modelo
-                                </h3>
-                                {data.predicciones_finales.detalle.map((pred, idx) => (
-                                    <PredictionCard key={pred.id || idx} pred={pred} />
-                                ))}
-                            </div>
-                        )}
-
-                        {/* 5. Advertencias */}
-                        {data.advertencias && data.advertencias.bullets && data.advertencias.bullets.length > 0 && (
-                            <div className="bg-yellow-900/20 border border-yellow-700/50 p-4 rounded-lg flex items-start">
-                                <ExclamationTriangleIcon className="w-6 h-6 text-yellow-500 mr-3 flex-shrink-0" />
-                                <div>
-                                    <h4 className="font-bold text-yellow-500 mb-1">{data.advertencias.titulo}</h4>
-                                    <ul className="list-disc pl-4 text-yellow-200/80 text-sm">
-                                        {data.advertencias.bullets.map((w, i) => <li key={i}>{w}</li>)}
-                                    </ul>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Fuentes */}
-                        {currentAnalysis.sources && currentAnalysis.sources.length > 0 && (
-                            <div className="pt-6 border-t border-gray-800">
-                                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Fuentes Verificadas</h4>
-                                <div className="flex flex-wrap gap-4">
-                                    {currentAnalysis.sources.map((source, i) => (
-                                        <a key={i} href={source.web?.uri} target="_blank" rel="noopener noreferrer" className="flex items-center text-xs text-blue-500 hover:text-blue-400">
-                                            <LinkIcon className="w-3 h-3 mr-1" />
-                                            {source.web?.title || 'Fuente Externa'}
-                                        </a>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Close Button Fixed Footer (Mobile Friendly) */}
-                <div className="p-4 border-t border-gray-800 bg-gray-900 flex justify-end">
-                    <button
-                        onClick={onClose}
-                        className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded-lg transition-colors"
-                    >
-                        Cerrar Informe
-                    </button>
-                </div>
+                        {/* Footer Actions */}
+                        <div className="p-4 border-t border-gray-800 bg-gray-900 flex justify-end">
+                            <button
+                                onClick={onClose}
+                                className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded-lg transition-colors"
+                            >
+                                Cerrar Informe
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
         </div>,
         document.body

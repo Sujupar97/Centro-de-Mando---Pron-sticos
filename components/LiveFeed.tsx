@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { DashboardData, League, Game, VisualAnalysisResult, Country, AnalysisJob } from '../types';
 import { fetchFixturesByDate, fetchLiveFixtures } from '../services/liveDataService';
-import { createAnalysisJob, getAnalysisJob, getAnalysisResult, getAnalysisResultByRunId } from '../services/analysisService';
+import { createAnalysisJob, getAnalysisJob, getAnalysisResult, getAnalysisResultByRunId, getAnalysisResultByFixtureId } from '../services/analysisService';
 import { useAnalysisCache } from '../hooks/useAnalysisCache';
 import { BrainIcon, CalendarDaysIcon, CheckCircleIcon, ChevronDownIcon, ChevronUpIcon, SparklesIcon, ArrowPathIcon, ListBulletIcon, TrophyIcon, SignalIcon } from './icons/Icons';
 import { getCurrentDateInBogota } from '../utils/dateUtils';
@@ -58,58 +58,59 @@ const AnalysisGameCard: React.FC<{
                 </div>
 
                 {/* Teams & Score */}
-                <div className="flex-1 flex items-center justify-between w-full gap-4">
-                    <div className="flex items-center gap-3 flex-1 justify-end text-right">
-                        <span className="text-white font-bold text-sm md:text-base leading-tight">{game.teams.home.name}</span>
-                        <img src={game.teams.home.logo} alt={game.teams.home.name} className="w-8 h-8 object-contain" />
+                <div className="flex-1 flex items-center justify-between w-full gap-2 md:gap-4 overflow-hidden">
+                    <div className="flex items-center gap-2 md:gap-3 flex-1 justify-end text-right min-w-0">
+                        <span className="text-white font-bold text-sm md:text-base leading-tight truncate">{game.teams.home.name}</span>
+                        <img src={game.teams.home.logo} alt={game.teams.home.name} className="w-6 h-6 md:w-8 md:h-8 object-contain shrink-0" />
                     </div>
 
-                    <div className="px-3 py-1 bg-slate-950/50 rounded-lg border border-white/5 min-w-[60px] text-center">
+                    <div className="px-2 md:px-3 py-1 bg-slate-950/50 rounded-lg border border-white/5 min-w-[50px] md:min-w-[60px] text-center shrink-0">
                         {scoreAvailable ? (
-                            <span className="text-xl font-display font-bold text-white tracking-widest">{game.goals.home}-{game.goals.away}</span>
+                            <span className="text-lg md:text-xl font-display font-bold text-white tracking-widest">{game.goals.home}-{game.goals.away}</span>
                         ) : (
-                            <span className="text-lg font-display font-bold text-slate-600">VS</span>
+                            <span className="text-base md:text-lg font-display font-bold text-slate-600">VS</span>
                         )}
                     </div>
 
-                    <div className="flex items-center gap-3 flex-1 justify-start text-left">
-                        <img src={game.teams.away.logo} alt={game.teams.away.name} className="w-8 h-8 object-contain" />
-                        <span className="text-white font-bold text-sm md:text-base leading-tight">{game.teams.away.name}</span>
+                    <div className="flex items-center gap-2 md:gap-3 flex-1 justify-start text-left min-w-0">
+                        <img src={game.teams.away.logo} alt={game.teams.away.name} className="w-6 h-6 md:w-8 md:h-8 object-contain shrink-0" />
+                        <span className="text-white font-bold text-sm md:text-base leading-tight truncate">{game.teams.away.name}</span>
                     </div>
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-2 w-full md:w-auto mt-2 md:mt-0 justify-end border-t md:border-t-0 border-white/5 pt-2 md:pt-0">
+                <div className="flex items-center gap-2 w-full md:w-auto mt-2 md:mt-0 justify-end md:justify-start border-t md:border-t-0 border-white/5 pt-2 md:pt-0 shrink-0">
                     <button
                         onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
-                        className="p-2 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
+                        className="p-2 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors shrink-0"
                         title="Ver detalles"
                     >
                         {isDetailsExpanded ? <ChevronUpIcon className="w-5 h-5" /> : <ChevronDownIcon className="w-5 h-5" />}
                     </button>
 
                     {isProcessing ? (
-                        <button disabled className="bg-slate-700/50 text-slate-400 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 cursor-wait border border-white/5">
+                        <button disabled className="bg-slate-700/50 text-slate-400 px-3 md:px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 cursor-wait border border-white/5 shrink-0">
                             <div className="w-3 h-3 border-2 border-brand border-t-transparent rounded-full animate-spin"></div>
-                            analizando...
+                            <span className="hidden md:inline">analizando...</span>
+                            <span className="md:hidden">...</span>
                         </button>
                     ) : hasReport ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0">
                             <button
                                 onClick={onViewReport}
-                                className="bg-brand/10 hover:bg-brand/20 text-brand border border-brand/50 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shadow-[0_0_10px_rgba(16,185,129,0.1)] hover:shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                                className="bg-brand/10 hover:bg-brand/20 text-brand border border-brand/50 px-3 md:px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shadow-[0_0_10px_rgba(16,185,129,0.1)] hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] shrink-0"
                             >
-                                <CheckCircleIcon className="w-4 h-4" /> INFORME
+                                <CheckCircleIcon className="w-4 h-4" /> <span className="hidden sm:inline">INFORME</span><span className="sm:hidden">VER</span>
                             </button>
                             {isAdmin && (
-                                <button onClick={(e) => { e.stopPropagation(); onAnalyze(); }} className="p-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-colors">
+                                <button onClick={(e) => { e.stopPropagation(); onAnalyze(); }} className="p-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-colors shrink-0" title="Regenerar Análisis">
                                     <ArrowPathIcon className="w-4 h-4" />
                                 </button>
                             )}
                         </div>
                     ) : isFailed ? (
                         isAdmin && (
-                            <button onClick={(e) => { e.stopPropagation(); onAnalyze(); }} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/50 px-4 py-2 rounded-lg text-xs font-bold transition-colors">
+                            <button onClick={(e) => { e.stopPropagation(); onAnalyze(); }} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/50 px-3 md:px-4 py-2 rounded-lg text-xs font-bold transition-colors shrink-0">
                                 REINTENTAR
                             </button>
                         )
@@ -117,9 +118,9 @@ const AnalysisGameCard: React.FC<{
                         isAdmin && (
                             <button
                                 onClick={(e) => { e.stopPropagation(); onAnalyze(); }}
-                                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-900/20 hover:shadow-blue-600/30"
+                                className="bg-blue-600 hover:bg-blue-500 text-white px-3 md:px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-900/20 hover:shadow-blue-600/30 shrink-0"
                             >
-                                <SparklesIcon className="w-4 h-4" /> ANALIZAR
+                                <SparklesIcon className="w-4 h-4" /> <span className="hidden sm:inline">ANALIZAR</span><span className="sm:hidden">IA</span>
                             </button>
                         )
                     )}
@@ -417,9 +418,14 @@ export const FixturesFeed: React.FC = () => {
                     <div className="glass rounded-2xl p-6 min-h-[500px] animate-fade-in border border-white/5">
                         <TopPicks
                             date={selectedDate}
-                            onOpenReport={async (runId) => {
-                                if (!runId) return;
-                                const result = await getAnalysisResultByRunId(runId);
+                            onOpenReport={async (runId, fixtureId) => {
+                                let result = null;
+                                if (runId) {
+                                    result = await getAnalysisResultByRunId(runId);
+                                }
+                                if (!result && fixtureId) {
+                                    result = await getAnalysisResultByFixtureId(fixtureId);
+                                }
                                 if (result) setViewingResult(result);
                             }}
                         />

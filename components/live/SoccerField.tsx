@@ -8,49 +8,29 @@ interface SoccerFieldProps {
     isProjected?: boolean;
 }
 
-const PlayerMarker: React.FC<{ player: APILineupPlayer; color: string; grid: string }> = ({ player, color, grid }) => {
-    // API-Football grid format is "row:col" (e.g., "1:1" is goalkeeper).
-    // Rows usually go 1 (GK) to 5/6 (Strikers). Cols go 1 (Left) to X (Right).
-    
-    if (!grid) return null;
-    
-    const [rowStr, colStr] = grid.split(':');
-    const row = parseInt(rowStr);
-    const col = parseInt(colStr);
-
-    // Calculate approximate position percentages
-    // Row 1 is bottom (GK), Row 5 is top (FW) usually in vertical view, but standard logic:
-    // We'll map Row to 'bottom' percentage.
-    // 1 -> 10%, 2 -> 30%, 3 -> 50%, 4 -> 70%, 5 -> 90%
-    const bottomPct = (row * 18) - 5; 
-    
-    // Col mapping depends on how many players are in that row, but API grid is generic.
-    // Assuming max 5 cols logic roughly. 
-    // We need to normalize col based on horizontal spread. 
-    // Usually implies generic zones. Let's try simple distribution.
-    // Actually, API grid implies relative position.
-    
-    // Simplification for visualization:
-    // Left css property based on col. 
-    // If col is 1, it's left. If col is high, right.
-    // This requires knowing max cols per row, but let's approximate.
-    // Standard pitch width approx spread.
-    
-    // Heuristic: Map 1..5 to 10%..90%
-    const leftPct = (col * 20) - 10; 
-
+// Helper Component for individual player
+const PlayerMarker: React.FC<{ player: APILineupPlayer; color: string; leftPct: number; bottomPct: number }> = ({ player, color, leftPct, bottomPct }) => {
     return (
-        <div 
-            className="absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2 w-16 transition-all duration-300 hover:scale-110 hover:z-10"
+        <div
+            className="absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2 w-16 transition-all duration-300 hover:scale-110 hover:z-10 group cursor-pointer"
             style={{ bottom: `${bottomPct}%`, left: `${leftPct}%` }}
         >
-            <div 
-                className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold shadow-md ${color}`}
+            <div
+                className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold shadow-md ${color} relative z-10 bg-opacity-90 backdrop-blur-sm`}
                 title={player.name}
             >
                 {player.number}
             </div>
-            <span className="mt-1 text-[10px] font-bold text-white bg-black/50 px-1.5 rounded truncate w-full text-center">
+
+            {/* Name Label - Improved readability */}
+            <div className="absolute top-8 w-24 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
+                <span className="text-[10px] font-bold text-white bg-black/80 px-2 py-1 rounded shadow-lg whitespace-nowrap">
+                    {player.name}
+                </span>
+            </div>
+
+            {/* Simple Name (Always visible) */}
+            <span className="mt-1 text-[9px] font-bold text-white bg-black/40 px-1.5 rounded truncate w-full text-center max-w-[60px] shadow-sm">
                 {player.name.split(' ').pop()}
             </span>
         </div>
@@ -69,6 +49,63 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
                 <p className="text-gray-300">Alineación no disponible para visualizar.</p>
             </div>
         );
+    }
+
+    // --- LOGIC TO CENTRALIZE PLAYERS ---
+    // 1. Parse grid strings and attach to object
+    const playersWithGrid = currentLineup.startXI.map(item => {
+        const grid = item.player.grid || "1:1";
+        const [r, c] = grid.split(':').map(val => parseInt(val) || 1);
+        return { ...item, gridRow: r, gridCol: c };
+    });
+
+    // 2. Group by Row
+    const rows: { [key: number]: typeof playersWithGrid } = {};
+    playersWithGrid.forEach(p => {
+        if (!rows[p.gridRow]) rows[p.gridRow] = [];
+        rows[p.gridRow].push(p);
+    });
+
+    // 3. Calculate positions
+    const positionedPlayers = [];
+
+    // Sort rows keys to ensure explicit order if needed, though we map rows later
+    // Row 1 = GK (Bottom), Row 5+ = FW (Top)
+
+    for (const [rowNumStr, rowPlayers] of Object.entries(rows)) {
+        const rowNum = parseInt(rowNumStr);
+
+        // Sort players in this row by column index (Left -> Right)
+        rowPlayers.sort((a, b) => a.gridCol - b.gridCol);
+
+        const count = rowPlayers.length;
+
+        rowPlayers.forEach((p, idx) => {
+            // Horizontal Centering Logic:
+            // Distribute evenly across the width (0-100%)
+            // Formula: Center point of the segment. 
+            // Segment size = 100 / count.
+            // Center = index * size + size/2
+
+            // Adjust 'Left' perception: Game often implies 1 is Left, Max is Right.
+            // But if we have 2 players at col 1 and 2, and others empty, API might imply specific zones.
+            // However, user requested "Centralized". So we IGNORE absolute column gap and just DISTRIBUTE present players.
+
+            const leftPct = ((idx + 0.5) * (100 / count));
+
+            // Vertical Logic:
+            // Map row 1..5 to 10%..90% approx.
+            // Some formations have 6 rows.
+            // Let's use flexible scaling if max rows > 5?
+            // Standard: Row 1=10%, Row 2=30%, Row 3=50%, Row 4=70%, Row 5=85%
+            const bottomPct = (rowNum * 18) - 5;
+
+            positionedPlayers.push({
+                ...p,
+                leftPct,
+                bottomPct: Math.min(Math.max(bottomPct, 5), 95) // Clamp
+            });
+        });
     }
 
     return (
@@ -101,11 +138,11 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
                 <div className="absolute inset-0 flex flex-col">
                     {/* Área Portero */}
                     <div className="h-[10%] border-b-2 border-white/30 mx-[30%] border-x-2 relative"></div>
-                    
+
                     {/* Medio Campo */}
                     <div className="absolute top-1/2 w-full border-t-2 border-white/30 transform -translate-y-1/2"></div>
                     <div className="absolute top-1/2 left-1/2 w-[20%] aspect-square border-2 border-white/30 rounded-full transform -translate-x-1/2 -translate-y-1/2"></div>
-                    
+
                     {/* Área Rival (Visualmente arriba) */}
                     <div className="absolute top-0 h-[10%] w-[40%] left-[30%] border-b-2 border-x-2 border-white/30 rounded-b-sm opacity-50"></div>
                 </div>
@@ -116,12 +153,13 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
                 {/* Jugadores */}
                 <div className="absolute inset-0 p-4">
                     {/* Titulares */}
-                    {currentLineup.startXI.map((item) => (
-                        <PlayerMarker 
-                            key={item.player.id} 
-                            player={item.player} 
-                            color={teamColor} 
-                            grid={item.player.grid || "1:1"} // Fallback safe
+                    {positionedPlayers.map((item) => (
+                        <PlayerMarker
+                            key={item.player.id}
+                            player={item.player}
+                            color={teamColor}
+                            leftPct={item.leftPct}
+                            bottomPct={item.bottomPct}
                         />
                     ))}
                 </div>
