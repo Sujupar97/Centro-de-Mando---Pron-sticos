@@ -536,7 +536,7 @@ export async function extractBetInfoFromImage(base64: string, mimeType: string):
     }
     `;
   const request = {
-    model: 'gemini-1.5-flash-001',
+    model: 'gemini-2.0-flash',
     contents: { parts: [{ text: prompt }, { inlineData: { data: base64, mimeType } }] },
     config: { responseMimeType: 'application/json' }
   };
@@ -621,91 +621,146 @@ export async function generatePerformanceReport(bets: any[], feedbacks: string[]
   return JSON.parse(res.text) as PerformanceReportResult;
 }
 
+
 /**
- * SUPER PROMPT PARLAY GENERATOR
+ * SUPER PROMPT PARLAY GENERATOR (V2 - OPTIMIZED FOR ALTERNATIVE MARKETS)
  * Analiza TODA la data de los partidos del día para encontrar combinadas de alto valor.
+ * Optimization: Now specifically extracts rich data (stats, referee, form) to find hidden value.
  */
 export async function generateDailyParlay(date: string, analyzedMatches: VisualAnalysisResult[]): Promise<ParlayAnalysisResult[]> {
-  // 1. Preparar el resumen comprimido de los partidos
-  const matchesSummary = analyzedMatches.map((m, idx) => {
-    const r = m.analysisRun;
-    const d = m.dashboardData;
-    if (!r || !d) return null;
 
-    // Extract Fixture ID ensuring it's available
-    const fixtureId = r.fixture_id;
+  // 1. DATA ENRICHMENT: Extract raw stats, not just predictions
+  const matchesSummary = analyzedMatches.map((m, idx) => {
+    const d = m.dashboardData;
+    if (!d) return null;
+
+    const fixtureId = m.analysisRun?.fixture_id || "Unknown";
+
+    // Extract Tables Data safely
+    const statsTable = d.tablas_comparativas?.promedio_goles?.filas || [];
+    const tacticalTable = d.tablas_comparativas?.formaciones_tacticas?.filas || [];
+
+    // Helper to get value from table row
+    const getVal = (table: any[], teamIdx: number, colIdx: number) => table[teamIdx]?.[colIdx] || "N/A";
+
+    // Extract Stats
+    const homeName = d.header_partido?.titulo?.split(' vs ')?.[0] || "Local";
+    const awayName = d.header_partido?.titulo?.split(' vs ')?.[1] || "Visitante";
+
+    // Goles Avg
+    const homeGF = getVal(statsTable, 0, 1); // GF/P Local
+    const homeGC = getVal(statsTable, 0, 2); // GC/P Local
+    const awayGF = getVal(statsTable, 1, 1);
+    const awayGC = getVal(statsTable, 1, 2);
+
+    // Tactics Table (Formations)
+    const homeForm = getVal(tacticalTable, 0, 1); // Formación Local
+    const awayForm = getVal(tacticalTable, 1, 1); // Formación Visitante
+
+    // Rich Text Context
+    const refInfo = d.analisis_detallado?.impacto_arbitro?.bullets?.join(' ') || "No referee info";
+    const tacticNotes = d.analisis_detallado?.analisis_tactico_formaciones?.bullets?.join(' ') || "";
+    const styleNotes = d.analisis_detallado?.estilo_y_tactica?.bullets?.join(' ') || "";
 
     const preds = d.predicciones_finales?.detalle?.map(p =>
-      `   - ${p.mercado}: ${p.seleccion} (${p.probabilidad_estimado_porcentaje}%)`
-    ).join('\n') || "   - Sin predicciones claras";
-
-    // Extraer contexto clave (solo bullets)
-    const contexto = d.analisis_detallado?.contexto_competitivo?.bullets?.join('; ') || "";
+      `   > ${p.mercado}: ${p.seleccion} (${p.probabilidad_estimado_porcentaje}%)`
+    ).join('\n') || "   > Sin predicciones claras";
 
     return `
-PARTIDO #${idx + 1}: ${d.header_partido?.titulo || 'Desconocido'} (ID: ${fixtureId})
-CONTEXTO: ${contexto.substring(0, 200)}...
-PREDICCIONES DEL MODELO INDIVIDUAL:
+=== PARTIDO #${idx + 1} (ID: ${fixtureId}) ===
+EQUIPOS: ${homeName} vs ${awayName}
+COMPETICIÓN: ${d.header_partido?.subtitulo || 'N/A'}
+
+DATOS ESTADÍSTICOS (FUENTE: BASE DE DATOS):
+- GOLES PROMEDIO: 
+  * ${homeName}: Anota ${homeGF}, Recibe ${homeGC}
+  * ${awayName}: Anota ${awayGF}, Recibe ${awayGC}
+- FORMACIONES USUALES: ${homeName} (${homeForm}) vs ${awayName} (${awayForm})
+
+CONTEXTO TÁCTICO Y ARBITRAL:
+- ÁRBITRO: ${refInfo}
+- ESTILO: ${styleNotes}
+- TÁCTICA: ${tacticNotes}
+
+PREDICCIONES DEL ANÁLISIS INDIVIDUAL:
 ${preds}
 `;
-  }).filter(Boolean).join('\n------------------------------------------------\n');
+  }).filter(Boolean).join('\n\n');
 
   if (!matchesSummary) throw new Error("No hay datos suficientes para generar parlays.");
 
   const prompt = `
   FECHA DEL ANÁLISIS: ${date}
   
-  ACTÚA COMO EL MEJOR EXPERTO EN APUESTAS DEPORTIVAS DEL MUNDO (EL "SUPER TIPSTER").
-  Tu tarea es analizar el conjunto global de partidos de hoy (proporcionados abajo) y construir las MEJORES APUESTAS COMBINADAS (PARLAYS) posibles.
-
+  ACTÚA COMO EL MEJOR EXPERTO EN APUESTAS DEPORTIVAS (EL "SUPER TIPSTER").
+  
   OBJETIVO:
-  Crear 2 o 3 Parlays distintos (Estrategias diferentes) que maximicen el valor esperado, buscando MERCADOS ALTERNATIVOS y POCO COMPETIDOS donde tengamos ventaja estadística.
+  Crear 2 opciones de Parlay (Combinadas) PROFESIONALES y PREDECIBLES basadas en la data suministrada.
+  
+  TU PRIORIDAD ABSOLUTA ES ENCONTRAR VALOR EN **MERCADOS ALTERNATIVOS**.
+  EVITA LOS MERCADOS SIMPLES DE "GANADOR DEL PARTIDO" (1X2) A MENOS QUE SEA EXTREMADAMENTE OBVIO.
 
-  DATOS DISPONIBLES (RESUMEN DE ${analyzedMatches.length} PARTIDOS):
+  DATOS DE LOS PARTIDOS:
   ${matchesSummary}
 
-  INSTRUCCIONES DE "SUPER PROMPT":
-  1. **Busca Correlaciones Ocultas:** No te limites a "Ganador del Partido". Busca patrones:
-     - ¿Muchos partidos con equipos ofensivos? -> Parlay de Goles (Over 1.5 en varios, o BTTS).
-     - ¿Partidos de eliminación directa tensos? -> Parlay de Tarjetas o Unders.
-     - ¿Desequilibrios enormes? -> Hándicaps Asiáticos o Córners.
+  ---------------------------------------------------------
+  INSTRUCCIONES DE MERCADOS ALTERNATIVOS (LO QUE BUSCAMOS):
+  ---------------------------------------------------------
+  Busca correlaciones lógicas en la data y propón mercados como:
+  
+  1. **GOLES / INTERVALOS**:
+     - "Más de 0.5 goles en el 1er Tiempo" (Si ambos equipos marcan/reciben temprano).
+     - "Equipo X marca más de 1.5 goles" (Si su promedio GF > 1.8 y el rival GC > 1.5).
+     - "Gol en ambas mitades: SÍ".
+  
+  2. **TARJETAS / DISCIPLINA**:
+     - "Más de X Tarjetas" (Si el texto menciona árbitro estricto o duelo tenso).
+     
+  3. **CÓRNERS**:
+     - "Más de 8.5 Córners" (Si el análisis táctico menciona juego por bandas/ofensivo).
+     
+  4. **COMBINADOS INTELIGENTES**:
+     - "Doble Oportunidad & Menos de 3.5 Goles".
+     - "Ambos Marcan: SÍ".
+     - "Total Goles" (Over/Under 2.5, 1.5, 3.5).
+     - "Ganador" (Local/Visitante/Empate) solo si muy obvio.
 
-  2. **Mercados Alternativos (PRIORIDAD ALTA):**
-     - En lugar de "Real Madrid Gana", prefiere "Real Madrid Over 1.5 Goles" o "Real Madrid gana al descanso" si la data lo apoya.
-     - Busca "Córners Over", "Tarjetas Over", "Jugador X anota" si el contexto textual lo sugiere (aunque la data numérica cruda sea limitada en este resumen, usa las pistas del texto).
-
-  3. **Gestión de Riesgo:**
-     - Un Parlay "SEGURO" (Cuota total ~2.00 - 3.00): Alta probabilidad, picks sólidos.
-     - Un Parlay "VALOR/ARRIESGADO" (Cuota total ~5.00 - 15.00): Busca el "batazo" con lógica.
-
-  FORMATO DE SALIDA (JSON ARRAY):
-  Devuelve UN ARRAY de objetos "ParlayAnalysisResult".
-  IMPORTANTE: Incluye el "fixtureId" (ID) de cada partido en los "legs".
+  ---------------------------------------------------------
+  ESTRUCTURA DE SALIDA REQUERIDA (JSON):
+  ---------------------------------------------------------
+  Genera un JSON con exactamente 2 objetos de parlay.
+  
   [
     {
-      "parlayTitle": "El Ticket Seguro del Día (Estrategia de Goles)",
-      "finalOdds": 2.85, 
-      "winProbability": 75,
-      "overallStrategy": "Explicación de por qué esta combinación tiene sentido hoy...",
+      "parlayTitle": "Parlay 'Francotirador' (Seguro & Alta Probabilidad)",
+      "overallStrategy": "Combinación de mercados de goles y doble oportunidad con alta consistencia estadística.",
+      "finalOdds": 0.0, // DEJAR EN 0, se calculará después
+      "winProbability": 0, // ESTIMAR % (ej. 75)
       "legs": [
         {
-           "fixtureId": 12345,
-           "game": "Equipo A vs Equipo B",
-           "market": "Total Goles MÁS DE 2.5",
-           "prediction": "Over 2.5",
-           "odds": 1.70, 
-           "reasoning": "Data muestra ambos equipos promediando..."
-        },
-        ...
+          "fixtureId": 12345, // USAR ID REAL DEL INPUT
+          "game": "Equipo A vs Equipo B",
+          "market": "Total Córners",
+          "prediction": "Más de 9.5",
+          "odds": 0, // DEJAR EN 0, se buscará cuota real si existe
+          "reasoning": "Data: Ambos equipos promedian 6+ córners. Estilo ofensivo por bandas."
+        }
       ]
     },
-    ...
+    {
+      "parlayTitle": "Parlay 'Cazador de Valor' (Mercados Especiales)",
+      "overallStrategy": "Buscando valor en córners y tarjetas donde el mercado subestima la intensidad.",
+      "finalOdds": 0.0, 
+      "winProbability": 0,
+      "legs": [...]
+    }
   ]
 
-  IMPORTANTE:
-  - Estima las cuotas (odds) de cada leg basándote en la probabilidad (1/prob).
-  - Sé selectivo. No incluyas partidos "tóxicos" o impredecibles.
-  - ¡SORPRENDEME CON TU CAPACIDAD DE CONECTAR PUNTOS ENTRE PARTIDOS DISTINTOS!
+  REGLAS DE ORO:
+  1. NO INVENTES PARTIDOS NI IDs. Usa solo los IDs proporcionados.
+  2. Sé preciso con la razón ("reasoning"). Debe citar el dato (GF, Árbitro, etc.).
+  3. No fuerces parlays de más de 3 o 4 selecciones. Calidad > Cantidad.
+  4. SÉ CREATIVO con los mercados. Usa toda tu capacidad analítica.
   `;
 
   const request: GenerateContentParameters = {
@@ -713,16 +768,18 @@ ${preds}
     contents: { parts: [{ text: prompt }] },
     config: {
       responseMimeType: 'application/json',
-      systemInstruction: "Eres el DIOS de los Parlays. Genera JSON array estricto.",
-      temperature: 0.7 // Un poco más creativo para encontrar alpha
+      systemInstruction: "Eres un algoritmo de apuestas profesional. Solo JSON. Mercados alternativos prioridad máxima.",
+      temperature: 0.5
     }
   };
 
   const res = await generateWithRetry(request);
   try {
-    // Limpieza extra por si acaso
     const clean = res.text.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(clean) as ParlayAnalysisResult[];
+    // Validate JSON structure simply
+    const parsed = JSON.parse(clean);
+    if (!Array.isArray(parsed)) throw new Error("Output is not an array");
+    return parsed as ParlayAnalysisResult[];
   } catch (e) {
     console.error("Error parsing Daily Parlay JSON", e);
     return [];
@@ -755,7 +812,7 @@ export async function verifyParlayLeg(predictionText: string, marketReceived: st
   `;
 
   const request: GenerateContentParameters = {
-    model: 'gemini-1.5-flash', // Modelo rápido y barato para esto
+    model: 'gemini-2.0-flash', // Modelo rápido y barato para esto
     contents: { parts: [{ text: prompt }] },
     config: {
       responseMimeType: 'text/plain',

@@ -509,6 +509,11 @@ CRITICAL REMINDERS:
 4. ONLY set 'decision' to "APOSTAR" if you have >70% confidence.
 5. In 'veredicto_analista', use simple, direct language. Tell the user exactly what to do (Bet or Avoid).
 6. KEEP THE SCENARIO ANALYSIS. It is useful.
+7. **ANTI-HALLUCINATION RULE (PLAYER INTEGRITY):**
+   - YOU MUST ONLY mention players explicitly listed in the 'tactical_analysis' (current/recent lineups) or 'availability' (injuries) sections of the JSON.
+   - **DO NOT** use your internal training data to assume where a player plays. Players move. If the JSON says Player X is in Team A, he is. If he is not in the JSON, DO NOT MENTION HIM.
+   - If 'lineups' are empty, do not invent a starting XI. State that lineups are not yet available.
+   - If 'injuries' is empty, do NOT assume famous players are injured based on outdated memory.
 `;
 
 
@@ -559,7 +564,8 @@ CRITICAL REMINDERS:
       fixture_id: job.id, // REVERTED: DB column expects UUID. Using job.id as intended by schema.
       model_version: 'gemini-3-pro-preview',
       summary_pre_text: aiData.resumen_ejecutivo?.frase_principal,
-      report_pre_jsonb: aiData
+      report_pre_jsonb: aiData,
+      match_date: game.fixture.date.split('T')[0] // YYYY-MM-DD del partido
     }).select().single();
 
     if (runError) {

@@ -164,8 +164,14 @@ serve(async (req) => {
     });
 
   } catch (error: any) {
-    console.error("Error en proxy:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error(`[PROXY ERROR] Endpoint: ${req.url}`);
+    console.error(`[PROXY ERROR] Message: ${error.message}`);
+    if (error.stack) console.error(`[PROXY ERROR] Stack: ${error.stack}`);
+
+    return new Response(JSON.stringify({
+      error: error.message,
+      details: "Check Supabase logs for full stack trace."
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,
     });

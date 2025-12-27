@@ -158,8 +158,8 @@ export const fastBatchOddsCheck = async (
 
     // Fetch in parallel
     const promises = Array.from(bySport.entries()).map(async ([sportKey, fixtures]) => {
-        // Fetch ALL odds for this sport/league (Winner + Goals)
-        const oddsEvents = await fetchOddsFromEdge(sportKey, 'eu', 'h2h,totals');
+        // Fetch ALL odds for this sport/league (Winner + Goals + BTTS + Double Chance)
+        const oddsEvents = await fetchOddsFromEdge(sportKey, 'eu', 'h2h,totals,btts,doublechance');
 
         // Match in memory
         fixtures.forEach(fixture => {
@@ -202,64 +202,140 @@ export const mapLeagueToSportKey = (leagueName: string): string => {
  * Tries to find a price in the specific event for a given market/selection
  * Heuristic based matching.
  */
+/**
+ * Translates AI prediction language to API outcome language.
+ * Core translation engine.
+ */
+const normalizePredictionRole = (
+    selection: string,
+    homeName: string,
+    awayName: string
+): 'HOME' | 'AWAY' | 'DRAW' | 'UNKNOWN' => {
+    const s = normalizeName(selection);
+    const h = normalizeName(homeName);
+    const a = normalizeName(awayName);
+
+    // Direct Name Match (Fuzzy)
+    if (cacheSim(s, h) > 0.8) return 'HOME';
+    if (cacheSim(s, a) > 0.8) return 'AWAY';
+
+    // Role Match
+    if (s.includes('local') || s.includes('anfitrion') || s.includes('casa') || s.includes('home') || s.includes('1')) return 'HOME';
+    if (s.includes('visit') || s.includes('fuera') || s.includes('away') || s.includes('2')) return 'AWAY';
+    if (s.includes('empate') || s.includes('iguadad') || s.includes('tablas') || s.includes('draw') || s.includes('x')) return 'DRAW';
+
+    return 'UNKNOWN';
+};
+
+const cacheSim = (s1: string, s2: string) => calculateSimilarity(s1, s2); // Optimization wrapper if needed
+
+/**
+ * Intelligent Matching Engine v2.0
+ * Translates natural language predictions into specific API market outcomes.
+ */
 export const findPriceInEvent = (event: OddsEvent, marketName: string, selectionName: string): number | null => {
     if (!event || !event.bookmakers || event.bookmakers.length === 0) return null;
 
-    // Use the first bookmaker (usually the best odds if we sort, but default is fine)
-    // Or iterate to find average/best. Let's pick 'pinnacle' or just the first.
-    const bookmaker = event.bookmakers[0];
+    // Use best available bookmaker (e.g. Pinnacle, or first found)
+    const bookmaker = event.bookmakers.find(b => b.key === 'pinnacle') || event.bookmakers[0];
 
-    const mLower = marketName.toLowerCase();
-    const sLower = selectionName.toLowerCase();
+    const mRaw = marketName.toLowerCase();
+    const sRaw = selectionName.toLowerCase();
 
-    // console.log(`[OddsMatch] Checking ${marketName} / ${selectionName} against Event: ${event.home_team} vs ${event.away_team}`);
+    // --- STRATEGY 1: MARKET CLASSIFICATION ---
+    let targetMarketType: 'H2H' | 'TOTALS' | 'BTTS' | 'DOUBLE' | 'DNB' | 'UNKNOWN' = 'UNKNOWN';
 
-    // 1. Winner / 1X2 / Moneyline
-    if (mLower.includes('ganador') || mLower.includes('winner') || mLower.includes('1x2') || mLower.includes('match result')) {
+    if (/ganador|winner|1x2|match result|resultado/.test(mRaw)) targetMarketType = 'H2H';
+    else if (/doble|double|oportunidad/.test(mRaw)) targetMarketType = 'DOUBLE';
+    else if (/empate.*apuesta.*no|draw.*no.*bet|dnb|sin.*empate/.test(mRaw)) targetMarketType = 'DNB';
+    else if (/ambos|btts|both/.test(mRaw)) targetMarketType = 'BTTS';
+    else if (/gol|goal|total|over|under|más|menos/.test(mRaw)) targetMarketType = 'TOTALS';
+
+    // If ambiguous from market name, try selection
+    if (targetMarketType === 'UNKNOWN') {
+        if (/1x|x2|12/.test(sRaw)) targetMarketType = 'DOUBLE';
+        if (/más|menos|over|under/.test(sRaw)) targetMarketType = 'TOTALS';
+        if (/sí|no|yes/.test(sRaw) && /ambos|marcan/.test(sRaw)) targetMarketType = 'BTTS';
+    }
+
+    // --- STRATEGY 2: OUTCOME MATCHING ---
+
+    // Case A: Head to Head (Winner)
+    if (targetMarketType === 'H2H') {
         const market = bookmaker.markets.find(m => m.key === 'h2h');
-        if (market) {
-            // Determine which team from selectionName
-            // Matches "Home", "Away" or Team Name
-            // If selection is "Over", ignore (bad classification)
-            if (sLower.includes(event.home_team.toLowerCase())) return market.outcomes.find(o => o.name === event.home_team)?.price || null;
-            if (sLower.includes(event.away_team.toLowerCase())) return market.outcomes.find(o => o.name === event.away_team)?.price || null;
-            if (sLower.includes('draw') || sLower.includes('empate') || sLower.includes('x')) return market.outcomes.find(o => o.name === 'Draw')?.price || null;
-        }
+        if (!market) return null;
+
+        const role = normalizePredictionRole(sRaw, event.home_team, event.away_team);
+
+        if (role === 'HOME') return market.outcomes.find(o => o.name === event.home_team)?.price || null;
+        if (role === 'AWAY') return market.outcomes.find(o => o.name === event.away_team)?.price || null;
+        if (role === 'DRAW') return market.outcomes.find(o => o.name === 'Draw')?.price || null;
     }
 
-    // 1.1 Double Chance (Requires 'doublechance' market usually, or we skip)
-    if (mLower.includes('doble') || mLower.includes('double')) {
-        // The Odds API often separates this. If we only catch 'h2h,totals', we might miss DC. 
-        // We will fallback to null for now unless we add 'doublechance' to fetch.
-        // Let's rely on standard markets first.
-    }
-
-    // 2. Totals (Over/Under)
-    if (mLower.includes('goles') || mLower.includes('goals') || mLower.includes('total') || sLower.includes('over') || sLower.includes('under')) {
+    // Case B: Totals
+    if (targetMarketType === 'TOTALS') {
         const market = bookmaker.markets.find(m => m.key === 'totals');
-        if (market) {
-            // console.log('[OddsMatch] Found totals market:', market.outcomes);
-            // Extract point from selection text (e.g. "Over 2.5" or "Más de 2.5")
-            // Handle comma or dot decimals
-            const pointMatch = sLower.replace(',', '.').match(/(\d+\.?\d*)/);
-            const targetPoint = pointMatch ? parseFloat(pointMatch[1]) : 2.5;
+        if (!market) return null;
 
-            const isOver = sLower.includes('over') || sLower.includes('más') || sLower.includes('+') || sLower.includes('more');
-            const outcomeName = isOver ? 'Over' : 'Under';
+        // Extract point
+        const pointMatch = sRaw.replace(',', '.').match(/(\d+\.?\d*)/);
+        const targetPoint = pointMatch ? parseFloat(pointMatch[1]) : 2.5;
 
-            const outcome = market.outcomes.find(o => o.name === outcomeName && Math.abs(o.point! - targetPoint) < 0.1);
-            if (outcome) {
-                // console.log(`[OddsMatch] MATCHED! ${outcomeName} ${targetPoint} @ ${outcome.price}`);
-                return outcome.price;
+        // Extract direction
+        const isOver = /over|más|mas|\+|mayor/.test(sRaw);
+        const apiName = isOver ? 'Over' : 'Under';
+
+        return market.outcomes.find(o => o.name === apiName && Math.abs((o.point || 0) - targetPoint) < 0.1)?.price || null;
+    }
+
+    // Case C: BTTS
+    if (targetMarketType === 'BTTS') {
+        const market = bookmaker.markets.find(m => m.key === 'btts' || m.key === 'h2h_btts');
+        if (!market) return null;
+
+        const wantsYes = /sí|si|yes|ambos/.test(sRaw) && !/no/.test(sRaw); // Basic heuristic
+        const apiName = wantsYes ? 'Yes' : 'No';
+
+        return market.outcomes.find(o => o.name.toLowerCase() === apiName.toLowerCase())?.price || null;
+    }
+
+    // Case D: Double Chance
+    if (targetMarketType === 'DOUBLE') {
+        const market = bookmaker.markets.find(m => m.key === 'doublechance');
+        if (!market) return null;
+
+        // Map inputs like "1X", "Local/Empate", "Home or Draw"
+        const role = normalizePredictionRole(sRaw, event.home_team, event.away_team);
+        const wantsDraw = /empate|draw|x/.test(sRaw);
+
+        // Construct API Outcome Name expectation
+        // API usually formats like "Home/Draw", "Home/Away", "Draw/Away"
+        // We check if outcome name CONTAINS the teams strictly
+
+        return market.outcomes.find(o => {
+            const oname = o.name; // e.g. "Man Utd/Draw"
+            if (sRaw.includes('1x') || (role === 'HOME' && wantsDraw)) {
+                return oname.includes(event.home_team) && oname.includes('Draw');
             }
+            if (sRaw.includes('x2') || (role === 'AWAY' && wantsDraw)) {
+                return oname.includes(event.away_team) && oname.includes('Draw');
+            }
+            if (sRaw.includes('12') || (role === 'HOME' && sRaw.includes('visit'))) { // 12 usually means no draw
+                return oname.includes(event.home_team) && oname.includes(event.away_team);
+            }
+            return false;
+        })?.price || null;
+    }
 
-            // Approximate: If we don't find exact 2.5, try to return nearest? No, unsafe.
-            // Check alt totals? The API usually returns main line.
-        } else {
-            // console.warn('[OddsMatch] No totals market found in event');
-        }
+    // Case E: Draw No Bet
+    if (targetMarketType === 'DNB') {
+        const market = bookmaker.markets.find(m => m.key === 'draw_no_bet'); // API key
+        if (!market) return null; // Often DNB is implied from H2H+Draw probability, but API has specific key
+
+        const role = normalizePredictionRole(sRaw, event.home_team, event.away_team);
+        if (role === 'HOME') return market.outcomes.find(o => o.name === event.home_team)?.price || null;
+        if (role === 'AWAY') return market.outcomes.find(o => o.name === event.away_team)?.price || null;
     }
 
     return null;
 };
-

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { getAnalysesByDate } from '../../services/analysisService';
 import { generateDailyParlay } from '../../services/geminiService';
-import { getParlaysByDate, saveParlays, verifyParlays, ParlayDB } from '../../services/parlayService';
+import { getParlaysByDate, saveParlays, verifyParlays, deleteParlaysForDate, ParlayDB } from '../../services/parlayService';
 import { ParlayAnalysisResult } from '../../types';
 import { fetchFixturesList } from '../../services/liveDataService';
 import { fastBatchOddsCheck, mapLeagueToSportKey, findPriceInEvent } from '../../services/oddsService';
-import { PuzzlePieceIcon, SparklesIcon, CalendarDaysIcon, ArrowPathIcon, DocumentArrowDownIcon } from '../icons/Icons';
+import { PuzzlePieceIcon, SparklesIcon, CalendarDaysIcon, ArrowPathIcon, DocumentArrowDownIcon, TrashIcon } from '../icons/Icons';
 // import { formatDate } from '../../utils/formatters'; // Not available, using raw date string
 import { useOrganization } from '../../contexts/OrganizationContext';
 import jsPDF from 'jspdf';
@@ -101,7 +101,7 @@ export const ParlayBuilder: React.FC = () => {
             setAnalyzing(true);
             setStatusMessage(`Analizando ${matches.length} partidos con Super IA... Buscando la combinada perfecta.`);
 
-            const results = await generateDailyParlay(selectedDate, matches);
+            let results = await generateDailyParlay(selectedDate, matches);
 
             if (results.length > 0) {
                 // --- NEW INTEGRATION: FETCH REAL ODDS ---
@@ -132,39 +132,48 @@ export const ParlayBuilder: React.FC = () => {
                         // 4. Exec Batch Check
                         const realOddsMap = await fastBatchOddsCheck(checkItems);
 
-                        // 5. Update Legs with Real Odds
-                        let matchesFound = 0;
-                        results.forEach(parlay => {
-                            let newTotalOdds = 1;
+                        // 5. Update Legs with Real Odds - FLEXIBLE MODE
+                        // Show all legs, mark which have real odds vs estimated
+                        let realOddsFound = 0;
 
+                        results.forEach(parlay => {
                             parlay.legs.forEach(leg => {
                                 if (leg.fixtureId && realOddsMap.has(leg.fixtureId)) {
                                     const event = realOddsMap.get(leg.fixtureId);
-                                    // Try to find the specific market price
-                                    // We check both the exact market name and simple fallbacks
                                     const realPrice = findPriceInEvent(event!, leg.market, leg.prediction);
 
                                     if (realPrice) {
                                         leg.odds = realPrice;
-                                        // Add indicator to the reasoning so user knows it is LIVE
                                         if (!leg.reasoning.includes('✅ Cuota Real')) {
                                             leg.reasoning += " | ✅ Cuota Real (Live)";
                                         }
-                                        matchesFound++;
+                                        realOddsFound++;
+                                    } else {
+                                        // No real odd found for this market - mark it
+                                        if (!leg.reasoning.includes('⚠️')) {
+                                            leg.reasoning += " | ⚠️ Cuota no disponible en casas";
+                                        }
+                                        console.log(`[ODDS] Cuota no encontrada para: ${leg.market} - ${leg.prediction}`);
+                                    }
+                                } else {
+                                    // Fixture not found in odds - use AI estimate
+                                    if (!leg.reasoning.includes('⚠️')) {
+                                        leg.reasoning += " | ⚠️ Cuota estimada (partido sin datos)";
                                     }
                                 }
-                                newTotalOdds *= leg.odds;
                             });
 
-                            // Re-calc total odds for the parlay
-                            parlay.finalOdds = parseFloat(newTotalOdds.toFixed(2));
+                            // Recalc total odds with whatever we have
+                            const totalOdds = parlay.legs.reduce((acc, l) => acc * (l.odds || 1.5), 1);
+                            parlay.finalOdds = parseFloat(totalOdds.toFixed(2));
                         });
 
-                        if (matchesFound > 0) {
-                            console.log(`Updated ${matchesFound} legs with real odds.`);
-                            setStatusMessage("Parlays optimizados con cuotas reales.");
+                        if (realOddsFound > 0) {
+                            console.log(`[ODDS] ${realOddsFound} legs con cuotas reales de bookmakers.`);
+                            setStatusMessage(`Parlays generados. ${realOddsFound} cuotas reales encontradas.`);
                         } else {
-                            console.log("No real odds found matching the predicted markets.");
+                            console.log("[ODDS] No se encontraron cuotas reales. Usando estimaciones de IA.");
+                            setStatusMessage("Parlays generados con cuotas estimadas (mercados especiales sin datos reales).");
                         }
                     }
 
@@ -194,6 +203,24 @@ export const ParlayBuilder: React.FC = () => {
         } finally {
             setLoading(false);
             setAnalyzing(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!organization?.id) return;
+        if (!confirm('¿Estás seguro de que quieres eliminar todos los Parlays de esta fecha? Esta acción no se puede deshacer.')) return;
+
+        setLoading(true);
+        setStatusMessage('Eliminando parlays...');
+        try {
+            await deleteParlaysForDate(selectedDate, organization.id);
+            setParlays([]);
+            setStatusMessage('');
+        } catch (error) {
+            console.error(error);
+            alert('Error al eliminar los parlays.');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -326,6 +353,26 @@ export const ParlayBuilder: React.FC = () => {
                     >
                         <ArrowPathIcon className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                     </button>
+                    {parlays.length > 0 && (
+                        <button
+                            onClick={handleGenerate}
+                            disabled={loading || analyzing}
+                            className="px-4 py-2 rounded-lg font-bold text-xs bg-red-900/30 text-red-400 hover:text-white hover:bg-red-600 border border-red-500/20 transition-all flex items-center gap-2"
+                            title="Borrar actuales y generar nueva estrategia"
+                        >
+                            <SparklesIcon className="w-4 h-4" /> Regenerar Estrategia
+                        </button>
+                    )}
+                    {parlays.length > 0 && (
+                        <button
+                            onClick={handleDelete}
+                            disabled={loading || analyzing}
+                            className="px-4 py-2 rounded-lg font-bold text-xs bg-red-600 text-white hover:bg-red-700 border border-red-500 transition-all flex items-center gap-2"
+                            title="Eliminar todos los parlays de esta fecha"
+                        >
+                            <TrashIcon className="w-4 h-4" /> Eliminar
+                        </button>
+                    )}
                 </div>
             </div>
 

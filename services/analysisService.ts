@@ -136,29 +136,31 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
 
 /**
  * Obtiene todos los resultados visuales validados de una fecha específica.
- * Optimizado para el Parlay Builder (solo data esencial).
+ * FILTRO ESTRICTO: Solo devuelve análisis de partidos que se juegan EXACTAMENTE en la fecha solicitada.
  */
 export const getAnalysesByDate = async (date: string): Promise<VisualAnalysisResult[]> => {
-    // Range: 00:00 to 23:59 of selected date
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
+    const targetDate = date.split('T')[0]; // Asegurar YYYY-MM-DD
+    console.log(`[ParlayBuilder] Getting analyses for match date: ${targetDate}`);
 
+    // Query DIRECTO por fecha del partido (no por cuándo se analizó)
     const { data: runs, error } = await supabase
         .from('analysis_runs')
         .select('*, predictions(*)')
-        .gte('created_at', start.toISOString())
-        .lte('created_at', end.toISOString());
+        .eq('match_date', targetDate);
 
     if (error) {
         console.error("Error fetching daily analyses:", error);
         return [];
     }
 
-    if (!runs) return [];
+    if (!runs || runs.length === 0) {
+        console.log(`[ParlayBuilder] No analysis runs found for match date ${targetDate}`);
+        return [];
+    }
 
-    // Filter runs that have at least one prediction and return formatted result
+    console.log(`[ParlayBuilder] Found ${runs.length} analysis runs for match date ${targetDate}`);
+
+    // Mapear resultados
     return runs
         .filter(r => r.predictions && r.predictions.length > 0)
         .map(r => ({

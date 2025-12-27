@@ -22,6 +22,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
     { id: 'bets', label: 'Apuestas', icon: <ChartBarIcon className="w-5 h-5" />, roles: ['superadmin', 'admin', 'usuario'] },
     { id: 'add', label: 'Añadir', icon: <PlusCircleIcon className="w-5 h-5" />, roles: ['superadmin'] },
     { id: 'ai', label: 'Análisis IA', icon: <SparklesIcon className="w-5 h-5" />, roles: ['superadmin', 'admin', 'usuario'] },
+    { id: 'ml', label: 'ML Learning', icon: <SparklesIcon className="w-5 h-5" />, roles: ['superadmin', 'admin'] },
     { id: 'admin', label: 'Admin', icon: <UsersIcon className="w-5 h-5" />, roles: ['superadmin', 'admin'] },
     { id: 'settings', label: 'Ajustes', icon: <CogIcon className="w-5 h-5" />, roles: ['superadmin', 'admin', 'usuario'] },
   ];

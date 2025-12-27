@@ -17,8 +17,9 @@ import { OrganizationProvider } from './contexts/OrganizationContext';
 import { AuthPage } from './components/Auth';
 import { LandingPage } from './components/LandingPage';
 import { AdminPage } from './components/Admin';
+import MLDashboard from './components/ai/MLDashboard';
 
-export type Page = 'dashboard' | 'bets' | 'add' | 'ai' | 'live' | 'scan' | 'settings' | 'admin';
+export type Page = 'dashboard' | 'bets' | 'add' | 'ai' | 'live' | 'scan' | 'settings' | 'admin' | 'ml';
 
 // --- PLATFORM (PROTECTED APP) ---
 const Platform: React.FC = () => {
@@ -64,6 +65,8 @@ const Platform: React.FC = () => {
         }
         setCurrentPage('dashboard');
         return <Dashboard />;
+      case 'ml':
+        return <MLDashboard />;
       default:
         return <Dashboard />;
     }

@@ -29,7 +29,21 @@ export const getParlaysByDate = async (date: string, organizationId: string): Pr
         return [];
     }
 
+
     return data as ParlayDB[];
+};
+
+export const deleteParlaysForDate = async (date: string, organizationId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('parlays')
+        .delete()
+        .eq('organization_id', organizationId)
+        .eq('date', date);
+
+    if (error) {
+        console.error("Error deleting parlays:", error);
+        throw error;
+    }
 };
 
 export const saveParlays = async (
@@ -37,7 +51,20 @@ export const saveParlays = async (
     organizationId: string,
     parlays: ParlayAnalysisResult[]
 ): Promise<ParlayDB[]> => {
-    // Map AI result to DB schema
+    // 1. Clean up potential old generated parlays for this date to avoid dupes/stale data
+    // (User requested explicit regeneration capability)
+    const { error: deleteError } = await supabase
+        .from('parlays')
+        .delete()
+        .eq('organization_id', organizationId)
+        .eq('date', date);
+
+    if (deleteError) {
+        console.error("Error cleaning old parlays:", deleteError);
+        // Continue anyway, maybe it's just empty
+    }
+
+    // 2. Map AI result to DB schema
     const rows = parlays.map(p => ({
         organization_id: organizationId,
         date: date,

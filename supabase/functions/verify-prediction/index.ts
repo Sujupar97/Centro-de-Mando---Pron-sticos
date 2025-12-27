@@ -205,9 +205,29 @@ serve(async (req) => {
         `;
 
             const requestBody = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.1 } };
+            log(`[AI] Preparing to call Gemini model: gemini-3-pro-preview`);
+
             const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${geminiKey}`;
 
-            const genRes = await fetch(genUrl, { method: 'POST', body: JSON.stringify(requestBody) });
+            log(`[AI] Sending request to ${genUrl}`);
+            const start = Date.now();
+            let genRes;
+            try {
+                // Add a signal controller if supported or just await standard fetch
+                genRes = await fetch(genUrl, { method: 'POST', body: JSON.stringify(requestBody) });
+            } catch (fetchErr: any) {
+                log(`[AI] Fetch failed (Network/Timeout): ${fetchErr.message}`);
+                throw fetchErr;
+            }
+            const duration = Date.now() - start;
+            log(`[AI] Request completed in ${duration}ms. Status: ${genRes.status} ${genRes.statusText}`);
+
+            if (!genRes.ok) {
+                const errText = await genRes.text();
+                log(`[AI ERROR] Response Body: ${errText}`);
+                throw new Error(`Gemini API Error ${genRes.status}: ${errText}`);
+            }
+
             const genJson = await genRes.json();
 
             const aiText = genJson.candidates?.[0]?.content?.parts?.[0]?.text;
