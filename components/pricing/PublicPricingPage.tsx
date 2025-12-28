@@ -1,6 +1,10 @@
-import React from 'react';
+'use client';
+
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckIcon } from '../icons/Icons';
+import { CheckIcon, SparklesIcon } from '../icons/Icons';
+import { initSubscriptionPayment, usdToCop } from '../../services/wompiService';
+import { useAuth } from '../../hooks/useAuth';
 
 interface Plan {
     id: string;
@@ -17,26 +21,12 @@ interface Plan {
     hasPrioritySupport: boolean;
 }
 
-const PLANS: Plan[] = [
-    {
-        id: '1',
-        name: 'free',
-        displayName: 'Gratis',
-        description: 'Plan gratuito con acceso básico',
-        priceCents: 0,
-        predictionsPercentage: 0,
-        monthlyParlayLimit: 0,
-        monthlyAnalysisLimit: 0,
-        canAnalyzeOwnTickets: false,
-        canAccessMLDashboard: false,
-        canAccessFullStats: false,
-        hasPrioritySupport: false
-    },
+const PAID_PLANS: Plan[] = [
     {
         id: '2',
         name: 'starter',
         displayName: 'Starter',
-        description: 'Acceso al  35% de pronósticos premium',
+        description: 'Acceso al 35% de pronósticos premium',
         priceCents: 999,
         predictionsPercentage: 35,
         monthlyParlayLimit: 2,
@@ -76,6 +66,21 @@ const PLANS: Plan[] = [
     }
 ];
 
+const FREE_PLAN: Plan = {
+    id: '1',
+    name: 'free',
+    displayName: 'Gratis',
+    description: 'Plan gratuito con acceso básico',
+    priceCents: 0,
+    predictionsPercentage: 0,
+    monthlyParlayLimit: 0,
+    monthlyAnalysisLimit: 0,
+    canAnalyzeOwnTickets: false,
+    canAccessMLDashboard: false,
+    canAccessFullStats: false,
+    hasPrioritySupport: false
+};
+
 function formatPrice(cents: number): string {
     return `$${(cents / 100).toFixed(2)}`;
 }
@@ -83,11 +88,11 @@ function formatPrice(cents: number): string {
 interface PricingCardProps {
     plan: Plan;
     isPopular: boolean;
+    onSelect: (plan: Plan) => void;
+    isProcessing: boolean;
 }
 
-const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular }) => {
-    const navigate = useNavigate();
-
+const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular, onSelect, isProcessing }) => {
     const features = [
         {
             label: 'Pronósticos de alta probabilidad',
@@ -136,24 +141,26 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular }) => {
     return (
         <div className={`
       relative flex flex-col bg-slate-900 rounded-2xl border-2 transition-all duration-300
-      ${isPopular ? 'border-brand shadow-xl shadow-brand/20 scale-105' : 'border-white/10 hover:border-white/20'}
+      ${isPopular ? 'border-brand shadow-xl shadow-brand/20 scale-105 lg:scale-110' : 'border-white/10 hover:border-white/20'}
     `}>
             {/* Popular Badge */}
             {isPopular && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <div className="bg-gradient-to-r from-brand to-emerald-400 text-slate-900 text-xs font-black px-4 py-1 rounded-full uppercase tracking-wider">
+                <div className="absolute -top-5 left-1/2 -translate-x-1/2 z-10">
+                    <div className="bg-gradient-to-r from-brand via-emerald-400 to-brand text-slate-900 text-xs font-black px-5 py-2 rounded-full uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-brand/40 animate-pulse">
+                        <SparklesIcon className="w-4 h-4" />
                         Más Popular
+                        <SparklesIcon className="w-4 h-4" />
                     </div>
                 </div>
             )}
 
             {/* Header */}
-            <div className="p-6 border-b border-white/5">
+            <div className={`p-6 border-b border-white/5 ${isPopular ? 'bg-gradient-to-b from-brand/10 to-transparent' : ''}`}>
                 <h3 className="text-lg font-bold text-white">{plan.displayName}</h3>
                 <p className="text-sm text-gray-400 mt-1">{plan.description}</p>
 
                 <div className="mt-4 flex items-baseline gap-1">
-                    <span className="text-4xl font-black text-white">
+                    <span className={`text-4xl font-black ${isPopular ? 'text-brand' : 'text-white'}`}>
                         {plan.priceCents === 0 ? 'Gratis' : formatPrice(plan.priceCents)}
                     </span>
                     {plan.priceCents > 0 && (
@@ -166,12 +173,12 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular }) => {
             <div className="flex-grow p-6 space-y-3">
                 {features.map((feature, idx) => (
                     <div key={idx} className="flex items-start gap-3">
-                        <CheckIcon className={`w-5 h-5 shrink-0 mt-0.5 ${feature.included ? 'text-brand' : 'text-gray-600'}`} />
+                        <CheckIcon className={`w-5 h-5 shrink-0 mt-0.5 ${feature.included ? (isPopular ? 'text-brand' : 'text-emerald-500') : 'text-gray-600'}`} />
                         <div>
                             <span className={feature.included ? 'text-white' : 'text-gray-500'}>
                                 {feature.label}
                             </span>
-                            <span className={`ml-2 text-sm ${feature.included ? 'text-brand font-semibold' : 'text-gray-600'}`}>
+                            <span className={`ml-2 text-sm ${feature.included ? (isPopular ? 'text-brand font-bold' : 'text-emerald-500 font-semibold') : 'text-gray-600'}`}>
                                 {feature.value}
                             </span>
                         </div>
@@ -182,16 +189,24 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular }) => {
             {/* CTA */}
             <div className="p-6 border-t border-white/5">
                 <button
-                    onClick={() => navigate('/login')}
+                    onClick={() => onSelect(plan)}
+                    disabled={isProcessing}
                     className={`
-            w-full py-3 px-6 rounded-xl font-bold transition-all flex items-center justify-center gap-2
+            w-full py-3 px-6 rounded-xl font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed
             ${isPopular
-                            ? 'bg-gradient-to-r from-brand to-emerald-400 text-slate-900 hover:shadow-lg hover:shadow-brand/30 hover:scale-[1.02]'
+                            ? 'bg-gradient-to-r from-brand via-emerald-400 to-brand text-slate-900 hover:shadow-lg hover:shadow-brand/40 hover:scale-[1.02] animate-gradient-x'
                             : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
                         }
           `}
                 >
-                    {plan.priceCents === 0 ? 'Comenzar Gratis' : 'Seleccionar Plan'}
+                    {isProcessing ? (
+                        <>
+                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                            Procesando...
+                        </>
+                    ) : (
+                        plan.priceCents === 0 ? 'Comenzar Gratis' : 'Seleccionar Plan'
+                    )}
                 </button>
             </div>
         </div>
@@ -200,6 +215,48 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular }) => {
 
 export const PublicPricingPage: React.FC = () => {
     const navigate = useNavigate();
+    const { user, profile } = useAuth();
+    const [processing, setProcessing] = useState(false);
+    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    const handleSelectPlan = async (plan: Plan) => {
+        if (!user) {
+            navigate('/login');
+            return;
+        }
+
+        if (plan.priceCents === 0) {
+            navigate('/login');
+            return;
+        }
+
+        setProcessing(true);
+        setMessage(null);
+
+        try {
+            const priceCOP = usdToCop(plan.priceCents / 100);
+
+            await initSubscriptionPayment(
+                plan.name,
+                plan.displayName,
+                priceCOP,
+                profile?.email || user.email || '',
+                profile?.full_name || 'Usuario',
+                () => {
+                    setMessage({ type: 'success', text: '¡Pago procesado! Tu suscripción se activará en segundos.' });
+                    setTimeout(() => navigate('/app'), 3000);
+                },
+                () => {
+                    setMessage({ type: 'error', text: 'El pago no pudo ser procesado. Intenta de nuevo.' });
+                }
+            );
+        } catch (error) {
+            console.error('Error selecting plan:', error);
+            setMessage({ type: 'error', text: 'Ocurrió un error. Intenta de nuevo.' });
+        }
+
+        setProcessing(false);
+    };
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 py-12 px-4">
@@ -220,19 +277,46 @@ export const PublicPricingPage: React.FC = () => {
                 </p>
             </div>
 
-            {/* Plans Grid */}
-            <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-4">
-                {PLANS.map((plan) => (
+            {/* Message Banner */}
+            {message && (
+                <div className={`max-w-2xl mx-auto mb-8 p-4 rounded-xl border ${message.type === 'success'
+                        ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                        : 'bg-red-500/10 border-red-500/30 text-red-400'
+                    }`}>
+                    <p className="text-center font-medium">{message.text}</p>
+                </div>
+            )}
+
+            {/* Paid Plans Grid */}
+            <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                {PAID_PLANS.map((plan, idx) => (
                     <PricingCard
                         key={plan.id}
                         plan={plan}
-                        isPopular={plan.name === 'pro'}
+                        isPopular={idx === 1} // Plan del medio (Pro)
+                        onSelect={handleSelectPlan}
+                        isProcessing={processing}
                     />
                 ))}
             </div>
 
+            {/* Free Plan - Destacado Abajo */}
+            <div className="max-w-2xl mx-auto mb-12">
+                <div className="text-center mb-6">
+                    <p className="text-gray-400 text-sm uppercase tracking-wide">O empieza gratis</p>
+                </div>
+                <div className="max-w-md mx-auto">
+                    <PricingCard
+                        plan={FREE_PLAN}
+                        isPopular={false}
+                        onSelect={handleSelectPlan}
+                        isProcessing={processing}
+                    />
+                </div>
+            </div>
+
             {/* FAQ or Additional Info */}
-            <div className="max-w-3xl mx-auto mt-16 text-center">
+            <div className="max-w-3xl mx-auto text-center">
                 <p className="text-gray-500 text-sm">
                     Los precios están en USD (convertidos a COP al pagar). Puedes cancelar en cualquier momento.
                     Todos los planes incluyen acceso a nuestra plataforma con inteligencia artificial.

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HomeIcon, ChartBarIcon, PlusCircleIcon, SparklesIcon, CogIcon, CalendarDaysIcon, UsersIcon, ArrowLeftOnRectangleIcon, TicketIcon } from './icons/Icons';
+import { HomeIcon, ChartBarIcon, PlusCircleIcon, SparklesIcon, CogIcon, CalendarDaysIcon, UsersIcon, ArrowLeftOnRectangleIcon, TicketIcon, CreditCardIcon } from './icons/Icons';
 import { useAuth } from '../hooks/useAuth';
 import { OrganizationSwitcher } from './OrganizationSwitcher';
 import { Page } from '../App';
@@ -23,6 +23,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
     { id: 'add', label: 'Añadir', icon: <PlusCircleIcon className="w-5 h-5" />, roles: ['superadmin'] },
     { id: 'ai', label: 'Análisis IA', icon: <SparklesIcon className="w-5 h-5" />, roles: ['superadmin', 'admin', 'usuario'] },
     { id: 'ml', label: 'ML Learning', icon: <SparklesIcon className="w-5 h-5" />, roles: ['superadmin', 'admin'] },
+    { id: 'pricing', label: 'Planes', icon: <CreditCardIcon className="w-5 h-5" />, roles: ['superadmin', 'admin', 'usuario'] },
     { id: 'admin', label: 'Admin', icon: <UsersIcon className="w-5 h-5" />, roles: ['superadmin', 'admin'] },
     { id: 'settings', label: 'Ajustes', icon: <CogIcon className="w-5 h-5" />, roles: ['superadmin', 'admin', 'usuario'] },
   ];
