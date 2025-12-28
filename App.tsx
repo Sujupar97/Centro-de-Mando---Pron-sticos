@@ -14,12 +14,14 @@ import { FixturesFeed } from './components/LiveFeed';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { OrganizationProvider } from './contexts/OrganizationContext';
+import { SubscriptionProvider } from './contexts/SubscriptionContext';
 import { AuthPage } from './components/Auth';
 import { LandingPage } from './components/LandingPage';
 import { AdminPage } from './components/Admin';
 import MLDashboard from './components/ai/MLDashboard';
+import { PricingPage } from './components/pricing/PricingPage';
 
-export type Page = 'dashboard' | 'bets' | 'add' | 'ai' | 'live' | 'scan' | 'settings' | 'admin' | 'ml';
+export type Page = 'dashboard' | 'bets' | 'add' | 'ai' | 'live' | 'scan' | 'settings' | 'admin' | 'ml' | 'pricing';
 
 // --- PLATFORM (PROTECTED APP) ---
 const Platform: React.FC = () => {
@@ -67,6 +69,8 @@ const Platform: React.FC = () => {
         return <Dashboard />;
       case 'ml':
         return <MLDashboard />;
+      case 'pricing':
+        return <PricingPage />;
       default:
         return <Dashboard />;
     }
@@ -141,9 +145,11 @@ const App: React.FC = () => {
   return (
     <AuthProvider>
       <OrganizationProvider>
-        <LanguageProvider>
-          <AppContent />
-        </LanguageProvider>
+        <SubscriptionProvider>
+          <LanguageProvider>
+            <AppContent />
+          </LanguageProvider>
+        </SubscriptionProvider>
       </OrganizationProvider>
     </AuthProvider>
   );

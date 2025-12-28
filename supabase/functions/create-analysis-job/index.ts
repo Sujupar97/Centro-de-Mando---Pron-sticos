@@ -539,12 +539,21 @@ CRITICAL REMINDERS:
     // ROBUST CLEANUP:
     // 1. Remove markdown
     aiResponseText = aiResponseText.replace(/```json/g, '').replace(/```/g, '').trim();
-    // 2. Extract strictly from valid JSON boundaries if extra text exists
+
+    // 2. Remove any text before the first { and after the last }
     const startIndex = aiResponseText.indexOf('{');
     const endIndex = aiResponseText.lastIndexOf('}');
-    if (startIndex !== -1 && endIndex !== -1) {
+    if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
       aiResponseText = aiResponseText.substring(startIndex, endIndex + 1);
     }
+
+    // 3. AGGRESSIVE CLEANUP for common AI errors:
+    // - Remove trailing commas before } or ]
+    aiResponseText = aiResponseText.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+    // - Remove any control characters
+    aiResponseText = aiResponseText.replace(/[\x00-\x1F\x7F]/g, ' ');
+    // - Fix unescaped newlines in strings (common AI error)
+    aiResponseText = aiResponseText.replace(/:\s*"([^"]*)\n([^"]*)"/g, ': "$1 $2"');
 
     let aiData;
     try {
@@ -553,8 +562,42 @@ CRITICAL REMINDERS:
       // without using dangerous eval().
       aiData = JSON5.parse(aiResponseText);
     } catch (e) {
-      console.error("JSON5 Parsing failed. Raw text:", aiResponseText);
-      throw new Error(`Critical AI Syntax Error: ${e.message}`);
+      console.error("[JSON5] First parse failed, attempting aggressive fix...");
+      console.error("[JSON5] Raw text preview:", aiResponseText.substring(0, 500));
+
+      // Try more aggressive fixes
+      try {
+        // Remove any non-printable characters and normalize whitespace
+        let cleanedText = aiResponseText
+          .replace(/[^\x20-\x7E\xA0-\xFF{}[\]:,"'\s]/g, '')
+          .replace(/\s+/g, ' ')
+          .replace(/,\s*([}\]])/g, '$1'); // Remove trailing commas
+
+        aiData = JSON5.parse(cleanedText);
+        console.log("[JSON5] Aggressive cleanup succeeded!");
+      } catch (e2) {
+        console.error("[JSON5] Aggressive cleanup also failed:", e2.message);
+        console.error("[JSON5] Full raw text:", aiResponseText);
+
+        // LAST RESORT: Return a minimal valid structure so the analysis doesn't completely fail
+        console.warn("[JSON5] Using fallback minimal structure");
+        aiData = {
+          resumen_ejecutivo: {
+            frase_principal: "Error en el análisis - respuesta de IA malformada",
+            parrafo_detalle: "Por favor intenta ejecutar el análisis nuevamente."
+          },
+          predicciones_finales: {
+            decision: "EVITAR",
+            motivo: "Error técnico en procesamiento",
+            detalle: []
+          },
+          veredicto_analista: {
+            titulo: "Error Técnico",
+            parrafo: "No se pudo procesar la respuesta de la IA. Reintenta el análisis.",
+            icono: "⚠️"
+          }
+        };
+      }
     }
 
     // --- STAGE 6: SAVE ---

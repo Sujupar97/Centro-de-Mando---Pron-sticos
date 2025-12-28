@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { organizationService } from '../../services/organizationService';
 import { XMarkIcon } from '../icons/Icons';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface CreateSubAccountModalProps {
     isOpen: boolean;
@@ -10,6 +11,7 @@ interface CreateSubAccountModalProps {
 }
 
 export const CreateSubAccountModal: React.FC<CreateSubAccountModalProps> = ({ isOpen, onClose, onSuccess }) => {
+    const { t } = useLanguage();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -51,22 +53,24 @@ export const CreateSubAccountModal: React.FC<CreateSubAccountModalProps> = ({ is
             // 3. InviteOwner / Create Owner
             // await organizationService.inviteMember(orgData.id, formData.email, 'owner');
 
-            // SIMULATION for now until service is fully inspected/expanded:
-            // Assuming inviteMember sends the email.
-
             // Actual API Call (using existing methods)
             await organizationService.inviteMember(orgData.id, formData.email, 'owner');
 
-            // If we have an update method, use it for metadata
-            await organizationService.updateOrganization(orgData.id, {
-                metadata: {
-                    address: formData.address,
-                    city: formData.city,
-                    country: formData.country,
-                    phone: formData.phone,
-                    ownerName: `${formData.firstName} ${formData.lastName}`
-                }
-            });
+            // Intentar guardar metadata (opcional - puede fallar si la columna no existe)
+            try {
+                await organizationService.updateOrganization(orgData.id, {
+                    metadata: {
+                        address: formData.address,
+                        city: formData.city,
+                        country: formData.country,
+                        phone: formData.phone,
+                        ownerName: `${formData.firstName} ${formData.lastName}`
+                    }
+                });
+            } catch (metadataErr) {
+                console.warn('No se pudo guardar metadata adicional:', metadataErr);
+                // Continuar de todas formas - el cliente fue creado
+            }
 
             onSuccess();
         } catch (err: any) {
