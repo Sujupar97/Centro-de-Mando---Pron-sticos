@@ -11,6 +11,10 @@ import { GameCard as DetailsGameCard } from './live/GameCard';
 import { TopPicks } from './ai/TopPicks';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../services/supabaseService';
+import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
+import { UpgradePlanModal } from './pricing/UpgradePlanModal';
+import { incrementUsage } from '../services/subscriptionCheckService';
+import { useOrganization } from '../contexts/OrganizationContext';
 
 // --- COMPONENTES AUXILIARES ---
 
@@ -302,7 +306,22 @@ export const FixturesFeed: React.FC = () => {
 
 
     // 3. Iniciar Análisis (Individual)
+    // Hook de suscripciones
+    const { subscription, checkAnalysisAccess, analysesRemaining, recommendedUpgrade } = useSubscriptionLimits();
+    const { currentOrganization } = useOrganization();
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+    const [upgradeReason, setUpgradeReason] = useState('');
+
+    // 3. Iniciar Análisis de Partido Individual
     const handleAnalyzeGame = async (game: Game) => {
+        // Verificar límite de análisis
+        const accessCheck = await checkAnalysisAccess();
+
+        if (!accessCheck.allowed) {
+            setUpgradeReason(accessCheck.reason || 'Actualiza tu plan para acceder a más análisis');
+            setIsUpgradeModalOpen(true);
+            return;
+        }
         try {
             setGameJobStatus(prev => ({ ...prev, [game.fixture.id]: 'queued' }));
             const jobId = await createAnalysisJob(game.fixture.id);
@@ -481,6 +500,18 @@ export const FixturesFeed: React.FC = () => {
 
             <AnalysisInProgressModal job={currentJob} isOpen={isJobModalOpen} />
             <AnalysisReportModal analysis={viewingResult} onClose={() => setViewingResult(null)} />
+
+            {/* Modal de Upgrade */}
+            <UpgradePlanModal
+                isOpen={isUpgradeModalOpen}
+                onClose={() => setIsUpgradeModalOpen(false)}
+                currentPlan={{
+                    name: subscription?.planName || 'free',
+                    displayName: subscription?.displayName || 'Gratis'
+                }}
+                recommendedPlan={recommendedUpgrade}
+                reason={upgradeReason}
+            />
         </div>
     );
 };

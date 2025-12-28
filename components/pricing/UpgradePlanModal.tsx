@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckIcon, ArrowRightIcon, SparklesIcon, XIcon } from '../icons/Icons';
+import { CheckIcon, ArrowRightIcon, SparklesIcon } from '../icons/Icons';
 import { initSubscriptionPayment, usdToCop } from '../../services/wompiService';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -89,7 +89,9 @@ export const UpgradePlanModal: React.FC<UpgradePlanModalProps> = ({
                     onClick={onClose}
                     className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"
                 >
-                    <XIcon className="w-6 h-6" />
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
                 </button>
 
                 {/* Header */}
