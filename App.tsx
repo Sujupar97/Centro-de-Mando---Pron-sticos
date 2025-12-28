@@ -21,6 +21,7 @@ import { AdminPage } from './components/Admin';
 import MLDashboard from './components/ai/MLDashboard';
 import { PricingPage } from './components/pricing/PricingPage';
 import { PublicPricingPage } from './components/pricing/PublicPricingPage';
+import { SignUpFlow } from './components/auth/SignUpFlow';
 
 export type Page = 'dashboard' | 'bets' | 'add' | 'ai' | 'live' | 'scan' | 'settings' | 'admin' | 'ml' | 'pricing';
 
@@ -96,7 +97,7 @@ const LandingRoute = () => {
 
   return (
     <LandingPage
-      onGetStarted={() => navigate('/login')}
+      onGetStarted={() => navigate('/signup')}
       onLoginClick={() => navigate('/login')}
     />
   );
@@ -128,6 +129,7 @@ const AppContent: React.FC = () => {
     <Routes>
       <Route path="/" element={<LandingRoute />} />
       <Route path="/pricing" element={<PublicPricingPage />} />
+      <Route path="/signup" element={<SignUpFlow />} />
       <Route path="/login" element={<LoginRoute />} />
       <Route
         path="/app/*"
