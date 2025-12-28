@@ -20,6 +20,7 @@ import { LandingPage } from './components/LandingPage';
 import { AdminPage } from './components/Admin';
 import MLDashboard from './components/ai/MLDashboard';
 import { PricingPage } from './components/pricing/PricingPage';
+import { PublicPricingPage } from './components/pricing/PublicPricingPage';
 
 export type Page = 'dashboard' | 'bets' | 'add' | 'ai' | 'live' | 'scan' | 'settings' | 'admin' | 'ml' | 'pricing';
 
@@ -126,6 +127,7 @@ const AppContent: React.FC = () => {
   return (
     <Routes>
       <Route path="/" element={<LandingRoute />} />
+      <Route path="/pricing" element={<PublicPricingPage />} />
       <Route path="/login" element={<LoginRoute />} />
       <Route
         path="/app/*"

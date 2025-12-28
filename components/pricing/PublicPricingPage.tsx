@@ -1,8 +1,6 @@
-'use client';
-
 import React from 'react';
-import Link from 'next/link';
-import { CheckCircleIcon, XCircleIcon, SparklesIcon, ArrowRightIcon } from '@/components/Icons';
+import { useNavigate } from 'react-router-dom';
+import { CheckIcon } from '../icons/Icons';
 
 interface Plan {
     id: string;
@@ -38,7 +36,7 @@ const PLANS: Plan[] = [
         id: '2',
         name: 'starter',
         displayName: 'Starter',
-        description: 'Acceso al 35% de pronósticos premium',
+        description: 'Acceso al  35% de pronósticos premium',
         priceCents: 999,
         predictionsPercentage: 35,
         monthlyParlayLimit: 2,
@@ -82,7 +80,14 @@ function formatPrice(cents: number): string {
     return `$${(cents / 100).toFixed(2)}`;
 }
 
-function PricingCard({ plan, isPopular }: { plan: Plan; isPopular: boolean }) {
+interface PricingCardProps {
+    plan: Plan;
+    isPopular: boolean;
+}
+
+const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular }) => {
+    const navigate = useNavigate();
+
     const features = [
         {
             label: 'Pronósticos de alta probabilidad',
@@ -131,13 +136,12 @@ function PricingCard({ plan, isPopular }: { plan: Plan; isPopular: boolean }) {
     return (
         <div className={`
       relative flex flex-col bg-slate-900 rounded-2xl border-2 transition-all duration-300
-      ${isPopular ? 'border-emerald-500 shadow-xl shadow-emerald-500/20 scale-105' : 'border-white/10 hover:border-white/20'}
+      ${isPopular ? 'border-brand shadow-xl shadow-brand/20 scale-105' : 'border-white/10 hover:border-white/20'}
     `}>
             {/* Popular Badge */}
             {isPopular && (
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 text-slate-900 text-xs font-black px-4 py-1 rounded-full uppercase tracking-wider flex items-center gap-1">
-                        <SparklesIcon className="w-3 h-3" />
+                    <div className="bg-gradient-to-r from-brand to-emerald-400 text-slate-900 text-xs font-black px-4 py-1 rounded-full uppercase tracking-wider">
                         Más Popular
                     </div>
                 </div>
@@ -162,16 +166,12 @@ function PricingCard({ plan, isPopular }: { plan: Plan; isPopular: boolean }) {
             <div className="flex-grow p-6 space-y-3">
                 {features.map((feature, idx) => (
                     <div key={idx} className="flex items-start gap-3">
-                        {feature.included ? (
-                            <CheckCircleIcon className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-                        ) : (
-                            <XCircleIcon className="w-5 h-5 text-gray-600 shrink-0 mt-0.5" />
-                        )}
+                        <CheckIcon className={`w-5 h-5 shrink-0 mt-0.5 ${feature.included ? 'text-brand' : 'text-gray-600'}`} />
                         <div>
                             <span className={feature.included ? 'text-white' : 'text-gray-500'}>
                                 {feature.label}
                             </span>
-                            <span className={`ml-2 text-sm ${feature.included ? 'text-emerald-500 font-semibold' : 'text-gray-600'}`}>
+                            <span className={`ml-2 text-sm ${feature.included ? 'text-brand font-semibold' : 'text-gray-600'}`}>
                                 {feature.value}
                             </span>
                         </div>
@@ -181,32 +181,36 @@ function PricingCard({ plan, isPopular }: { plan: Plan; isPopular: boolean }) {
 
             {/* CTA */}
             <div className="p-6 border-t border-white/5">
-                <Link
-                    href="http://localhost:3000"
+                <button
+                    onClick={() => navigate('/login')}
                     className={`
             w-full py-3 px-6 rounded-xl font-bold transition-all flex items-center justify-center gap-2
             ${isPopular
-                            ? 'bg-gradient-to-r from-emerald-500 to-emerald-400 text-slate-900 hover:shadow-lg hover:shadow-emerald-500/30 hover:scale-[1.02]'
+                            ? 'bg-gradient-to-r from-brand to-emerald-400 text-slate-900 hover:shadow-lg hover:shadow-brand/30 hover:scale-[1.02]'
                             : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
                         }
           `}
                 >
                     {plan.priceCents === 0 ? 'Comenzar Gratis' : 'Seleccionar Plan'}
-                    <ArrowRightIcon className="w-4 h-4" />
-                </Link>
+                </button>
             </div>
         </div>
     );
-}
+};
 
-export default function PricingPage() {
+export const PublicPricingPage: React.FC = () => {
+    const navigate = useNavigate();
+
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 py-12 px-4">
             {/* Header */}
             <div className="text-center max-w-3xl mx-auto mb-12">
-                <Link href="/" className="text-emerald-500 hover:text-emerald-400 text-sm font-medium mb-4 inline-block">
+                <button
+                    onClick={() => navigate('/')}
+                    className="text-brand hover:text-emerald-400 text-sm font-medium mb-4 inline-block"
+                >
                     ← Volver al inicio
-                </Link>
+                </button>
                 <h1 className="text-4xl md:text-5xl font-black text-white mb-4">
                     Elige tu Plan
                 </h1>
@@ -236,4 +240,4 @@ export default function PricingPage() {
             </div>
         </div>
     );
-}
+};

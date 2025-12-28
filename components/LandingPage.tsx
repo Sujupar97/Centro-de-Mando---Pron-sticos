@@ -44,6 +44,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
                     </div>
 
                     <div className="flex items-center gap-6 animate-fade-in" style={{ animationDelay: '0.1s' }}>
+                        <a
+                            href="/pricing"
+                            className="hidden md:block text-slate-400 hover:text-white font-medium text-sm transition-colors"
+                        >
+                            Planes
+                        </a>
                         <button
                             onClick={onLoginClick}
                             className="hidden md:block text-slate-400 hover:text-white font-medium text-sm transition-colors hover:scale-105 transform duration-200"
