@@ -5,20 +5,29 @@ import { getParlaysByDate, saveParlays, verifyParlays, deleteParlaysForDate, Par
 import { ParlayAnalysisResult } from '../../types';
 import { fetchFixturesList } from '../../services/liveDataService';
 import { fastBatchOddsCheck, mapLeagueToSportKey, findPriceInEvent } from '../../services/oddsService';
-import { PuzzlePieceIcon, SparklesIcon, CalendarDaysIcon, ArrowPathIcon, DocumentArrowDownIcon, TrashIcon } from '../icons/Icons';
-// import { formatDate } from '../../utils/formatters'; // Not available, using raw date string
+import { PuzzlePieceIcon, SparklesIcon, CalendarDaysIcon, ArrowPathIcon, DocumentArrowDownIcon, TrashIcon, LockClosedIcon } from '../icons/Icons';
 import { useOrganization } from '../../contexts/OrganizationContext';
+import { useSubscriptionLimits } from '../../hooks/useSubscriptionLimits';
+import { UpgradePlanModal } from '../pricing/UpgradePlanModal';
+import { useAuth } from '../../hooks/useAuth';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export const ParlayBuilder: React.FC = () => {
     const { currentOrg: organization } = useOrganization();
+    const { user } = useAuth();
+    const { subscription, checkParlayAccess, parlaysRemaining, recommendedUpgrade } = useSubscriptionLimits();
+
     const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [loading, setLoading] = useState(false);
     const [analyzing, setAnalyzing] = useState(false);
     const [parlays, setParlays] = useState<ParlayAnalysisResult[]>([]);
     const [statusMessage, setStatusMessage] = useState('');
     const [matchCount, setMatchCount] = useState(0);
+
+    // Modal de upgrade
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+    const [upgradeReason, setUpgradeReason] = useState('');
 
     // Initial Load & Date Change
     useEffect(() => {
@@ -75,6 +84,15 @@ export const ParlayBuilder: React.FC = () => {
 
     const handleGenerate = async () => {
         if (!organization?.id) return;
+
+        // Verificar límite de parlays por plan
+        const accessCheck = await checkParlayAccess();
+
+        if (!accessCheck.allowed) {
+            setUpgradeReason(accessCheck.reason || 'Actualiza tu plan para crear más parlays');
+            setIsUpgradeModalOpen(true);
+            return;
+        }
 
         setLoading(true);
         setStatusMessage('Buscando análisis completados del día...');
@@ -306,195 +324,209 @@ export const ParlayBuilder: React.FC = () => {
     };
 
     return (
-        <div className="h-full flex flex-col space-y-6 animate-fade-in">
-            {/* Control Bar */}
-            <div className="bg-gray-800/50 p-6 rounded-xl border border-white/5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
-                <div className="flex items-center space-x-4 w-full md:w-auto">
-                    <div className="bg-brand/10 p-3 rounded-lg text-brand">
-                        <PuzzlePieceIcon className="w-8 h-8" />
+        <>
+            <div className="h-full flex flex-col space-y-6 animate-fade-in">
+                {/* Control Bar */}
+                <div className="bg-gray-800/50 p-6 rounded-xl border border-white/5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
+                    <div className="flex items-center space-x-4 w-full md:w-auto">
+                        <div className="bg-brand/10 p-3 rounded-lg text-brand">
+                            <PuzzlePieceIcon className="w-8 h-8" />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-bold text-white font-display">Constructor de Parlays</h3>
+                            <p className="text-sm text-gray-400">Inteligencia Artificial aplicada a combinadas multi-partido.</p>
+                        </div>
                     </div>
-                    <div>
-                        <h3 className="text-xl font-bold text-white font-display">Constructor de Parlays</h3>
-                        <p className="text-sm text-gray-400">Inteligencia Artificial aplicada a combinadas multi-partido.</p>
-                    </div>
-                </div>
 
-                <div className="flex items-center space-x-3 w-full md:w-auto bg-gray-900/50 p-2 rounded-lg border border-white/10">
-                    <CalendarDaysIcon className="w-5 h-5 text-gray-400 ml-2" />
-                    <input
-                        type="date"
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="bg-transparent text-white focus:outline-none font-mono text-sm"
-                    />
-                    <button
-                        onClick={handleGenerate}
-                        disabled={loading || analyzing}
-                        className={`
-                            px-6 py-2 rounded-lg font-bold text-sm shadow-lg transition-all flex items-center gap-2
-                            ${loading || analyzing
-                                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                                : 'bg-gradient-to-r from-brand to-emerald-500 text-slate-900 hover:scale-105 hover:shadow-brand/20'
-                            }
-                        `}
-                    >
-                        {loading ? (
-                            <ArrowPathIcon className="w-5 h-5 animate-spin" />
-                        ) : (
-                            <SparklesIcon className="w-5 h-5" />
-                        )}
-                        {loading ? 'Procesando...' : 'Generar Parlays'}
-                    </button>
-                    <button
-                        onClick={handleVerify}
-                        disabled={loading || analyzing}
-                        className="px-4 py-2 rounded-lg font-bold text-xs bg-slate-800 text-gray-300 hover:text-white border border-white/10 hover:border-brand/40 transition-all flex items-center gap-2"
-                        title="Chequear si los partidos ya terminaron y actualizar ganadores"
-                    >
-                        <ArrowPathIcon className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                    </button>
-                    {parlays.length > 0 && (
+                    <div className="flex items-center space-x-3 w-full md:w-auto bg-gray-900/50 p-2 rounded-lg border border-white/10">
+                        <CalendarDaysIcon className="w-5 h-5 text-gray-400 ml-2" />
+                        <input
+                            type="date"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            className="bg-transparent text-white focus:outline-none font-mono text-sm"
+                        />
                         <button
                             onClick={handleGenerate}
                             disabled={loading || analyzing}
-                            className="px-4 py-2 rounded-lg font-bold text-xs bg-red-900/30 text-red-400 hover:text-white hover:bg-red-600 border border-red-500/20 transition-all flex items-center gap-2"
-                            title="Borrar actuales y generar nueva estrategia"
+                            className={`
+                            px-6 py-2 rounded-lg font-bold text-sm shadow-lg transition-all flex items-center gap-2
+                            ${loading || analyzing
+                                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-brand to-emerald-500 text-slate-900 hover:scale-105 hover:shadow-brand/20'
+                                }
+                        `}
                         >
-                            <SparklesIcon className="w-4 h-4" /> Regenerar Estrategia
+                            {loading ? (
+                                <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                            ) : (
+                                <SparklesIcon className="w-5 h-5" />
+                            )}
+                            {loading ? 'Procesando...' : 'Generar Parlays'}
                         </button>
-                    )}
-                    {parlays.length > 0 && (
                         <button
-                            onClick={handleDelete}
+                            onClick={handleVerify}
                             disabled={loading || analyzing}
-                            className="px-4 py-2 rounded-lg font-bold text-xs bg-red-600 text-white hover:bg-red-700 border border-red-500 transition-all flex items-center gap-2"
-                            title="Eliminar todos los parlays de esta fecha"
+                            className="px-4 py-2 rounded-lg font-bold text-xs bg-slate-800 text-gray-300 hover:text-white border border-white/10 hover:border-brand/40 transition-all flex items-center gap-2"
+                            title="Chequear si los partidos ya terminaron y actualizar ganadores"
                         >
-                            <TrashIcon className="w-4 h-4" /> Eliminar
+                            <ArrowPathIcon className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                         </button>
+                        {parlays.length > 0 && (
+                            <button
+                                onClick={handleGenerate}
+                                disabled={loading || analyzing}
+                                className="px-4 py-2 rounded-lg font-bold text-xs bg-red-900/30 text-red-400 hover:text-white hover:bg-red-600 border border-red-500/20 transition-all flex items-center gap-2"
+                                title="Borrar actuales y generar nueva estrategia"
+                            >
+                                <SparklesIcon className="w-4 h-4" /> Regenerar Estrategia
+                            </button>
+                        )}
+                        {parlays.length > 0 && (
+                            <button
+                                onClick={handleDelete}
+                                disabled={loading || analyzing}
+                                className="px-4 py-2 rounded-lg font-bold text-xs bg-red-600 text-white hover:bg-red-700 border border-red-500 transition-all flex items-center gap-2"
+                                title="Eliminar todos los parlays de esta fecha"
+                            >
+                                <TrashIcon className="w-4 h-4" /> Eliminar
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Status / Results Area */}
+                <div className="flex-grow overflow-y-auto">
+                    {statusMessage && !parlays.length && (
+                        <div className={`text-center py-20 ${analyzing ? 'animate-pulse' : ''}`}>
+                            {analyzing ? (
+                                <div className="flex flex-col items-center gap-4">
+                                    <div className="w-16 h-16 border-4 border-brand border-t-transparent rounded-full animate-spin"></div>
+                                    <h3 className="text-xl font-bold text-brand animate-pulse">Consultando al Oráculo...</h3>
+                                    <p className="text-gray-400 max-w-md">{statusMessage}</p>
+                                </div>
+                            ) : (
+                                <div className="text-gray-500 flex flex-col items-center">
+                                    {loading ? null : <PuzzlePieceIcon className="w-16 h-16 mb-4 opacity-20" />}
+                                    <p>{statusMessage}</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Parlay Grid */}
+                    {parlays.length > 0 && (
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                            {parlays.map((parlay, idx) => (
+                                <div key={idx} className="bg-slate-900 border border-white/10 rounded-2xl overflow-hidden shadow-2xl flex flex-col hover:border-brand/30 transition-colors group">
+                                    <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-5 border-b border-white/5 flex justify-between items-start relative overflow-hidden">
+                                        <div className="relative z-10">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="bg-brand text-slate-900 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                                                    {parlay.finalOdds < 3 ? 'SEGURO' : parlay.finalOdds < 6 ? 'VALOR' : 'BOMBA'}
+                                                </span>
+                                                {(parlay as any).status && (parlay as any).status !== 'pending' && (
+                                                    <span className={`px-2 py-0.5 rounded uppercase tracking-wider text-[10px] font-black ${(parlay as any).status === 'won' ? 'bg-green-500 text-white' :
+                                                        (parlay as any).status === 'lost' ? 'bg-red-500 text-white' : 'bg-gray-500 text-white'
+                                                        }`}>
+                                                        {(parlay as any).status}
+                                                    </span>
+                                                )}
+                                                <h4 className="text-lg font-bold text-white">{parlay.parlayTitle}</h4>
+                                            </div>
+                                            <p className="text-xs text-gray-400 italic font-medium w-full max-w-md">"{parlay.overallStrategy}"</p>
+                                        </div>
+                                        <div className="flex flex-col items-end relative z-10 gap-2">
+                                            <div className="text-right">
+                                                <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Cuota Total</div>
+                                                <div className="text-4xl font-black text-brand tracking-tighter loading-none">
+                                                    {parlay.finalOdds.toFixed(2)}
+                                                </div>
+                                            </div>
+                                            {parlay.winProbability !== undefined && (
+                                                <div className="text-right bg-black/30 px-2 py-1 rounded">
+                                                    <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Probabilidad</div>
+                                                    <div className={`text-sm font-bold ${parlay.winProbability > 70 ? 'text-green-400' : 'text-yellow-400'}`}>
+                                                        {parlay.winProbability}%
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* Deco Background */}
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-brand/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                                    </div>
+
+                                    {/* Legs List */}
+                                    <div className="p-0 divide-y divide-white/5 bg-slate-900/50 flex-grow">
+                                        {parlay.legs.map((leg, legIdx) => (
+                                            <div key={legIdx} className="p-4 flex items-start gap-4 hover:bg-white/[0.02] transition-colors">
+                                                <div className="flex flex-col items-center justify-center min-w-[50px]">
+                                                    <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-xs font-bold text-gray-400 mb-1">
+                                                        {legIdx + 1}
+                                                    </div>
+                                                    <span className="text-[10px] text-gray-600 font-mono">LEG</span>
+                                                    {leg.status && leg.status !== 'pending' && (
+                                                        <div className={`mt-1 w-2 h-2 rounded-full ${leg.status === 'won' ? 'bg-green-500' : leg.status === 'lost' ? 'bg-red-500' : 'bg-gray-500'}`}></div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-grow">
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <h5 className="font-bold text-white text-sm">{leg.game}</h5>
+                                                        <span className="bg-slate-800 text-brand px-2 py-0.5 rounded text-xs font-bold border border-white/5">
+                                                            @{leg.odds}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <span className="text-xs font-bold text-blue-400 bg-blue-900/20 px-1.5 py-0.5 rounded border border-blue-500/20">
+                                                            {leg.market}
+                                                        </span>
+                                                        <span className="text-sm font-medium text-gray-300">
+                                                            👉 {leg.prediction}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 leading-relaxed border-l-2 border-slate-700 pl-2">
+                                                        {leg.reasoning}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Ticket Footer */}
+                                    <div className="p-4 bg-black/20 border-t border-white/5 flex justify-between items-center">
+                                        <div className="text-xs text-gray-600 font-mono">
+                                            Generated by BetCommand AI
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={() => generatePDF(parlay)}
+                                                className="text-xs font-bold text-gray-400 hover:text-white transition-colors flex items-center gap-1 uppercase tracking-wider bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg"
+                                            >
+                                                <DocumentArrowDownIcon className="w-4 h-4" /> Download PDF
+                                            </button>
+                                            <button className="text-xs font-bold text-brand hover:text-white transition-colors flex items-center gap-1 uppercase tracking-wider px-3 py-1.5 rounded-lg">
+                                                <SparklesIcon className="w-3 h-3" /> Copiar Ticket
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </div>
             </div>
 
-            {/* Status / Results Area */}
-            <div className="flex-grow overflow-y-auto">
-                {statusMessage && !parlays.length && (
-                    <div className={`text-center py-20 ${analyzing ? 'animate-pulse' : ''}`}>
-                        {analyzing ? (
-                            <div className="flex flex-col items-center gap-4">
-                                <div className="w-16 h-16 border-4 border-brand border-t-transparent rounded-full animate-spin"></div>
-                                <h3 className="text-xl font-bold text-brand animate-pulse">Consultando al Oráculo...</h3>
-                                <p className="text-gray-400 max-w-md">{statusMessage}</p>
-                            </div>
-                        ) : (
-                            <div className="text-gray-500 flex flex-col items-center">
-                                {loading ? null : <PuzzlePieceIcon className="w-16 h-16 mb-4 opacity-20" />}
-                                <p>{statusMessage}</p>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Parlay Grid */}
-                {parlays.length > 0 && (
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                        {parlays.map((parlay, idx) => (
-                            <div key={idx} className="bg-slate-900 border border-white/10 rounded-2xl overflow-hidden shadow-2xl flex flex-col hover:border-brand/30 transition-colors group">
-                                <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-5 border-b border-white/5 flex justify-between items-start relative overflow-hidden">
-                                    <div className="relative z-10">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="bg-brand text-slate-900 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
-                                                {parlay.finalOdds < 3 ? 'SEGURO' : parlay.finalOdds < 6 ? 'VALOR' : 'BOMBA'}
-                                            </span>
-                                            {(parlay as any).status && (parlay as any).status !== 'pending' && (
-                                                <span className={`px-2 py-0.5 rounded uppercase tracking-wider text-[10px] font-black ${(parlay as any).status === 'won' ? 'bg-green-500 text-white' :
-                                                    (parlay as any).status === 'lost' ? 'bg-red-500 text-white' : 'bg-gray-500 text-white'
-                                                    }`}>
-                                                    {(parlay as any).status}
-                                                </span>
-                                            )}
-                                            <h4 className="text-lg font-bold text-white">{parlay.parlayTitle}</h4>
-                                        </div>
-                                        <p className="text-xs text-gray-400 italic font-medium w-full max-w-md">"{parlay.overallStrategy}"</p>
-                                    </div>
-                                    <div className="flex flex-col items-end relative z-10 gap-2">
-                                        <div className="text-right">
-                                            <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Cuota Total</div>
-                                            <div className="text-4xl font-black text-brand tracking-tighter loading-none">
-                                                {parlay.finalOdds.toFixed(2)}
-                                            </div>
-                                        </div>
-                                        {parlay.winProbability !== undefined && (
-                                            <div className="text-right bg-black/30 px-2 py-1 rounded">
-                                                <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Probabilidad</div>
-                                                <div className={`text-sm font-bold ${parlay.winProbability > 70 ? 'text-green-400' : 'text-yellow-400'}`}>
-                                                    {parlay.winProbability}%
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                    {/* Deco Background */}
-                                    <div className="absolute top-0 right-0 w-32 h-32 bg-brand/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-                                </div>
-
-                                {/* Legs List */}
-                                <div className="p-0 divide-y divide-white/5 bg-slate-900/50 flex-grow">
-                                    {parlay.legs.map((leg, legIdx) => (
-                                        <div key={legIdx} className="p-4 flex items-start gap-4 hover:bg-white/[0.02] transition-colors">
-                                            <div className="flex flex-col items-center justify-center min-w-[50px]">
-                                                <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-xs font-bold text-gray-400 mb-1">
-                                                    {legIdx + 1}
-                                                </div>
-                                                <span className="text-[10px] text-gray-600 font-mono">LEG</span>
-                                                {leg.status && leg.status !== 'pending' && (
-                                                    <div className={`mt-1 w-2 h-2 rounded-full ${leg.status === 'won' ? 'bg-green-500' : leg.status === 'lost' ? 'bg-red-500' : 'bg-gray-500'}`}></div>
-                                                )}
-                                            </div>
-                                            <div className="flex-grow">
-                                                <div className="flex justify-between items-start mb-1">
-                                                    <h5 className="font-bold text-white text-sm">{leg.game}</h5>
-                                                    <span className="bg-slate-800 text-brand px-2 py-0.5 rounded text-xs font-bold border border-white/5">
-                                                        @{leg.odds}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <span className="text-xs font-bold text-blue-400 bg-blue-900/20 px-1.5 py-0.5 rounded border border-blue-500/20">
-                                                        {leg.market}
-                                                    </span>
-                                                    <span className="text-sm font-medium text-gray-300">
-                                                        👉 {leg.prediction}
-                                                    </span>
-                                                </div>
-                                                <p className="text-xs text-gray-500 leading-relaxed border-l-2 border-slate-700 pl-2">
-                                                    {leg.reasoning}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* Ticket Footer */}
-                                <div className="p-4 bg-black/20 border-t border-white/5 flex justify-between items-center">
-                                    <div className="text-xs text-gray-600 font-mono">
-                                        Generated by BetCommand AI
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <button
-                                            onClick={() => generatePDF(parlay)}
-                                            className="text-xs font-bold text-gray-400 hover:text-white transition-colors flex items-center gap-1 uppercase tracking-wider bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg"
-                                        >
-                                            <DocumentArrowDownIcon className="w-4 h-4" /> Download PDF
-                                        </button>
-                                        <button className="text-xs font-bold text-brand hover:text-white transition-colors flex items-center gap-1 uppercase tracking-wider px-3 py-1.5 rounded-lg">
-                                            <SparklesIcon className="w-3 h-3" /> Copiar Ticket
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        </div>
+            {/* Modal de Upgrade */}
+            <UpgradePlanModal
+                isOpen={isUpgradeModalOpen}
+                onClose={() => setIsUpgradeModalOpen(false)}
+                currentPlan={{
+                    name: subscription?.planName || 'free',
+                    displayName: subscription?.displayName || 'Gratis'
+                }}
+                recommendedPlan={recommendedUpgrade}
+                reason={upgradeReason}
+            />
+        </>
     );
 };

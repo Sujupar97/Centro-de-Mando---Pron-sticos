@@ -8,8 +8,12 @@ import {
     ChartBarIcon,
     LightBulbIcon,
     ArrowPathIcon,
-    PlayIcon
+    PlayIcon,
+    SparklesIcon,
+    LockClosedIcon
 } from '../icons/Icons';
+import { useSubscriptionLimits } from '../../hooks/useSubscriptionLimits';
+import { useNavigate } from 'react-router-dom';
 
 interface LearnedLesson {
     id: string;
@@ -39,15 +43,78 @@ interface ModelVersion {
 }
 
 export default function MLDashboard() {
+    const navigate = useNavigate();
+    const { subscription, loading: subLoading, isPro, isPremium } = useSubscriptionLimits();
+
     const [stats, setStats] = useState<MLStats | null>(null);
     const [lessons, setLessons] = useState<LearnedLesson[]>([]);
     const [versions, setVersions] = useState<ModelVersion[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+    // Verificar acceso
+    const hasAccess = isPro || isPremium;
+
     useEffect(() => {
-        loadData();
-    }, []);
+        if (hasAccess) {
+            loadData();
+        }
+    }, [hasAccess]);
+
+    // Si no tiene acceso, mostrar página de upgrade
+    if (!subLoading && !hasAccess) {
+        return (
+            <div className="min-h-[60vh] flex items-center justify-center p-8">
+                <div className="max-w-md w-full text-center">
+                    <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-tr from-amber-500/20 to-orange-500/20 flex items-center justify-center border border-amber-500/30">
+                        <LockClosedIcon className="w-10 h-10 text-amber-500" />
+                    </div>
+
+                    <h2 className="text-3xl font-black text-white mb-4">
+                        ML Dashboard Exclusivo
+                    </h2>
+
+                    <p className="text-slate-400 mb-6">
+                        El Machine Learning Dashboard está disponible exclusivamente para usuarios con planes <span className="text-brand font-bold">Pro</span> y <span className="text-purple-400 font-bold">Premium</span>.
+                    </p>
+
+                    <div className="bg-slate-800/50 rounded-xl p-4 mb-6 text-left border border-white/5">
+                        <p className="text-sm text-slate-400 mb-3 font-medium">Con el ML Dashboard podrás:</p>
+                        <ul className="space-y-2 text-sm">
+                            <li className="flex items-center gap-2 text-slate-300">
+                                <CheckCircleIcon className="w-4 h-4 text-brand" />
+                                Ver estadísticas de predicciones
+                            </li>
+                            <li className="flex items-center gap-2 text-slate-300">
+                                <CheckCircleIcon className="w-4 h-4 text-brand" />
+                                Analizar lecciones aprendidas por la IA
+                            </li>
+                            <li className="flex items-center gap-2 text-slate-300">
+                                <CheckCircleIcon className="w-4 h-4 text-brand" />
+                                Ejecutar ciclos de aprendizaje automático
+                            </li>
+                            <li className="flex items-center gap-2 text-slate-300">
+                                <CheckCircleIcon className="w-4 h-4 text-brand" />
+                                Monitorear versiones del modelo
+                            </li>
+                        </ul>
+                    </div>
+
+                    <button
+                        onClick={() => navigate('/pricing')}
+                        className="px-8 py-3 bg-gradient-to-r from-brand to-emerald-400 text-slate-900 font-bold rounded-xl hover:shadow-lg hover:shadow-brand/30 transition-all flex items-center gap-2 mx-auto"
+                    >
+                        <SparklesIcon className="w-5 h-5" />
+                        Actualizar Plan
+                    </button>
+
+                    <p className="text-xs text-slate-500 mt-4">
+                        Tu plan actual: <span className="text-slate-300 font-medium">{subscription?.displayName || 'Gratis'}</span>
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     const loadData = async () => {
         setLoading(true);
