@@ -23,7 +23,7 @@ serve(async (req) => {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
         const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!
-        const apiFootballKey = Deno.env.get('API_FOOTBALL_KEY')!
+        const apiFootballKey = Deno.env.get('API_FOOTBALL_KEYS')!
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
         const genAI = new GoogleGenerativeAI(geminiApiKey)

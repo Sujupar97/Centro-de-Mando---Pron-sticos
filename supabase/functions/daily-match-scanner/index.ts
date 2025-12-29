@@ -19,7 +19,7 @@ serve(async (req) => {
     try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-        const apiFootballKey = Deno.env.get('API_FOOTBALL_KEY')!
+        const apiFootballKey = Deno.env.get('API_FOOTBALL_KEYS')!
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
