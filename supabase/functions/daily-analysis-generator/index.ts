@@ -10,10 +10,9 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Procesar partidos en batches de 2, con límite de tiempo total (50 minutos)
-const BATCH_SIZE = 2
-const MAX_EXECUTION_TIME_MS = 50 * 60 * 1000 // 50 minutos
-const DELAY_BETWEEN_BATCHES_MS = 10000 // 10 segundos entre batches
+// Procesar 3 partidos por ejecución, de 1 en 1 con pausa de 3 min
+const BATCH_SIZE = 3
+const DELAY_BETWEEN_MATCHES_MS = 3 * 60 * 1000 // 3 minutos
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') {
@@ -25,123 +24,109 @@ serve(async (req) => {
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
-        const startTime = Date.now()
 
-        console.log(`[AutoAnalyzer] Iniciando análisis automático en batches de ${BATCH_SIZE}`)
+        console.log(`[AutoAnalyzer] Iniciando análisis (máximo ${BATCH_SIZE} partidos)`)
 
-        let totalSuccessCount = 0
-        let totalFailedCount = 0
-        const allResults: any[] = []
-        let batchNumber = 0
+        // 1. Obtener partidos pendientes (solo 2)
+        const { data: pendingMatches, error: fetchError } = await supabase
+            .from('daily_matches')
+            .select('*')
+            .eq('is_analyzed', false)
+            .order('match_time', { ascending: true })
+            .limit(BATCH_SIZE)
 
-        // LOOP: Procesar TODOS los partidos pendientes en batches
-        while (true) {
-            // Verificar timeout (50 minutos)
-            if (Date.now() - startTime > MAX_EXECUTION_TIME_MS) {
-                console.log('[AutoAnalyzer] Timeout alcanzado (50 min), deteniendo')
-                break
-            }
-
-            batchNumber++
-
-            // 1. Obtener siguiente batch de partidos pendientes
-            const { data: pendingMatches, error: fetchError } = await supabase
-                .from('daily_matches')
-                .select('*')
-                .eq('is_analyzed', false)
-                .order('match_time', { ascending: true })
-                .limit(BATCH_SIZE)
-
-            if (fetchError) {
-                throw new Error(`Error obteniendo partidos: ${fetchError.message}`)
-            }
-
-            // Si no hay más partidos, terminar
-            if (!pendingMatches || pendingMatches.length === 0) {
-                console.log('[AutoAnalyzer] ✅ Todos los partidos procesados')
-                break
-            }
-
-            console.log(`[AutoAnalyzer] 📦 Batch ${batchNumber}: ${pendingMatches.length} partidos`)
-
-            // 2. Procesar cada partido del batch
-            for (const match of pendingMatches) {
-                try {
-                    console.log(`[AutoAnalyzer] Analizando: ${match.home_team} vs ${match.away_team}`)
-
-                    // Llamar a create-analysis-job
-                    const analysisResponse = await fetch(
-                        `${supabaseUrl}/functions/v1/create-analysis-job`,
-                        {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': `Bearer ${supabaseServiceKey}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                api_fixture_id: match.api_fixture_id
-                            })
-                        }
-                    )
-
-                    if (!analysisResponse.ok) {
-                        const errorText = await analysisResponse.text()
-                        console.error(`[AutoAnalyzer] ❌ Error: ${errorText}`)
-                        totalFailedCount++
-                        allResults.push({
-                            match: `${match.home_team} vs ${match.away_team}`,
-                            status: 'failed',
-                            error: errorText.substring(0, 100)
-                        })
-                    } else {
-                        const analysisResult = await analysisResponse.json()
-                        console.log(`[AutoAnalyzer] ✅ Completado`)
-
-                        // Marcar como analizado
-                        await supabase
-                            .from('daily_matches')
-                            .update({ is_analyzed: true })
-                            .eq('id', match.id)
-
-                        totalSuccessCount++
-                        allResults.push({
-                            match: `${match.home_team} vs ${match.away_team}`,
-                            status: 'success',
-                            jobId: analysisResult.job_id
-                        })
-                    }
-
-                    // Pausa corta entre partidos (3 segundos)
-                    await new Promise(resolve => setTimeout(resolve, 3000))
-
-                } catch (matchError: any) {
-                    console.error(`[AutoAnalyzer] ❌ Error fatal:`, matchError)
-                    totalFailedCount++
-                    allResults.push({
-                        match: `${match.home_team} vs ${match.away_team}`,
-                        status: 'failed',
-                        error: matchError.message
-                    })
-                }
-            }
-
-            // 3. Pausa entre batches (10 segundos) para evitar sobrecarga
-            console.log(`[AutoAnalyzer] ⏸️  Pausa de ${DELAY_BETWEEN_BATCHES_MS / 1000}s antes del siguiente batch...`)
-            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES_MS))
+        if (fetchError) {
+            throw new Error(`Error obteniendo partidos: ${fetchError.message}`)
         }
 
-        const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1)
-        console.log(`[AutoAnalyzer] 🎉 Finalizado en ${totalTime} minutos`)
-        console.log(`[AutoAnalyzer] ✅ Éxitos: ${totalSuccessCount}, ❌ Fallos: ${totalFailedCount}`)
+        // Si no hay partidos pendientes, terminar
+        if (!pendingMatches || pendingMatches.length === 0) {
+            console.log('[AutoAnalyzer] ✅ No hay partidos pendientes')
+            return new Response(
+                JSON.stringify({
+                    success: true,
+                    analyzed: 0,
+                    message: 'No pending matches'
+                }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        console.log(`[AutoAnalyzer] 📦 Procesando ${pendingMatches.length} partidos`)
+
+        let successCount = 0
+        let failedCount = 0
+        const results: any[] = []
+
+        // 2. Procesar cada partido
+        for (const match of pendingMatches) {
+            try {
+                console.log(`[AutoAnalyzer] Analizando: ${match.home_team} vs ${match.away_team}`)
+
+                // Llamar a create-analysis-job
+                const analysisResponse = await fetch(
+                    `${supabaseUrl}/functions/v1/create-analysis-job`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${supabaseServiceKey}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            api_fixture_id: match.api_fixture_id
+                        })
+                    }
+                )
+
+                if (!analysisResponse.ok) {
+                    const errorText = await analysisResponse.text()
+                    console.error(`[AutoAnalyzer] ❌ Error: ${errorText}`)
+                    failedCount++
+                    results.push({
+                        match: `${match.home_team} vs ${match.away_team}`,
+                        status: 'failed',
+                        error: errorText.substring(0, 100)
+                    })
+                } else {
+                    const analysisResult = await analysisResponse.json()
+                    console.log(`[AutoAnalyzer] ✅ Completado`)
+
+                    // Marcar como analizado
+                    await supabase
+                        .from('daily_matches')
+                        .update({ is_analyzed: true })
+                        .eq('id', match.id)
+
+                    successCount++
+                    results.push({
+                        match: `${match.home_team} vs ${match.away_team}`,
+                        status: 'success',
+                        jobId: analysisResult.job_id
+                    })
+                }
+
+                // Pausa de 3 minutos entre partidos
+                await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_MATCHES_MS))
+
+            } catch (matchError: any) {
+                console.error(`[AutoAnalyzer] ❌ Error fatal:`, matchError)
+                failedCount++
+                results.push({
+                    match: `${match.home_team} vs ${match.away_team}`,
+                    status: 'failed',
+                    error: matchError.message
+                })
+            }
+        }
+
+        console.log(`[AutoAnalyzer] 🎉 Completado: ${successCount} éxitos, ${failedCount} fallos`)
 
         return new Response(
             JSON.stringify({
                 success: true,
-                totalAnalyzed: totalSuccessCount,
-                totalFailed: totalFailedCount,
-                batches: batchNumber,
-                executionTimeMinutes: parseFloat(totalTime),
-                results: allResults
+                analyzed: successCount,
+                failed: failedCount,
+                results
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
