@@ -44,11 +44,12 @@ serve(async (req) => {
             p_execution_date: today
         })
 
-        // 2. Obtener mejores predicciones del día
+        // 2. Obtener mejores predicciones del día (creadas hoy para partidos de mañana)
         const { data: predictions, error: predError } = await supabase
             .from('predictions')
             .select('*')
-            .eq('match_date', targetDate)
+            .gte('created_at', `${today}T00:00:00`)
+            .lt('created_at', `${today}T23:59:59`)
             .gte('confidence', MIN_CONFIDENCE)
             .is('is_won', null) // Solo pendientes
             .order('confidence', { ascending: false })
