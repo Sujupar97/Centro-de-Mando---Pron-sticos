@@ -23,10 +23,28 @@ serve(async (req) => {
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-        // Fecha objetivo: MAÑANA
-        const tomorrow = new Date()
-        tomorrow.setDate(tomorrow.getDate() + 1)
-        const targetDate = tomorrow.toISOString().split('T')[0]
+        // Leer parámetro opcional de fecha
+        let targetDate: string
+        try {
+            const body = await req.json()
+            if (body.targetDate) {
+                targetDate = body.targetDate
+            } else {
+                // Por defecto: mañana en zona horaria Colombia (UTC-5)
+                const now = new Date()
+                const colombiaOffset = -5 * 60 * 60 * 1000 // UTC-5 en ms
+                const colombiaTime = new Date(now.getTime() + colombiaOffset + (now.getTimezoneOffset() * 60 * 1000))
+                colombiaTime.setDate(colombiaTime.getDate() + 1)
+                targetDate = colombiaTime.toISOString().split('T')[0]
+            }
+        } catch {
+            // Si no hay body, calcular mañana en Colombia
+            const now = new Date()
+            const colombiaOffset = -5 * 60 * 60 * 1000
+            const colombiaTime = new Date(now.getTime() + colombiaOffset + (now.getTimezoneOffset() * 60 * 1000))
+            colombiaTime.setDate(colombiaTime.getDate() + 1)
+            targetDate = colombiaTime.toISOString().split('T')[0]
+        }
 
         console.log(`[Scanner] Iniciando escaneo para fecha: ${targetDate}`)
 
@@ -50,57 +68,54 @@ serve(async (req) => {
         console.log(`[Scanner] Ligas activas: ${allowedLeagues.length}`)
 
         const leagueIds = allowedLeagues.map((l: any) => l.api_league_id)
+        const leagueIdSet = new Set(leagueIds)
 
-        // 3. Obtener partidos de API-Football
+        // 3. Obtener TODOS los partidos del día (sin filtro de liga)
+        // La API requiere 'season' cuando filtras por liga, pero sin ese filtro funciona bien
         let allMatches: any[] = []
         let processed = 0
         let success = 0
         let failed = 0
 
-        // Hacer llamadas por lotes de ligas (evitar rate limiting)
-        const BATCH_SIZE = 20
-        for (let i = 0; i < leagueIds.length; i += BATCH_SIZE) {
-            const batchLeagues = leagueIds.slice(i, i + BATCH_SIZE).join('-')
+        try {
+            console.log(`[Scanner] Llamando API para fecha: ${targetDate}`)
 
-            try {
-                const response = await fetch(
-                    `https://v3.football.api-sports.io/fixtures?date=${targetDate}&league=${batchLeagues}`,
-                    {
-                        headers: {
-                            'x-rapidapi-key': apiFootballKey,
-                            'x-rapidapi-host': 'v3.football.api-sports.io'
-                        }
+            const response = await fetch(
+                `https://v3.football.api-sports.io/fixtures?date=${targetDate}`,
+                {
+                    headers: {
+                        'x-rapidapi-key': apiFootballKey,
+                        'x-rapidapi-host': 'v3.football.api-sports.io'
                     }
-                )
-
-                if (!response.ok) {
-                    console.error(`[Scanner] Error API batch ${i}: ${response.status}`)
-                    failed++
-                    continue
                 }
+            )
 
+            if (!response.ok) {
+                console.error(`[Scanner] Error API: ${response.status}`)
+                failed++
+            } else {
                 const data = await response.json()
 
-                if (data.response && Array.isArray(data.response)) {
-                    allMatches = allMatches.concat(data.response)
-                    success++
+                if (data.errors && Object.keys(data.errors).length > 0) {
+                    console.error(`[Scanner] API Errors:`, data.errors)
                 }
 
-                processed++
-
-                // Rate limiting: esperar entre batches
-                await new Promise(resolve => setTimeout(resolve, 500))
-
-            } catch (batchError) {
-                console.error(`[Scanner] Error en batch ${i}:`, batchError)
-                failed++
+                if (data.response && Array.isArray(data.response)) {
+                    allMatches = data.response
+                    success++
+                    console.log(`[Scanner] Total partidos de la API: ${allMatches.length}`)
+                }
             }
+            processed++
+
+        } catch (apiError) {
+            console.error(`[Scanner] Error llamando API:`, apiError)
+            failed++
         }
 
         console.log(`[Scanner] Total partidos obtenidos: ${allMatches.length}`)
 
-        // 4. Filtrar solo ligas permitidas (doble verificación)
-        const leagueIdSet = new Set(leagueIds)
+        // 4. Filtrar solo ligas permitidas
         const filteredMatches = allMatches.filter((m: any) =>
             leagueIdSet.has(m.league.id)
         )

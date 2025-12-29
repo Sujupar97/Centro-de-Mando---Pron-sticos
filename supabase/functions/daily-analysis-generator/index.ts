@@ -85,55 +85,39 @@ serve(async (req) => {
 
                 // 3.2 Generar análisis con Gemini
                 const analysis = await generateAnalysis(genAI, match, matchData)
+                console.log(`[Analyzer] Análisis generado con confianza: ${analysis.prediction?.confidence}`)
 
-                // 3.3 Guardar en analysis_runs
-                const { data: runData, error: runError } = await supabase
-                    .from('analysis_runs')
-                    .insert({
-                        api_fixture_id: match.api_fixture_id,
-                        status: 'done',
-                        league_id: match.league_id,
-                        league_name: match.league_name,
-                        home_team: match.home_team,
-                        away_team: match.away_team,
-                        match_date: match.match_date,
-                        analysis_report: analysis.report,
-                        completed_at: new Date().toISOString()
-                    })
-                    .select('id')
-                    .single()
-
-                if (runError) {
-                    console.error(`[Analyzer] Error guardando run:`, runError)
-                    failedCount++
-                    continue
-                }
-
-                // 3.4 Guardar prediction
+                // 3.3 Guardar prediction directamente
                 if (analysis.prediction) {
-                    await supabase.from('predictions').insert({
-                        analysis_run_id: runData.id,
+                    const { error: predError } = await supabase.from('predictions').insert({
                         fixture_id: match.api_fixture_id,
                         match_date: match.match_date,
                         home_team: match.home_team,
                         away_team: match.away_team,
                         league_name: match.league_name,
-                        prediction_type: analysis.prediction.type,
-                        predicted_outcome: analysis.prediction.outcome,
-                        confidence: analysis.prediction.confidence,
-                        reasoning: analysis.prediction.reasoning,
-                        // Clasificar por tier según confianza
-                        prediction_tier: getPredictionTier(analysis.prediction.confidence)
+                        prediction_type: analysis.prediction.type || 'result',
+                        predicted_outcome: analysis.prediction.outcome || 'Sin pronóstico',
+                        confidence: analysis.prediction.confidence || 50,
+                        reasoning: analysis.prediction.reasoning || 'Análisis automático',
+                        prediction_tier: getPredictionTier(analysis.prediction.confidence || 50)
                     })
+
+                    if (predError) {
+                        console.error(`[Analyzer] Error guardando prediction:`, predError)
+                        failedCount++
+                        results.push({
+                            match: `${match.home_team} vs ${match.away_team}`,
+                            status: 'failed',
+                            error: predError.message
+                        })
+                        continue
+                    }
                 }
 
-                // 3.5 Marcar como analizado
+                // 3.4 Marcar como analizado
                 await supabase
                     .from('daily_matches')
-                    .update({
-                        is_analyzed: true,
-                        analysis_run_id: runData.id
-                    })
+                    .update({ is_analyzed: true })
                     .eq('id', match.id)
 
                 successCount++
@@ -143,7 +127,7 @@ serve(async (req) => {
                     confidence: analysis.prediction?.confidence
                 })
 
-                // Rate limiting entre análisis
+                // Rate limiting entre análisis (2 segundos)
                 await new Promise(resolve => setTimeout(resolve, 2000))
 
             } catch (matchError: any) {
