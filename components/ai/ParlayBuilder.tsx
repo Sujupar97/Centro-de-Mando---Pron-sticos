@@ -12,6 +12,7 @@ import { UpgradePlanModal } from '../pricing/UpgradePlanModal';
 import { useAuth } from '../../hooks/useAuth';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { AutoParlayList } from './AutoParlayList';
 
 export const ParlayBuilder: React.FC = () => {
     const { currentOrg: organization } = useOrganization();
@@ -395,7 +396,10 @@ export const ParlayBuilder: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Status / Results Area */}
+                {/* Automatic Parlays Section */}
+                <AutoParlayList date={selectedDate} />
+
+                {/* Status / Results Area (Manual) */}
                 <div className="flex-grow overflow-y-auto">
                     {statusMessage && !parlays.length && (
                         <div className={`text-center py-20 ${analyzing ? 'animate-pulse' : ''}`}>
