@@ -82,19 +82,9 @@ export const SignUpFlow: React.FC = () => {
             if (authError) throw authError;
             if (!authData.user) throw new Error('No se pudo crear el usuario');
 
-            // 2. Crear perfil
-            const { error: profileError } = await supabase
-                .from('profiles')
-                .insert({
-                    id: authData.user.id,
-                    email: signUpData.email,
-                    full_name: signUpData.fullName,
-                    role: 'usuario'
-                });
+            // Note: Profile and organization are created automatically by database trigger
 
-            if (profileError) throw profileError;
-
-            // 3. Si es plan gratuito, asignar directamente
+            // 2. Si es plan gratuito, asignar directamente
             if (selectedPlan.priceCents === 0) {
                 // Obtener el plan free de la DB
                 const { data: planData } = await supabase
