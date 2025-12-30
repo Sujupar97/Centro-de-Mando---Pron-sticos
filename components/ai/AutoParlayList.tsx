@@ -1,15 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../../services/supabaseService';
 import { SparklesIcon, CalendarDaysIcon, DocumentArrowDownIcon } from '../icons/Icons';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-
-// Configurar cliente Supabase (usando variables de entorno si están disponibles, o pasando props)
-// Para simplificar en este componente, asumimos que podemos usar el cliente global o crearlo
-// NOTA: En un entorno Vite, usar import.meta.env
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface AutoParlayListProps {
     date: string;
