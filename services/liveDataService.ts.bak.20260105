@@ -153,65 +153,22 @@ export const fetchGameDetails = async (game: Game): Promise<GameDetails> => {
 export const fetchTopPicks = async (date: string) => {
     try {
         console.log(`[TopPicks] Fetching for date: ${date}`);
-        const { supabase } = await import('./supabaseService');
 
-        let games: Game[] = [];
-
-        // 1. ESTRATEGIA DB-FIRST: Consultar daily_matches (Nuestra Fuente de Verdad)
-        const { data: localMatches, error: localError } = await supabase
-            .from('daily_matches')
-            .select('*')
-            .gte('match_time', `${date}T00:00:00`)
-            .lt('match_time', `${date}T23:59:59`);
-
-        if (localMatches && localMatches.length > 0) {
-            console.log(`[TopPicks] ✅ Usando ${localMatches.length} partidos de daily_matches (DB Local)`);
-
-            // Convertir formato plano de daily_matches a estructura anidada Game
-            games = localMatches.map(m => ({
-                fixture: {
-                    id: m.api_fixture_id,
-                    date: m.match_time,
-                    status: { short: m.match_status || 'NS', long: '', elapsed: null },
-                    venue: { id: null, name: '', city: '' }, // id: null agregado para cumplir interfaz
-                    referee: null,
-                    period: { first: null, second: null },
-                    timestamp: new Date(m.match_time).getTime() / 1000,
-                    timezone: 'UTC'
-                },
-                league: {
-                    id: m.league_id,
-                    name: m.league_name,
-                    country: '',
-                    logo: '',
-                    flag: '',
-                    season: new Date().getFullYear(),
-                    round: ''
-                },
-                teams: {
-                    home: { id: 0, name: m.home_team, logo: m.home_team_logo, winner: null },
-                    away: { id: 0, name: m.away_team, logo: m.away_team_logo, winner: null }
-                },
-                goals: { home: m.home_score, away: m.away_score },
-                score: { halftime: { home: null, away: null }, fulltime: { home: null, away: null }, extratime: { home: null, away: null }, penalty: { home: null, away: null } }
-            }));
-
-        } else {
-            console.log('[TopPicks] ⚠️ No hay datos locales, intentando API externa (Fallback)...');
-            // 2. Fallback: API Externa (comportamiento original)
-            const allFixtures = await fetchFixturesByDate(date);
-            games = [
-                ...allFixtures.importantLeagues.flatMap(l => l.games),
-                ...allFixtures.countryLeagues.flatMap(c => c.leagues.flatMap(l => l.games))
-            ];
-        }
+        // 1. Obtener Partidos (para info de equipos y logos)
+        const allFixtures = await fetchFixturesByDate(date);
+        const games = [
+            ...allFixtures.importantLeagues.flatMap(l => l.games),
+            ...allFixtures.countryLeagues.flatMap(c => c.leagues.flatMap(l => l.games))
+        ];
 
         const fixtureIds = games.map(g => g.fixture.id);
-        console.log(`[TopPicks] Found ${games.length} games to check. IDs sample:`, fixtureIds.slice(0, 5));
+        console.log(`[TopPicks] Found ${games.length} games, fixture IDs:`, fixtureIds.slice(0, 10), '...');
 
         if (fixtureIds.length === 0) return [];
 
-        // 3. DEDUPLICACIÓN ROBUSTA (Estrategia Jobs -> Runs -> Predictions)
+        const { supabase } = await import('./supabaseService');
+
+        // 2. DEDUPLICACIÓN ROBUSTA (Estrategia Jobs -> Runs -> Predictions)
 
         // A) Obtener Jobs exitosos recientes para estos partidos
         const { data: jobs, error: jobError } = await supabase
@@ -226,6 +183,7 @@ export const fetchTopPicks = async (date: string) => {
         // B) Filtrar para quedarse solo con el ÚLTIMO Job ID por fixture
         const latestJobIdByFixture = new Map<number, string>();
         jobs?.forEach((job: any) => {
+            // api_fixture_id es numérico según schema, pero aseguramos
             const fid = Number(job.api_fixture_id);
             if (!latestJobIdByFixture.has(fid)) {
                 latestJobIdByFixture.set(fid, job.id);
@@ -234,10 +192,7 @@ export const fetchTopPicks = async (date: string) => {
 
         const validJobIds = Array.from(latestJobIdByFixture.values());
 
-        if (validJobIds.length === 0) {
-            console.log('[TopPicks] 0 Jobs encontrados para estos partidos.');
-            return [];
-        }
+        if (validJobIds.length === 0) return [];
 
         // C) Obtener los Run IDs asociados a esos Jobs únicos
         const { data: runs, error: runError } = await supabase
@@ -249,28 +204,27 @@ export const fetchTopPicks = async (date: string) => {
 
         const validRunIds = runs?.map((r: any) => r.id) || [];
 
-        if (validRunIds.length === 0) {
-            console.log('[TopPicks] 0 Runs encontrados para estos Jobs.');
-            return [];
-        }
+        if (validRunIds.length === 0) return [];
 
         console.log(`[TopPicks] Found ${validJobIds.length} unique jobs -> ${validRunIds.length} valid runs.`);
 
-        // 4. Obtener Predicciones de esos Runs UNICOS
+        // 3. Obtener Predicciones de esos Runs UNICOS
         const { data: predictions, error } = await supabase
             .from('predictions')
             .select('*')
             .in('analysis_run_id', validRunIds)
             .order('probability', { ascending: false });
 
+        console.log(`[TopPicks] Predictions query result:`, { found: predictions?.length || 0, error: error?.message });
+
         if (error) throw error;
 
-        console.log(`[TopPicks] Predictions found: ${predictions?.length || 0}`);
-
-        // 5. Cruzar datos (Join en memoria)
+        // 4. Cruzar datos (Join en memoria)
         const topPicks: TopPickItem[] = [];
 
-        predictions?.forEach((pred: any) => {
+        predictions.forEach((pred: any) => {
+            // Encontrar el juego usando el api_fixture_id del run (o guardado en pred si existe, pero mejor usar el map inverso o buscar en games)
+            // Pred tiene fixture_id (asumimos que es el api id)
             const game = games.find(g => g.fixture.id === pred.fixture_id);
             if (!game) return;
 
@@ -296,7 +250,7 @@ export const fetchTopPicks = async (date: string) => {
             });
         });
 
-        // Ordenar por probabilidad descendente
+        // Sort by probability desc
         return topPicks.sort((a: any, b: any) => (b.bestRecommendation.probability || 0) - (a.bestRecommendation.probability || 0));
 
     } catch (error: any) {

@@ -380,9 +380,30 @@ export const FixturesFeed: React.FC = () => {
         setAnalysisQueue(prev => [...prev, ...gamesToAnalyze]);
     };
 
+    // Gating Helper
+    const verifyReportAccess = async (): Promise<boolean> => {
+        // CRÍTICO: Los usuarios FREE no pueden abrir informes, incluso de partidos pasados
+        // Solo verificamos análisis limit (no incrementamos uso por VER informes)
+        const accessCheck = await checkAnalysisAccess();
+        if (!accessCheck.allowed) {
+            setUpgradeReason(accessCheck.reason || 'Actualiza tu plan para acceder a los análisis de IA.');
+            setIsUpgradeModalOpen(true);
+            return false;
+        }
+
+        // Permitir si tiene acceso
+        return true;
+    };
+
     // 4. Ver Reporte
     const handleViewReport = async (jobIdOrGameId: string | number, gameIdIfAvailable?: number) => {
+        // Enforce Limits
+        const allowed = await verifyReportAccess();
+        if (!allowed) return;
+
         let jobId = typeof jobIdOrGameId === 'string' ? jobIdOrGameId : activeJobs[jobIdOrGameId];
+        if (!jobId && typeof jobIdOrGameId === 'string') jobId = jobIdOrGameId; // Fallback if passed string directly
+
         if (!jobId) return;
 
         const result = await getAnalysisResult(jobId);
@@ -438,6 +459,10 @@ export const FixturesFeed: React.FC = () => {
                         <TopPicks
                             date={selectedDate}
                             onOpenReport={async (runId, fixtureId) => {
+                                // Enforce Limits
+                                const allowed = await verifyReportAccess();
+                                if (!allowed) return;
+
                                 let result = null;
                                 if (runId) {
                                     result = await getAnalysisResultByRunId(runId);

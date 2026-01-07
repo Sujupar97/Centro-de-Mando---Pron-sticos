@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseService';
 interface Profile {
   id: string;
   full_name: string;
-  role: 'superadmin' | 'admin' | 'usuario';
+  role: 'platform_owner' | 'agency_admin' | 'org_owner' | 'org_member' | 'user' | 'superadmin' | 'admin' | 'usuario'; // Incluye backward compatibility
 }
 
 interface AuthContextType {
@@ -33,7 +33,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(session);
         setUser(session?.user ?? null);
         // La comprobación inicial ha terminado. Desbloqueamos la UI.
-        setLoading(false); 
+        setLoading(false);
       }
     );
 

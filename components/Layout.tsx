@@ -15,12 +15,27 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
   const { profile, signOut } = useAuth();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  // Determinar si es superadmin a nivel AGENCIA (owner de la organización principal)
-  // Los superadmin de agencia tienen role='superadmin' Y su organización NO tiene parent_id
-  // Los superadmin de cuenta tienen role='superadmin' pero SU organización tiene parent_id
-  const isAgencySuperadmin = profile?.role === 'superadmin'; // Por ahora asumimos que superadmin = agencia
-  const isAccountAdmin = profile?.role === 'admin'; // Admin de cuenta
-  const isUser = profile?.role === 'user' || profile?.role === 'usuario';
+  // Determinar nivel de acceso basado en el nuevo sistema de roles
+  // platform_owner = Owner de la plataforma (Julian) → ACCESO TOTAL
+  // agency_admin = Empleado de agencia → ACCESO TOTAL
+  // org_owner = Dueño de organización/cliente → Acceso de admin de cuenta
+  // org_member = Miembro de organización → Acceso limitado
+  // user = Usuario individual → Acceso limitado
+  // Backward compatibility: superadmin, admin, usuario
+
+  const isAgencySuperadmin =
+    profile?.role === 'platform_owner' ||
+    profile?.role === 'agency_admin' ||
+    profile?.role === 'superadmin'; // Backward compatibility
+
+  const isAccountAdmin =
+    profile?.role === 'org_owner' ||
+    profile?.role === 'admin'; // Backward compatibility
+
+  const isUser =
+    profile?.role === 'org_member' ||
+    profile?.role === 'user' ||
+    profile?.role === 'usuario'; // Backward compatibility
 
   // Opciones del sidebar con niveles de acceso más granulares
   const navItems = [
@@ -35,7 +50,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
     { id: 'scan', label: 'Escanear', icon: <TicketIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: false },
     { id: 'pricing', label: 'Planes', icon: <CreditCardIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: false },
 
-    // Opciones SOLO para SUPERADMIN de AGENCIA
+    // Opciones SOLO para SUPERADMIN de AGENCIA (platform_owner, agency_admin)
     { id: 'add', label: 'Añadir', icon: <PlusCircleIcon className="w-5 h-5" />, forAgency: true, forAccount: false, forUser: false },
     { id: 'ml', label: 'ML Learning', icon: <SparklesIcon className="w-5 h-5" />, forAgency: true, forAccount: false, forUser: false },
     { id: 'admin', label: 'Admin', icon: <UsersIcon className="w-5 h-5" />, forAgency: true, forAccount: false, forUser: false },

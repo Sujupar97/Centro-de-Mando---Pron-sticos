@@ -4,7 +4,10 @@ import { TopPickItem } from '../../types';
 import { fetchTopPicks } from '../../services/liveDataService';
 import { supabase } from '../../services/supabaseService';
 import { mapLeagueToSportKey, fastBatchOddsCheck, findPriceInEvent } from '../../services/oddsService';
-import { TrophyIcon, ChartBarIcon, CheckCircleIcon, XCircleIcon } from '../icons/Icons';
+import { TrophyIcon, ChartBarIcon, CheckCircleIcon, XCircleIcon, LockClosedIcon } from '../icons/Icons';
+import { useAuth } from '../../hooks/useAuth';
+import { getUserSubscription } from '../../services/subscriptionCheckService'; // CAMBIADO: Usar servicio con bypass de admin
+import { UpgradePlanModal } from '../pricing/UpgradePlanModal';
 
 interface TopPicksProps {
     date: string;
@@ -30,6 +33,45 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
     const [error, setError] = useState('');
     const [filter, setFilter] = useState<'HIGH' | 'MEDIUM' | 'LOW' | 'ALL'>('HIGH');
     const [showOnlyHighConfidence, setShowOnlyHighConfidence] = useState(false);
+
+    // Subscription State
+    const { profile } = useAuth();
+    const [subscription, setSubscription] = useState<any>(null);
+    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+    useEffect(() => {
+        const loadSubscription = async () => {
+            if (profile?.id) {
+                // Usar subscriptionCheckService que tiene bypass de admin
+                const sub = await getUserSubscription(profile.id, profile.organization_id);
+                setSubscription(sub);
+            }
+        };
+        loadSubscription();
+    }, [profile]);
+
+    // Calcular cuántos picks puede ver
+    const getAllowedCount = () => {
+        if (!subscription) return 1; // Default Free: 1 pick
+
+        // BYPASS: Si es admin/superadmin o plan unlimited, acceso total
+        if (profile?.role === 'admin' || profile?.role === 'superadmin' || subscription.planName === 'unlimited') {
+            return 999999; // Ilimitado
+        }
+
+        const planName = subscription.planName || 'free';
+
+        switch (planName) {
+            case 'free': return 1;
+            case 'starter': return 3;
+            case 'pro': return 10;
+            case 'premium': return 1000;
+            default: return 1;
+        }
+    };
+
+    const allowedCount = getAllowedCount();
+
 
     const filteredPicks = topPicks.filter(pick => {
         const prob = pick.bestRecommendation.probability;
@@ -216,73 +258,113 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                         <div className="text-center py-10 text-gray-500">
                             <p>No hay pronósticos con confianza <strong>{filter}</strong> {showOnlyHighConfidence ? 'y ALTA CONFIANZA' : ''} para esta fecha.</p>
                         </div>
-                    ) : filteredPicks.map((pick) => (
-                        <div
-                            key={`${pick.gameId}-${pick.bestRecommendation.prediction}`}
-                            onClick={() => onOpenReport && onOpenReport(pick.analysisRunId || null, pick.gameId)}
-                            className="relative bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-700 hover:border-green-accent/50 transition-all duration-300 group cursor-pointer hover:bg-gray-750"
-                        >
-                            {/* Barra lateral indicadora de confianza */}
-                            <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${pick.bestRecommendation.probability >= 80 ? 'bg-green-accent' : pick.bestRecommendation.probability >= 60 ? 'bg-yellow-400' : 'bg-red-500'}`}></div>
+                    ) : filteredPicks.map((pick, index) => {
+                        const isLocked = index >= allowedCount;
 
-                            {/* Result Badge Overlay */}
-                            {pick.result && pick.result !== 'Pending' && (
-                                <div className={`absolute top-4 right-4 z-20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1 shadow-md ${pick.result === 'Won' ? 'bg-green-500/90 text-white' : 'bg-red-500/90 text-white'}`}>
-                                    {pick.result === 'Won' ? <CheckCircleIcon className="w-4 h-4" /> : <XCircleIcon className="w-4 h-4" />}
-                                    {pick.result === 'Won' ? 'ACIERTO' : 'FALLO'}
-                                </div>
-                            )}
+                        return (
+                            <div
+                                key={`${pick.gameId}-${pick.bestRecommendation.prediction}`}
+                                onClick={() => {
+                                    if (isLocked) {
+                                        setShowUpgradeModal(true);
+                                    } else {
+                                        onOpenReport && onOpenReport(pick.analysisRunId || null, pick.gameId);
+                                    }
+                                }}
+                                className={`relative bg-gray-800 rounded-xl shadow-lg overflow-hidden border transition-all duration-300 group cursor-pointer 
+                                ${isLocked
+                                        ? 'border-gray-700 hover:border-gray-600 opacity-90'
+                                        : 'border-gray-700 hover:border-green-accent/50 hover:bg-gray-750'
+                                    }`}
+                            >
+                                {/* Barra lateral indicadora de confianza */}
+                                <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${pick.bestRecommendation.probability >= 80 ? 'bg-green-accent' : pick.bestRecommendation.probability >= 60 ? 'bg-yellow-400' : 'bg-red-500'}`}></div>
 
-                            {/* Live Odds Badge (Si hay cuota real) */}
-                            {pick.odds && pick.result === 'Pending' && (
-                                <div className="absolute top-4 right-4 z-20 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-3 py-1.5 rounded-md text-sm font-black shadow-[0_0_15px_rgba(59,130,246,0.5)] animate-pulse-slow border border-blue-400 flex flex-col items-center leading-none">
-                                    <span className="text-[10px] font-normal opacity-80 mb-0.5">CUOTA</span>
-                                    <span>@{pick.odds.toFixed(2)}</span>
-                                </div>
-                            )}
-
-                            <div className="flex flex-col md:flex-row items-center p-5 pl-6 gap-6">
-                                {/* Sección de Equipos */}
-                                <div className="flex-1 flex items-center justify-between md:justify-start gap-6 min-w-[200px]">
-                                    <div className="flex flex-col items-center w-20">
-                                        <img src={pick.teams.home.logo} alt={pick.teams.home.name} className="w-10 h-10 object-contain mb-2" />
-                                        <span className="text-xs text-center text-gray-300 font-medium leading-tight">{pick.teams.home.name}</span>
+                                {/* Result Badge Overlay */}
+                                {pick.result && pick.result !== 'Pending' && !isLocked && (
+                                    <div className={`absolute top-4 right-4 z-20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1 shadow-md ${pick.result === 'Won' ? 'bg-green-500/90 text-white' : 'bg-red-500/90 text-white'}`}>
+                                        {pick.result === 'Won' ? <CheckCircleIcon className="w-4 h-4" /> : <XCircleIcon className="w-4 h-4" />}
+                                        {pick.result === 'Won' ? 'ACIERTO' : 'FALLO'}
                                     </div>
-                                    <div className="flex flex-col items-center">
-                                        <span className="text-gray-500 font-bold text-xs mb-1">VS</span>
-                                        <span className="text-xs text-gray-600 font-mono bg-gray-900 px-2 py-0.5 rounded">{new Date(pick.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                )}
+
+                                {/* Live Odds Badge (Si hay cuota real) */}
+                                {pick.odds && pick.result === 'Pending' && !isLocked && (
+                                    <div className="absolute top-4 right-4 z-20 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-3 py-1.5 rounded-md text-sm font-black shadow-[0_0_15px_rgba(59,130,246,0.5)] animate-pulse-slow border border-blue-400 flex flex-col items-center leading-none">
+                                        <span className="text-[10px] font-normal opacity-80 mb-0.5">CUOTA</span>
+                                        <span>@{pick.odds.toFixed(2)}</span>
                                     </div>
-                                    <div className="flex flex-col items-center w-20">
-                                        <img src={pick.teams.away.logo} alt={pick.teams.away.name} className="w-10 h-10 object-contain mb-2" />
-                                        <span className="text-xs text-center text-gray-300 font-medium leading-tight">{pick.teams.away.name}</span>
+                                )}
+
+                                {/* LOCK OVERLAY */}
+                                {isLocked && (
+                                    <div className="absolute inset-0 z-30 backdrop-blur-sm bg-gray-900/60 flex flex-col items-center justify-center p-6 text-center">
+                                        <div className="w-12 h-12 rounded-full bg-gray-800 border items-center justify-center flex mb-3 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+                                            <LockClosedIcon className="w-6 h-6 text-gray-400" />
+                                        </div>
+                                        <h5 className="text-white font-bold text-lg mb-1">Pronóstico Bloqueado</h5>
+                                        <p className="text-gray-300 text-xs mb-3 max-w-[200px]">Actualiza tu plan para ver este pronóstico de alta probabilidad.</p>
+                                        <button className="bg-brand text-slate-900 px-4 py-1.5 rounded-full text-xs font-bold hover:bg-emerald-400 transition-colors">
+                                            Desbloquear
+                                        </button>
+                                    </div>
+                                )}
+
+                                <div className="flex flex-col md:flex-row items-center p-5 pl-6 gap-6">
+                                    {/* Sección de Equipos */}
+                                    <div className="flex-1 flex items-center justify-between md:justify-start gap-6 min-w-[200px]">
+                                        <div className="flex flex-col items-center w-20">
+                                            <img src={pick.teams.home.logo} alt={pick.teams.home.name} className="w-10 h-10 object-contain mb-2" />
+                                            <span className="text-xs text-center text-gray-300 font-medium leading-tight">{pick.teams.home.name}</span>
+                                        </div>
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-gray-500 font-bold text-xs mb-1">VS</span>
+                                            <span className="text-xs text-gray-600 font-mono bg-gray-900 px-2 py-0.5 rounded">{new Date(pick.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
+                                        <div className="flex flex-col items-center w-20">
+                                            <img src={pick.teams.away.logo} alt={pick.teams.away.name} className="w-10 h-10 object-contain mb-2" />
+                                            <span className="text-xs text-center text-gray-300 font-medium leading-tight">{pick.teams.away.name}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Sección de la Mejor Apuesta */}
+                                    <div className="flex-1 text-center md:text-left border-t md:border-t-0 md:border-l border-gray-700 pt-4 md:pt-0 md:pl-6 relative">
+                                        <div className={`flex flex-col ${isLocked ? 'blur-sm opacity-50' : ''}`}>
+                                            <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">{pick.bestRecommendation.market}</span>
+                                            <h4 className="text-xl font-bold text-white group-hover:text-green-accent transition-colors">{pick.bestRecommendation.prediction}</h4>
+                                            <p className="text-sm text-gray-400 mt-2 line-clamp-2">{pick.bestRecommendation.reasoning}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Sección de Probabilidad */}
+                                    <div className="flex items-center justify-center pl-2 pt-4 md:pt-0">
+                                        <ProbabilityBadge probability={pick.bestRecommendation.probability} />
                                     </div>
                                 </div>
 
-                                {/* Sección de la Mejor Apuesta */}
-                                <div className="flex-1 text-center md:text-left border-t md:border-t-0 md:border-l border-gray-700 pt-4 md:pt-0 md:pl-6 relative">
-                                    <div className="flex flex-col">
-                                        <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">{pick.bestRecommendation.market}</span>
-                                        <h4 className="text-xl font-bold text-white group-hover:text-green-accent transition-colors">{pick.bestRecommendation.prediction}</h4>
-                                        <p className="text-sm text-gray-400 mt-2 line-clamp-2">{pick.bestRecommendation.reasoning}</p>
+                                {/* Footer informativo */}
+                                <div className="bg-gray-900/50 px-4 py-2 flex justify-between items-center text-xs text-gray-500">
+                                    <span>{pick.league}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="uppercase text-[10px] font-bold tracking-widest bg-gray-800 px-2 py-0.5 rounded border border-gray-600 text-gray-300 group-hover:bg-green-accent group-hover:text-black transition-colors">
+                                            {isLocked ? 'Bloqueado' : 'Ver Informe'}
+                                        </span>
+                                        <span>Confianza IA: <span className={pick.bestRecommendation.confidence === 'Alta' ? 'text-green-500 font-bold' : 'text-yellow-500'}>{pick.bestRecommendation.confidence}</span></span>
                                     </div>
-                                </div>
-
-                                {/* Sección de Probabilidad */}
-                                <div className="flex items-center justify-center pl-2 pt-4 md:pt-0">
-                                    <ProbabilityBadge probability={pick.bestRecommendation.probability} />
                                 </div>
                             </div>
+                        );
+                    })}
+                </div>
+            )}
 
-                            {/* Footer informativo */}
-                            <div className="bg-gray-900/50 px-4 py-2 flex justify-between items-center text-xs text-gray-500">
-                                <span>{pick.league}</span>
-                                <div className="flex items-center gap-2">
-                                    <span className="uppercase text-[10px] font-bold tracking-widest bg-gray-800 px-2 py-0.5 rounded border border-gray-600 text-gray-300 group-hover:bg-green-accent group-hover:text-black transition-colors">Ver Informe</span>
-                                    <span>Confianza IA: <span className={pick.bestRecommendation.confidence === 'Alta' ? 'text-green-500 font-bold' : 'text-yellow-500'}>{pick.bestRecommendation.confidence}</span></span>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+            {showUpgradeModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+                    <UpgradePlanModal
+                        isOpen={showUpgradeModal}
+                        onClose={() => setShowUpgradeModal(false)}
+                        currentPlan={subscription?.plan?.name || 'free'}
+                    />
                 </div>
             )}
         </div>

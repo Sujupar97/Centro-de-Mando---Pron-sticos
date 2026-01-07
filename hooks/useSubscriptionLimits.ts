@@ -135,5 +135,6 @@ export function useSubscriptionLimits() {
         isPro: subscription?.planName === 'pro',
         isStarter: subscription?.planName === 'starter',
         isFree: subscription?.planName === 'free',
+        isAdmin: subscription?.planName === 'unlimited', // Admin/Owner con acceso ilimitado
     };
 }

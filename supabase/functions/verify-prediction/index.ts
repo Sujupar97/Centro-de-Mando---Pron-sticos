@@ -38,6 +38,17 @@ serve(async (req) => {
 
         if (!geminiKey || !footballKeys) throw new Error("Missing Secrets");
 
+        // CHECK SYSTEM SETTINGS
+        let learningActive = false;
+        try {
+            const { data: settingsData } = await supabase.from('system_settings').select('*');
+            const setting = settingsData?.find((r: any) => r.key === 'auto_learning_enabled');
+            learningActive = setting ? setting.value : false; // Default false
+            log(`[CONFIG] Auto-Learning is ${learningActive ? 'ENABLED' : 'DISABLED'}`);
+        } catch (e) {
+            log(`[CONFIG] Error reading settings, defaulting to disabled: ${e.message}`);
+        }
+
         // Helper: API Fetch
         const rawKeys = typeof footballKeys === 'string' ? footballKeys : '';
         const apiKeys = rawKeys.split(',').map((k: any) => k.trim()).filter((k: string) => k.length > 0);
@@ -149,6 +160,15 @@ serve(async (req) => {
             }
 
             // 3. AI Verification (Deep Post-Mortem)
+            const learningTask = learningActive ? `
+        TASK 3: SYSTEM FEEDBACK (Machine Learning)
+        - "Self-Correction": What did we miss? Was it a bad read or bad luck (variance)?
+        - Provide actionable feedback for future predictions.
+            ` : `
+        TASK 3: SYSTEM FEEDBACK
+        - SKIPPED by User Configuration. Leave "learning_feedback" empty or null.
+            `;
+
             const prompt = `
         ACT AS A WORLD-CLASS FOOTBALL ANALYST AND SPORTS SCIENTIST.
         
@@ -173,7 +193,7 @@ serve(async (req) => {
         CRITICAL INSTRUCTION:
         ALL OUTPUT MUST BE IN SPANISH (ESPAÑOL).
         The tactical analysis, statistical breakdown, and reviews MUST be written in professional Spanish suitable for a sports report.
-
+        
         TASK 1: VERIFY RESULTS
         - Determine if each prediction WON, LOST, or PUSHED.
         
@@ -184,10 +204,8 @@ serve(async (req) => {
         - Analyze STATISTICAL factors (xG, dominance, efficiency).
         - Identify Key Moments (Red cards, penalties, injuries).
         
-        TASK 3: SYSTEM FEEDBACK (Machine Learning)
-        - "Self-Correction": What did we miss? Was it a bad read or bad luck (variance)?
-        - Provide actionable feedback for future predictions.
-
+        ${learningTask}
+        
         OUTPUT JSON:
         {
             "prediction_results": [

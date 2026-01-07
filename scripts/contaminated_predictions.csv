@@ -1,0 +1,264 @@
+prediction_id,fixture_id,predicted_market,predicted_outcome,was_correct,verified_at,actual_score
+3d9b5f0d-42b8-402d-8cde-997b2e22e145,1347251,Ganador del Partido,Marruecos,false,2025-12-27T06:31:31.394+00:00,1-1
+e2e0916f-f193-4ef2-8165-0e1f9cddac5f,1347251,Ganar a Cero (Win to Nil),Marruecos - Sí,false,2025-12-27T06:31:31.776+00:00,1-1
+942d7583-db36-4090-83fe-7ff9ae4db9d3,1347251,Total de Goles,Menos de 2.5 Goles,true,2025-12-27T06:31:32.144+00:00,1-1
+ed5683a1-ab21-4d51-8600-bca4dc4e3c85,1494364,Ganador del Partido (1X2),Bolívar,false,2025-12-27T06:31:32.492+00:00,1-4
+66c0478c-e779-497e-be0f-5e090245d75f,1494364,Total de Goles,Más de 3.5 Goles,true,2025-12-27T06:31:32.864+00:00,1-4
+3a0a4c2e-b813-44f3-a457-d760dcb6a8a9,1494364,Equipo - Total de Goles,Bolívar Más de 2.5 Goles,true,2025-12-27T06:31:33.231+00:00,1-4
+b3a3a1ed-1987-48b1-9605-b1efce8fdad5,1347252,Total Goles,Menos de 2.5,true,2025-12-27T06:31:33.583+00:00,0-0
+fc6e0247-e106-40f1-a2fe-d91d261eea49,1347252,Doble Oportunidad,Empate o Comoras (X2),false,2025-12-27T06:31:34.179+00:00,0-0
+20a005cd-0e80-41be-8e1b-e62a93933b4a,1379145,Ambos Equipos Marcan,Sí,false,2025-12-27T06:31:34.642+00:00,1-0
+e63cf239-afd1-4aef-a99c-d4bbc4af4405,1379145,Total Goles,Más de 2.5,false,2025-12-27T06:31:34.994+00:00,1-0
+e975344d-3f76-468e-8e98-877e0d28f56a,1347252,Total Goals,Under 2.5,true,2025-12-27T06:31:37.201+00:00,0-0
+b0ba4ccc-0474-4701-95d3-99497e6e818c,1347252,Double Chance,Draw or Comoros (X2),false,2025-12-27T06:31:37.545+00:00,0-0
+a459fadf-5062-49dd-8ff1-6bd4fb7e31ca,1347252,Half Time Result,Draw,false,2025-12-27T06:31:37.896+00:00,0-0
+2f797cfa-aecd-4682-b883-d642e109aade,1347251,Resultado Final,Marruecos,false,2025-12-27T06:31:39.497+00:00,1-1
+c85f1562-0f48-44fb-b814-1d34ce97ad5c,1347251,Ambos Equipos Marcan,NO,false,2025-12-27T06:31:39.842+00:00,1-1
+502aeb64-a445-4b8e-b361-965f56a2ec51,1347251,Ganador del Partido,Marruecos,false,2025-12-27T06:31:41.875+00:00,1-1
+7fe35236-88c3-4379-ad61-e8e2b423ee6b,1347251,Portería a Cero - Local,Sí (Marruecos Clean Sheet),false,2025-12-27T06:31:42.276+00:00,1-1
+631197f8-5d5a-4ea5-b24f-02f3f68e5f9b,1347251,Total Goles,Menos de 2.5,true,2025-12-27T06:31:42.61+00:00,1-1
+ea7f8a13-c7e4-4a57-ba61-95c570537ac7,1379146,Ganador del Partido,Manchester City,true,2025-12-27T14:24:14.62+00:00,1-2
+0d108299-dd36-401d-a0be-21d7f71ac3e2,1379146,Total Goles,Más de 2.5 Goles,true,2025-12-27T14:24:14.995+00:00,1-2
+dd39532a-1019-40da-9933-c461a4b1bea2,1379146,Hándicap Asiático,Manchester City -1.0,false,2025-12-27T14:24:15.342+00:00,1-2
+23276c97-b9b6-439c-8fe7-b74bc1328b5d,1398501,Doble Oportunidad,Sarıyer o Empate (1X),false,2025-12-27T14:24:16.142+00:00,1-0
+89cc5e77-18d5-40d4-ba3c-b4914b5ff8ae,1398501,Ambos Equipos Anotan (BTTS),Sí,false,2025-12-27T14:24:16.476+00:00,1-0
+f7a61e82-47f7-4a00-8ae9-ab7c72d79e00,1378029,Doble Oportunidad,Parma o Empate (1X),false,2025-12-27T14:24:17.001+00:00,1-0
+5900aa7a-8df1-47c0-b94b-db158a278018,1378029,Total Goles,Menos de 2.5 Goles,true,2025-12-27T14:24:17.338+00:00,1-0
+3cb5b1b0-9d24-4af8-8668-a7b98ffbc740,1398501,Ambos Equipos Marcan,Sí (Yes),false,2025-12-27T14:24:18.431+00:00,1-0
+de0ae162-e007-4667-a797-24c5951a580b,1398501,Resultado del Partido (1X2),BB Bodrumspor (Riesgo Medio),false,2025-12-27T14:24:18.772+00:00,1-0
+60e538a8-3808-484a-b77d-2a86eb251108,1398503,Total Goles,Menos de 2.5,true,2025-12-27T14:24:19.87+00:00,2-0
+10373de0-f9e9-4efd-91f9-e95d9e4abd43,1398503,Ganador del Partido (DNB),Sivasspor (Empate No Válido),true,2025-12-27T14:24:20.206+00:00,2-0
+5e338d3b-b1cf-4d2f-ae8e-fc1585ffeaf5,1379146,Ganador del Partido (1X2),Manchester City,true,2025-12-27T14:24:23.399+00:00,1-2
+e65fd26e-58be-4dbf-8fb3-ed5d04c593b4,1379146,Total Goles,Más de 2.5 Goles,true,2025-12-27T14:24:23.731+00:00,1-2
+902390f7-14d3-4526-a147-6d0bc0cfc02d,1379141,Hándicap Asiático,Everton +0 (Empate Apuesta No Válida),false,2025-12-28T03:00:04.655+00:00,0-0
+0b177e4c-c941-4205-bf2e-2507522e4c3e,1379139,Asian Handicap,Home -1 (Arsenal -1),false,2025-12-28T03:00:07.687+00:00,2-1
+adc357cc-3cb4-43d0-a283-a8d65969d617,1379147,Hándicap Asiático,Sunderland +0 (Empate no Válido),false,2025-12-29T03:00:05.384+00:00,1-1
+24a6ce05-3fff-4377-8b34-ad36699f1dce,1396372,Handicap Asiático,Gil Vicente +0 (Away +0),false,2025-12-29T03:00:06.34+00:00,2-2
+33d3e5db-c291-4d9c-b3cf-6a7cb9790bf3,1396374,Ganador del Partido (DNB),Guimaraes (Empate no Válida),true,2025-12-29T03:00:07.072+00:00,0-0
+40f64ce4-3eb9-4c11-9884-f00a5a106dbb,1386832,Hándicap Asiático,Coventry +0 (Hándicap 0.0),false,2025-12-30T03:00:06.196+00:00,0-2
+297e143b-582c-4782-996a-f5741d4c2f8f,1386832,Total Goles,Más de 2.5 Goles,false,2025-12-30T03:00:06.956+00:00,0-2
+9bdb498e-c7c4-45a2-a299-fd652069e720,1378031,Ganador del Partido,AS Roma,true,2025-12-30T03:00:07.52+00:00,3-1
+2d544a4a-4f1d-49a5-aa74-0295bcbec8b4,1378031,Total Goles - Local,Roma Más de 1.5 Goles,true,2025-12-30T03:00:07.999+00:00,3-1
+66f3eed9-c323-4175-b2d3-f57729043742,1386827,Ganador del Partido (1X2),Blackburn (Away),false,2025-12-30T03:00:08.391+00:00,0-0
+4b5e0618-a9c6-4af3-a40b-32ee2398ad5f,1386827,Total Goles Equipo Visitante,Blackburn Más de 1.5 Goles,false,2025-12-30T03:00:08.648+00:00,0-0
+234cabaa-a003-40d5-8a66-19ea70d23b9e,1386827,Ambos Equipos Anotan,Sí,false,2025-12-30T03:00:08.913+00:00,0-0
+dc03c01e-1976-4613-9a2b-caaf41f8646d,1386827,Ganador del Partido (1X2),Blackburn (Away),false,2025-12-30T03:00:09.194+00:00,0-0
+80e3f3c7-65fa-4899-8294-270b4d689b07,1386827,Total Goles,Más de 2.5 Goles,false,2025-12-30T03:00:09.461+00:00,0-0
+3a0dbd4e-2575-4c15-8976-560ec34b04f1,1386828,Ambos Equipos Marcan,Sí,true,2025-12-30T03:00:09.72+00:00,2-1
+f97fece4-f26d-47a6-b09d-4d0fb71f3033,1386828,Córners del Equipo Local,Más de 6.5 Córners (West Brom),false,2025-12-30T03:00:09.961+00:00,2-1
+66633815-96f7-4ef6-99f8-04a0072e5ae1,1386829,Ambos Equipos Marcan,Sí (Yes),true,2025-12-30T03:00:10.222+00:00,1-2
+16cf1df0-ba5b-462e-a1a7-541f25a6669e,1386829,Total Córners - Stoke,Más de 5.5 Córners del Local,false,2025-12-30T03:00:10.557+00:00,1-2
+b4c4f69d-de02-45c6-842d-22db0c517982,1386830,Ganador del Partido (1X2),Middlesbrough,false,2025-12-30T03:00:10.973+00:00,0-1
+3614ef43-814b-44c0-b4a5-4ae780261b11,1386830,Total Goles,Más de 2.5 Goles,false,2025-12-30T03:00:11.265+00:00,0-1
+b0051986-aa28-4432-ac69-fc96f4de1b6d,1386831,Hándicap Asiático,Oxford United +0.0 (Empate No Válido),false,2025-12-30T03:00:11.507+00:00,0-1
+1436ca21-15b3-40a8-81db-657939eacc65,1386831,Total Corners,Más de 9.5 Corners,false,2025-12-30T03:00:11.751+00:00,0-1
+78a1eedf-15dd-4490-bdb8-db535a57cff0,1386829,Ambos Equipos Marcan,Sí,true,2025-12-30T03:00:12.102+00:00,1-2
+0d9cbe15-825a-43c5-8caa-87abe883a41d,1386829,Total Goles,Más de 2.5,true,2025-12-30T03:00:12.486+00:00,1-2
+8b36ec08-351c-4ccd-a339-a8b24b1179bd,1386829,Total Corners - Stoke,Más de 5.5 Corners (Estimado),false,2025-12-30T03:00:12.845+00:00,1-2
+1c72d4ca-3b2b-43c1-b61a-535a0196b443,1386833,Total Goles,Menos de 2.5,false,2025-12-30T03:00:13.236+00:00,2-1
+f8fcb32d-3bf1-435f-a4ea-439569ad2b42,1386833,Doble Oportunidad,Empate o Bristol City,false,2025-12-30T03:00:13.502+00:00,2-1
+062d4df2-253f-4287-a2ff-f96324eeb4d8,1386834,Ambos Equipos Anotan,Sí,true,2025-12-30T03:00:13.861+00:00,2-1
+b2a157de-98c0-4199-a62e-124e1db73d5b,1386834,Total Goles,Más de 2.5,true,2025-12-30T03:00:14.115+00:00,2-1
+e6989590-e011-4dd7-88f1-eeeb5b769a79,1386829,Ambos Equipos Marcan,Sí,true,2025-12-30T03:00:14.437+00:00,1-2
+d44089fe-f538-46d1-a852-2ecf75adc4cd,1386829,Total Goles,Más de 2.5,true,2025-12-30T03:00:14.69+00:00,1-2
+c8c93a33-9242-4de8-b33f-6e9e3dbc7bbb,1386835,Ambos Equipos Anotan,Sí,true,2025-12-30T03:00:14.975+00:00,2-1
+5bd822e5-cb31-4960-b9b4-a2fa1eeadf59,1386835,Total Goles,Más de 2.5,true,2025-12-30T03:00:15.383+00:00,2-1
+4b7a3134-882e-4b85-a43b-405200756a38,1386829,Total Goles,Más de 2.5,true,2025-12-30T03:00:15.646+00:00,1-2
+c3cdad58-4f92-4fad-bd90-b09b3dd32d20,1386829,Total Corners,Más de 9.5,false,2025-12-30T03:00:15.963+00:00,1-2
+89685faf-1026-4f8a-aaef-5a20b406dfe1,1386829,Doble Oportunidad,Sheffield Utd o Empate (X2),false,2025-12-30T03:00:16.278+00:00,1-2
+e8c99f1f-3307-4720-91ad-0dbe8b8a6013,1386836,Goles Más/Menos,Menos de 2.5 Goles,false,2025-12-30T03:00:16.53+00:00,2-1
+64de71c5-cd4b-4910-b40a-60fc9def6383,1386836,Resultado Final (Hándicap),Portsmouth Hándicap Asiático +0 (Empate Apuesta No Válida),false,2025-12-30T03:00:16.844+00:00,2-1
+01b4d06f-4e5e-4ea4-991b-396e2ed12a51,1386838,Ambos Equipos Marcan,Sí,false,2025-12-30T03:00:17.107+00:00,0-1
+65effdb9-36a0-4536-be55-2263943ac738,1386838,Total Córners,Más de 9.5,false,2025-12-30T03:00:17.412+00:00,0-1
+0b414630-d720-4696-9ba5-1039df66fcc7,1386837,Ambos Equipos Marcan,Sí,true,2025-12-30T03:00:17.702+00:00,1-1
+bc9d573f-d6e9-47bd-89c4-8d9c337a714f,1386837,Total Córners Birmingham,Más de 5.5 Córners,false,2025-12-30T03:00:17.946+00:00,1-1
+ff67dcc2-c42f-4aba-a3ca-9dfd01fac9d4,1396377,Handicap Asiático,FC Porto -2.5,false,2025-12-30T03:00:18.197+00:00,2-0
+608263c0-0762-4daf-99c3-37d243b3a953,1396377,Total Goles,Más de 3.5 Goles,false,2025-12-30T03:00:18.488+00:00,2-0
+e83c8def-6f28-434d-be5e-16c60e2a9790,1396377,Ambos Equipos Anotan,No,true,2025-12-30T03:00:18.749+00:00,2-0
+3824e6cf-786e-4408-8ae1-13a76061b4ec,1347264,Portería a Cero - Visitante,Sí (Mali Clean Sheet),false,2025-12-30T03:00:26.863+00:00,0-0
+e43c8ca1-5a6d-479a-bdd2-7f7abdc6d2cc,1469614,Ganador del Partido,Melbourne Victory,true,2025-12-30T03:00:28.36+00:00,5-1
+850310de-d6d5-4212-bfb6-2a9fa5272dab,1469614,Total Goles,Más de 2.5 Goles,true,2025-12-30T03:00:28.606+00:00,5-1
+122d9ed5-3d91-4af5-988f-70569ba13688,1469614,Ambos Equipos Anotan,Sí,true,2025-12-30T03:00:28.844+00:00,5-1
+397cb5e9-4790-49a3-ba47-cf1f71daa107,1398495,Total Goles,Más de 3.5,true,2025-12-30T03:00:29.08+00:00,1-5
+c529bea1-0d63-4338-b6cc-af9ec5d3d33d,1398495,Hándicap Asiático,İstanbulspor -2.5 (o equivalente a cuota ~1.80),false,2025-12-30T03:00:29.333+00:00,1-5
+45f44f89-3eea-4e0b-8f5e-0ea213716136,1492092,Ganador del Partido (1X2),Al-Nahda (Visitante),true,2025-12-30T03:00:29.573+00:00,1-3
+0aafb591-3265-43d8-a364-5150d3d7f48f,1492092,Total de Goles,Menos de 3.5 Goles,false,2025-12-30T03:00:29.802+00:00,1-3
+edeb13a7-3d5b-4057-b0a8-acda1b25bd07,1492092,Ganador del Partido (1X2),Al-Nahda (2),true,2025-12-30T03:00:30.066+00:00,1-3
+c6185127-7072-4797-b0a8-67c136a9c392,1492092,Total de Goles Equipo Visitante,Al-Nahda Más de 1.5 Goles,true,2025-12-30T03:00:30.309+00:00,1-3
+8df4ee4c-1133-49b7-b644-4a5153d820b4,1485344,Ganador del Partido (1X2),Al-Jazira (Away),false,2025-12-30T03:00:30.562+00:00,1-1
+f4f281cf-336f-426a-a333-b23167cb3f97,1485344,Total de Goles - Al-Jazira,Más de 1.5 Goles,true,2025-12-30T03:00:30.799+00:00,1-1
+0fa67c68-ed73-4575-ae9b-d9307918bd4e,1422786,Doble Oportunidad,Empate o Ben Aknoun (X2),false,2025-12-30T03:00:31.031+00:00,0-1
+a5f128b2-7397-44a7-9e9b-28ce7f600f08,1422786,Total de Goles,Menos de 2.5 Goles,true,2025-12-30T03:00:31.265+00:00,0-1
+c8f60841-e60a-4a30-8b8f-5bf706bb7d12,1422786,Doble Oportunidad,Empate o Ben Aknoun (X2),false,2025-12-30T03:00:31.538+00:00,0-1
+586e5f76-6c65-4b5e-92ca-6e43e4de20a5,1422786,Total Goles,Menos de 2.5,true,2025-12-30T03:00:31.769+00:00,0-1
+b0959d8b-f873-4ed4-a34d-e3a9177b3f76,1393794,Total Goles,Más de 3.5,false,2025-12-30T03:00:32.007+00:00,0-3
+ab398151-4f5b-4d00-b2d0-fae1359ad267,1393794,Ganador del Partido,Al Sadd,true,2025-12-30T03:00:32.333+00:00,0-3
+254760e9-ce8b-4fce-94fc-644a45f679ad,1436019,Ganador del Partido (1X2),Al Khaleej Saihat,false,2025-12-30T03:00:32.589+00:00,0-1
+e9d6f41e-123f-44ba-b4d3-252ba6c1d2dd,1436019,Total Goles Local,Al Khaleej - Más de 1.5 Goles,false,2025-12-30T03:00:32.837+00:00,0-1
+aaa62567-1c03-4b30-98b3-054e5c88e6b7,1436019,Goles Más/Menos,Over 2.5,false,2025-12-30T03:00:33.077+00:00,0-1
+169704b2-2223-4d36-9b3b-59ebd4e668ea,1436019,Total - Local,Over 1.5,false,2025-12-30T03:00:33.321+00:00,0-1
+fd636566-27de-46de-9145-9506dac206e7,1485345,Ganador del Partido (1X2),Al-Dhafra,false,2025-12-30T03:00:33.556+00:00,0-2
+8a181c54-476f-4d9e-8914-d89ddd474cdc,1485345,Total de Goles,Más de 2.5 Goles,false,2025-12-30T03:00:33.793+00:00,0-2
+1fda6c79-3f42-440a-a5eb-6169407d3a9b,1485345,Total Goles Equipo Local,Al-Dhafra Más de 1.5,true,2025-12-30T03:00:34.039+00:00,0-2
+21ddf14d-0b52-4ffe-b0fe-ebdc14e1ac2a,1492093,Hándicap Asiático,Al Seeb -1.5,false,2025-12-30T03:00:34.28+00:00,2-0
+8b4d1fac-649b-40ba-b043-d74019d2532e,1492093,Total de Goles,Más de 2.5 Goles,false,2025-12-30T03:00:34.513+00:00,2-0
+1d1ee788-bbd6-4184-bbba-ea4bbc917049,1492093,Handicap Asiático,Al Seeb -1.5,false,2025-12-30T03:00:34.751+00:00,2-0
+574c5362-f4d5-4960-ad99-99ee30502f41,1492093,Total de Goles,Más de 2.5 Goles,false,2025-12-30T03:00:35.045+00:00,2-0
+3fa9383b-679d-48b0-ab26-272983b8437f,1347265,Total Goles,Menos de 2.5,true,2025-12-30T03:00:35.281+00:00,0-0
+9dcfc994-c376-4bb6-8efe-120e208815b7,1347265,Doble Oportunidad,Empate o Egipto (X2),false,2025-12-30T03:00:35.525+00:00,0-0
+7d63b4e5-28d5-4bda-8315-56d3ef78fc92,1422788,Hándicap Asiático,CR Belouizdad +0 (Away +0),false,2025-12-30T03:00:35.823+00:00,1-1
+09bfd76e-86c8-43b8-9f4a-13b9af684381,1422788,Total Goles,Menos de 2.5 Goles,true,2025-12-30T03:00:36.056+00:00,1-1
+f5655f92-66b3-4a45-9108-f457a01e8d80,1422788,Total Goles,Menos de 2.5,true,2025-12-30T03:00:36.292+00:00,1-1
+3723d2a9-b728-41a4-8836-8de312e316bd,1422788,Resultado 1ª Mitad,Empate,false,2025-12-30T03:00:36.539+00:00,1-1
+9597440f-6736-4c21-a1f5-c33c7fb30945,1347266,Ganador del Partido (1X2),South Africa,true,2025-12-30T03:00:36.774+00:00,2-3
+ffd7d353-8e00-4f97-95f1-fbbfd333b4d8,1347266,Total Goles,Menos de 2.5 Goles,false,2025-12-30T03:00:37.01+00:00,2-3
+5b9e2118-1151-43f2-a96d-478729b50e48,1393789,Total Goles,Más de 2.5,true,2025-12-30T03:00:37.25+00:00,0-3
+97e9f085-10d2-4881-ad46-9523649fd6c5,1393789,Ambos Equipos Anotan (BTTS),Sí,false,2025-12-30T03:00:37.499+00:00,0-3
+30e6c85d-a4ea-4140-b42e-9cab66f463ad,1393789,Total Goles Equipo Local,Al Ahli Más de 1.5,true,2025-12-30T03:00:37.742+00:00,0-3
+6094a742-d694-4039-83f2-b6441e829178,1393789,Ganador del Partido (1X2),Al Ahli Doha,false,2025-12-30T03:00:37.993+00:00,0-3
+b96cf501-b7c8-48af-bfb7-c929f4f5ed06,1393789,Total de Goles,Más de 2.5 Goles,true,2025-12-30T03:00:38.245+00:00,0-3
+602a3f0e-949a-4910-a3b3-8ae5eafba955,1436014,Goles Más/Menos,Más de 2.5 Goles,false,2025-12-30T03:00:38.488+00:00,1-0
+adb24794-b973-4726-870d-7884ee475eca,1436014,Hándicap Asiático,Al Taawon -1,false,2025-12-30T03:00:38.72+00:00,1-0
+0b0c89cb-2100-464a-8d43-12f5094b7118,1436014,Córners (Mercado Alternativo),Al Taawon Más de 6.5 Córners,false,2025-12-30T03:00:38.98+00:00,1-0
+904b9701-afe8-4163-b47f-f30ce697e5d8,1436020,Doble Oportunidad,Empate o Al-Hazm (X2),false,2025-12-30T03:00:39.216+00:00,1-2
+e3760918-a305-402f-8e30-c276f0aaa297,1436020,Total de Goles,Menos de 3.5 Goles,true,2025-12-30T03:00:39.458+00:00,1-2
+332c7218-f920-4a85-95b0-ef3ecddd09e2,1436020,Hándicap Asiático,Al-Hazm +0.0 (Empate No Válido),false,2025-12-30T03:00:39.701+00:00,1-2
+6691ab44-bdda-4f3d-a482-0403df18510a,1436020,Total de Goles,Menos de 2.5 Goles,false,2025-12-30T03:00:39.96+00:00,1-2
+9d9e1491-8443-4933-b32e-475947b1125f,1422790,Ganador del Partido,MC Alger,true,2025-12-30T03:00:40.202+00:00,2-0
+a3b23321-7677-4b85-9f9f-af61aa67119f,1422790,Total Goles Local,MC Alger Más de 1.5,true,2025-12-30T03:00:40.442+00:00,2-0
+b54743d0-790d-47c6-9856-17cc0f71c6d7,1347263,Ganador a Cero (Win to Nil),Marruecos (Sí),false,2025-12-30T03:00:40.674+00:00,0-3
+01265c6d-6c43-4362-a71d-c607eed2480c,1347263,Hándicap Asiático,Marruecos -1.5,false,2025-12-30T03:00:40.918+00:00,0-3
+e8fd191b-cf32-468d-a0fd-6457c310cf89,1347263,Win to Nil - Away (Marruecos Gana a Cero),Sí,false,2025-12-30T03:00:41.155+00:00,0-3
+ab0e7558-7895-457a-a82c-eb80fabed0bc,1347263,Total Goles,Menos de 3.5,true,2025-12-30T03:00:41.398+00:00,0-3
+95543172-7faf-4ed1-b0f1-4b79996ea698,1347264,Ganador del Partido (1X2),Mali,false,2025-12-30T03:00:41.634+00:00,0-0
+0b53ae44-5325-4864-a806-b5ca611cbf7c,1437405,Ganador (Sin Empate / DNB),Al Wehda,false,2025-12-31T03:00:05.636+00:00,0-1
+3f242009-dac2-4cb0-82af-53c9d0e2734c,1437405,Total de Goles del Equipo,Al Wehda Más de 1.0 Goles,false,2025-12-31T03:00:05.991+00:00,0-1
+2836c7c8-d494-4e98-86bd-d51fb63b58fd,1437406,Ganador del Partido (1X2),Al Ula,false,2025-12-31T03:00:06.593+00:00,1-1
+7627553c-6748-433a-9d47-82d4f82abbfe,1437406,Total de Goles del Equipo Local,Al Ula Más de 1.5 Goles,true,2025-12-31T03:00:07.16+00:00,1-1
+8830513b-6225-42fa-abff-5f1d372b437d,1449769,Ganador del Partido (1X2),Tractor Sazi,false,2025-12-31T03:00:07.675+00:00,0-0
+345de8df-85e2-4b43-b438-84f19335bc37,1449769,Total de Goles,Menos de 2.5 Goles,true,2025-12-31T03:00:07.948+00:00,0-0
+1c4673ea-450f-42ce-b7f2-96d397de04c4,1437407,Ganador del Partido,Al Jabalain,false,2025-12-31T03:00:08.362+00:00,2-1
+9c8d728c-2502-4101-b6a5-48aeb7a696ac,1437407,Total Goles Equipo Visitante,Al Jabalain Más de 1.5,true,2025-12-31T03:00:08.621+00:00,2-1
+ef2db6a1-24f1-494a-b9c3-0ab58a441bd6,1436012,Total Goles Equipo Local,Al-Ahli Más de 1.5 Goles,true,2025-12-31T03:00:08.948+00:00,2-0
+758caa39-6f49-4524-af64-97e389cb79b4,1436012,Resultado Final,Victoria Al-Ahli Jeddah,false,2025-12-31T03:00:09.352+00:00,2-0
+07e4691c-e7b1-42d1-a9ac-8f5deb1f27fa,1347267,Ambos Equipos Anotan,Sí (Yes),true,2025-12-31T03:00:09.761+00:00,1-3
+4a486841-1029-486d-9bbf-9ca5c519044e,1347267,Total Córners,Más de 8.5 (Estimado),false,2025-12-31T03:00:10.22+00:00,1-3
+61722f78-f156-4176-8689-9e1d90dd811a,1347268,Ganador del Partido (1X2),Túnez,false,2025-12-31T03:00:10.679+00:00,1-1
+bfe6aaf5-ddfd-402a-8b37-db8ab7ab7a4d,1347268,Total de Goles,Menos de 2.5 Goles,true,2025-12-31T03:00:10.964+00:00,1-1
+20afcf0e-f337-4183-bf80-f7ab4e39d839,1436013,Ganador del Partido y Goles,Al-Nassr y Más de 1.5 Goles,false,2025-12-31T03:00:11.235+00:00,2-2
+49db73ac-5b17-48e4-8902-0f665500d3c5,1436013,Total Goles Equipo Visitante,Al-Nassr Más de 1.5 Goles,true,2025-12-31T03:00:11.551+00:00,2-2
+40eeda1b-e401-4b96-8e7e-5f029e8ba570,1436018,Ambos Equipos Marcan (BTTS),Sí,false,2025-12-31T03:00:11.812+00:00,0-1
+1d1fdfef-a3aa-49e4-b907-a8f13b918d7c,1436018,Total Goles,Más de 2.0 / 2.5 (Asiático),false,2025-12-31T03:00:12.057+00:00,0-1
+287c2c63-bdcd-438e-aab0-e152b5269e9c,1347269,Total de Goles,Menos de 2.5,false,2025-12-31T03:00:12.492+00:00,0-3
+79a83038-ec9d-44e5-9fd5-4e1c04e331c8,1347269,Ganar a Cero (Visitante),Sí,false,2025-12-31T03:00:12.765+00:00,0-3
+0fcbe26a-db6f-4437-8e9b-0e6ddf99ee49,1347270,Win to Nil - Away (Ganar a Cero - Visitante),Sí,false,2025-12-31T03:00:13.222+00:00,0-3
+4bbfee88-dac0-41f0-a030-5ade5e077a62,1347270,Total Goles - Visitante,Over 1.5,true,2025-12-31T03:00:13.625+00:00,0-3
+257b9d33-8a4f-4bf2-ad65-d25d0717daa4,1379151,Ganador del Partido (1X2),Newcastle,true,2025-12-31T03:00:13.874+00:00,1-3
+162aac3b-1572-4f6a-bc07-89f30df82f68,1379151,Total Córners,Más de 9.5 Córners,false,2025-12-31T03:00:14.158+00:00,1-3
+015d7e17-f2c9-4d5a-a210-03e6097683f3,1379156,Hándicap Asiático,Everton +0.5 (o Doble Oportunidad X2),false,2025-12-31T03:00:14.494+00:00,0-2
+7e599aa7-f21c-4d4d-8331-8e53e4ee34f5,1379156,Total Goles,Menos de 2.5,true,2025-12-31T03:00:14.763+00:00,0-2
+c513e5ea-d322-4022-8e70-98ccab4d18b3,1379152,Ganador del Partido,Chelsea,false,2025-12-31T03:00:15.139+00:00,2-2
+113b7ab3-f3d9-404f-abe3-fc9c105303c6,1379152,Total Goles Local,Chelsea Más de 1.5 Goles,true,2025-12-31T03:00:15.477+00:00,2-2
+11691bf2-6ec6-4dab-800a-e3f5e527e2da,1379152,Total Córners,Más de 9.5 Córners,false,2025-12-31T03:00:15.771+00:00,2-2
+3b59c477-9e63-4ff2-abea-e3ee1ffda115,1379158,Handicap Asiático,Brighton +0 (Empate Apuesta No Válida),false,2025-12-31T03:00:16.086+00:00,2-2
+e274c7ad-a74e-48dc-968c-425ab158e643,1379158,Total Goles,Más de 2.5 Goles,true,2025-12-31T03:00:16.365+00:00,2-2
+bd42f0cc-9da7-4f65-aa26-fbb683ad6443,1379158,Ambos Equipos Anotan,Sí (BTTS),true,2025-12-31T03:00:16.63+00:00,2-2
+b0aadd1f-0f9d-4801-a49c-e1f410fa9625,1382780,Doble Oportunidad,Dundee o Empate (1X),false,2025-12-31T03:00:16.873+00:00,2-1
+f1b0843e-788d-4559-a465-b15835b91938,1382780,Total Goles,Menos de 3.5 Goles,true,2025-12-31T03:00:17.142+00:00,2-1
+cfaa38fd-0768-493a-86da-e3296f069c39,1382783,Ambos Equipos Anotan,Sí (Yes),true,2025-12-31T03:00:17.471+00:00,1-3
+820a5215-62c0-4392-959e-4be75bee545e,1382783,Doble Oportunidad,Empate o Dundee Utd,false,2025-12-31T03:00:17.742+00:00,1-3
+881d34f1-d5aa-4b05-871c-16605ba80f1a,1382782,Ganador del Partido,Hibernian,true,2025-12-31T03:00:17.985+00:00,2-0
+2b20910d-6f5a-444e-afdb-3108462e7c4e,1382782,Total Goles,Más de 2.5 Goles,false,2025-12-31T03:00:18.265+00:00,2-0
+0d8bc10d-053d-4adb-b2fb-72dfa807ee90,1382785,Total Goles - Rangers (Local),Over 1.5,true,2025-12-31T03:00:18.514+00:00,2-1
+28eddfe1-5cab-4f27-825f-19b3bee20618,1382785,Ganador del Partido,Rangers,true,2025-12-31T03:00:18.785+00:00,2-1
+47928777-62aa-4bea-b5cf-53feeb91a496,1382784,Ambos Equipos Marcan,SÍ,false,2025-12-31T03:00:19.047+00:00,2-0
+41cdb4b0-7b1d-4dcb-b514-68977daebc85,1382784,Total Corners,Más de 9.5,false,2025-12-31T03:00:19.291+00:00,2-0
+80e95c1a-4f9a-4c9a-8313-960448e9f94b,1379149,Total Goles,Más de 2.5,true,2025-12-31T03:00:19.555+00:00,4-1
+4efe92ea-85c1-4ac7-80de-225d43e14fb2,1379149,Resultado del Partido,Arsenal Gana,false,2025-12-31T03:00:19.797+00:00,4-1
+a655371a-79aa-4282-b2aa-b11f45b7e4dc,1379149,Total Corners,Arsenal Más de 6.5 Corners,false,2025-12-31T03:00:20.072+00:00,4-1
+d5caddf6-003a-4416-ade5-b685bb8656fa,1379155,Hándicap Asiático,Manchester United -1.5,false,2025-12-31T03:00:20.35+00:00,1-1
+dbfe736a-a465-40cb-ade3-fdb396b08924,1379155,Total Goles Local,Man Utd Más de 1.5 Goles,true,2025-12-31T03:00:20.611+00:00,1-1
+8c9d14ba-ee0a-4acf-8672-d02174e30747,1398112,Both Teams Score (Ambos Marcan),Sí,false,2025-12-31T03:00:20.869+00:00,0-1
+64571ada-3839-4821-9a7f-d81668199327,1398112,Total Goles,Más de 2.5,false,2025-12-31T03:00:21.113+00:00,0-1
+03e13d9f-d941-49be-a2a5-dd20c6a39004,1440176,Ganador del Partido (1X2),Al-Markhiya,true,2025-12-31T03:00:25.768+00:00,2-1
+397edbd6-936a-4267-ac1a-69079a18e4cb,1440176,Total de Goles,Más de 2.5 Goles,true,2025-12-31T03:00:26.023+00:00,2-1
+6b69651a-a6b4-4e49-8068-99a62c9dd789,1440177,Total Goles,Más de 2.5,false,2025-12-31T03:00:26.273+00:00,0-2
+c73d02a4-06b0-4588-a561-2e8c4bf980dd,1440177,Resultado Final (1X2),Lusail City (Con precaución/DNB),true,2025-12-31T03:00:26.519+00:00,0-2
+8b001fb0-fca3-4c7e-8b81-2051f17842ec,1440178,Total Goles,Más de 2.5,false,2025-12-31T03:00:26.756+00:00,0-2
+cd68b6ba-619d-4b54-920c-978aae2dfb1a,1440178,Ganador del Partido,Al Kharaitiyat,true,2025-12-31T03:00:26.998+00:00,0-2
+dbfa6e8f-84c4-4796-b518-8c177c6d5175,1440179,Total Goles,Más de 2.5,false,2025-12-31T03:00:27.242+00:00,0-1
+69503364-d06c-4dc6-a81f-81cb1b45955f,1440179,Ambos Equipos Marcan (BTTS),SÍ,false,2025-12-31T03:00:27.485+00:00,0-1
+428d82e1-a119-46a1-8ad5-323c1188674e,1440178,Total Goles,Más de 2.5,false,2025-12-31T03:00:27.74+00:00,0-2
+ee4df747-693e-42de-90f5-6593e1076351,1440178,Ganador del Partido,Al Kharaitiyat,true,2025-12-31T03:00:27.985+00:00,0-2
+2d6f6121-098b-48a4-8102-308d223f0004,1469615,Total Córners,Más de 10.5,false,2026-01-01T03:00:06.552+00:00,1-2
+d95f147b-15c2-471b-8bd2-c32a3eaa737e,1469615,Doble Oportunidad,Brisbane Roar o Empate (X2),false,2026-01-01T03:00:07.139+00:00,1-2
+6d3ff7a4-a92f-4efe-bcee-1902b4683b1a,1438559,Ganador del Partido,Abha,true,2026-01-01T03:00:07.473+00:00,0-1
+d9cddd52-b9d5-4457-98f6-e5988220697c,1438559,Total Goles Equipo Visitante,Abha Más de 1.5 Goles,false,2026-01-01T03:00:07.976+00:00,0-1
+d6dfcee3-bdb0-40db-a195-4bbfab8ab358,1438559,Ambos Equipos Anotan (BTTS),Sí,false,2026-01-01T03:00:08.627+00:00,0-1
+1cb1ff40-1027-4487-a3fa-e1161ab52b4c,1437408,Hándicap Asiático,Al Diriyah -1.5,false,2026-01-01T03:00:08.88+00:00,5-2
+9b208d2d-bb86-4a5b-a981-25146fd5b017,1437408,Total Goles Local,Al Diriyah Más de 1.5 Goles,true,2026-01-01T03:00:09.412+00:00,5-2
+d7ee0593-5436-43b8-a59a-2bf69cbb82e5,1436015,Total Goles,Más de 2.5,true,2026-01-01T03:00:09.735+00:00,1-3
+fbebf20f-3c14-43d5-9c61-483f91fbd6cd,1436015,Ambos Equipos Anotan,Sí (BTTS),true,2026-01-01T03:00:10.276+00:00,1-3
+a7924026-7c1e-4b3b-bc5c-6520845637cb,1437409,Total de Goles,Menos de 2.5 Goles,true,2026-01-01T03:00:10.554+00:00,1-1
+dcbaa2f5-9155-4dd8-8e86-137adba13759,1437409,Doble Oportunidad,Empate o Al Bukayriyah (X2),false,2026-01-01T03:00:11.103+00:00,1-1
+a07d1058-aec3-476f-b611-5c799a7492e1,1347271,Ganador del Partido (1X2),Argelia,false,2026-01-01T03:00:11.453+00:00,1-3
+9826eea8-905d-4224-aed6-6451c64b0e06,1347271,Total de Goles,Menos de 2.5 Goles,false,2026-01-01T03:00:11.868+00:00,1-3
+e6acf00c-a1fc-4930-894b-2d9336425c33,1347272,Ganador del Partido (1X2),Burkina Faso,true,2026-01-01T03:00:12.134+00:00,0-2
+012f40b5-594f-43ac-96d6-5a5cac4a5f06,1347272,Mitad con más goles,2da Mitad,false,2026-01-01T03:00:12.528+00:00,0-2
+8d18e12d-c8f8-4ba0-a4ef-43859b034138,1436016,Ganador (Empate No Válido),Al-Qadisiyah FC,true,2026-01-01T03:00:12.859+00:00,2-3
+d7b40de6-3d67-4ae6-9e4c-1bca0611eafb,1436016,Total Goles,Más de 2.0 Goles (Asiático),true,2026-01-01T03:00:13.248+00:00,2-3
+609627d6-a5ea-4922-9000-82efba0a6005,1436017,Hándicap Asiático,Al-Hilal Saudi FC -1.5,false,2026-01-01T03:00:13.512+00:00,1-3
+cdf64ca9-a57e-47c7-bf9a-1f76da892670,1436017,Total de Goles,Más de 3.5 Goles,true,2026-01-01T03:00:13.818+00:00,1-3
+2c77436b-8b5e-4157-8f14-9da42e46e751,1347273,Ganador del Partido (1X2),Costa de Marfil,false,2026-01-01T03:00:14.194+00:00,2-3
+d4df1c29-9ce3-4f47-982e-2575caa19f33,1347273,Portería a Cero - Visitante,Sí (No marcan ambos),false,2026-01-01T03:00:14.596+00:00,2-3
+6770d5ca-9a01-477b-8ca7-63c6531037e0,1347274,Ganador del Partido (1X2),Camerún (Away),true,2026-01-01T03:00:14.876+00:00,1-2
+bee9eabf-4dae-46b6-afb0-a675da70463c,1347274,Total de Goles,Menos de 2.5 Goles,false,2026-01-01T03:00:15.24+00:00,1-2
+29b4b891-2b48-47eb-b796-d218abb4ed23,1469616,Ganador del Partido,Auckland,false,2026-01-02T03:00:06.529+00:00,1-3
+5759a2c5-f0bf-4a3c-b69b-94da927a6fe1,1469616,Total Goles,Más de 2.5,true,2026-01-02T03:00:07.213+00:00,1-3
+0548221d-f6ee-4d1e-9bf3-6c157cbcb25e,1469616,Ambos Equipos Anotan,Sí,true,2026-01-02T03:00:07.749+00:00,1-3
+57d4541e-5024-4dc3-86ec-b57682da41ba,1469617,Total Goles,Más de 2.5,false,2026-01-02T03:00:08.065+00:00,0-1
+55cef45e-2744-4ff6-aa5f-de93a3a7a4e5,1469617,Ambos Equipos Marcan,Sí,false,2026-01-02T03:00:08.502+00:00,0-1
+94edd8c6-5458-4849-8d47-872a8b011cfb,1386845,Hándicap Asiático,Blackburn +0 (Empate Apuesta No Válida),false,2026-01-02T03:00:08.834+00:00,0-2
+06677040-f849-42db-9033-3ef58e8731df,1386845,Total de Goles,Menos de 2.5 Goles,true,2026-01-02T03:00:09.363+00:00,0-2
+75f1379c-d03a-4712-8c3d-8a264f91b0e5,1438560,Ganador del Partido,Al Orubah,true,2026-01-02T03:00:09.9+00:00,1-0
+e8cc2643-a7f1-4ba0-ae1d-6e0492449be1,1438560,Total Goles Local,Al Orubah Más de 1.5 Goles,false,2026-01-02T03:00:10.219+00:00,1-0
+14ba6df8-e0ef-4aa1-9d9b-0b65b789772f,1437410,Total Goles,Más de 2.5,false,2026-01-02T03:00:10.708+00:00,1-1
+b3d46be9-9ec3-411d-915c-dff815a3ee8d,1437410,Doble Oportunidad,Al Zulfi o Empate (X2),false,2026-01-02T03:00:11.035+00:00,1-1
+78ab0ca6-390c-4411-afd3-94004896f619,1483247,Handicap Asiático,Sepahan FC +0 (Draw No Bet),false,2026-01-02T03:00:11.535+00:00,1-2
+a4008086-42b5-40de-a7e5-401fe69a9953,1483247,Total Goles,Menos de 2.5 Goles,false,2026-01-02T03:00:11.885+00:00,1-2
+2b85bb03-1af8-44ac-b3c1-a0c36d4b2071,1386840,Hándicap Asiático,Swansea +0 (o Empate Apuesta No Válida),false,2026-01-02T03:00:12.199+00:00,1-0
+5fdc6861-8517-4eea-b6ed-c50a00db452c,1386840,Total Córners Local,Swansea Over 5.5 Córners,false,2026-01-02T03:00:12.524+00:00,1-0
+e4690708-7321-4a77-82e0-9b626a1a2e9e,1386842,Ganador del Partido (1X2),Preston,true,2026-01-02T03:00:12.795+00:00,3-0
+725e0a2f-5c6b-4f08-ae28-4ef24f7a9cbd,1386842,Total Goles Local,Preston Más de 1.5 Goles,true,2026-01-02T03:00:13.065+00:00,3-0
+32884508-939c-4112-83b2-6cd566dbf1ac,1386842,Córners,Preston - Total Córners Alto (Over 5.5 o 6.5 equipo),false,2026-01-02T03:00:13.344+00:00,3-0
+358466dd-eebb-420a-b557-d287494eb118,1386843,Ganador del Partido,Watford,true,2026-01-02T03:00:13.713+00:00,3-0
+2a4d8f4c-315f-480b-90a7-c78592afbbf1,1386843,Total Goles Local,Watford Más de 1.5,true,2026-01-02T03:00:14.073+00:00,3-0
+b3f24b76-5f07-4bec-a4f0-f33c971487d3,1386843,Total Corners,Más de 9.5 Corners,false,2026-01-02T03:00:14.432+00:00,3-0
+33b15c0e-e43f-46de-9bcc-108be9de1359,1386844,Hándicap Asiático,Hull City +0 (o Ganador),false,2026-01-02T03:00:14.752+00:00,0-1
+0a0d5137-deda-4119-a57c-a7d126e9743c,1386844,Total Córners Equipo,Hull City Más de 5.5 Córners,false,2026-01-02T03:00:15.067+00:00,0-1
+a912e09c-197b-4e88-842e-97358115a7e3,1386846,Ganador del Partido (1X2),QPR (Local),false,2026-01-02T03:00:15.44+00:00,1-2
+7e9c5bd8-b296-46bc-b984-67b6d7b57b1b,1386846,Total Goles Local,QPR Más de 1.5 Goles,true,2026-01-02T03:00:15.761+00:00,1-2
+3c217445-1db6-4c89-8185-feb6cc2d699d,1386847,Ambos Equipos Marcan,Sí,false,2026-01-02T03:00:16.006+00:00,1-0
+0015d717-2845-4f83-b58d-e888eb7539ec,1386847,Doble Oportunidad,Middlesbrough o Empate,false,2026-01-02T03:00:16.321+00:00,1-0
+3f8e6656-b35f-4a8f-9444-e54f6866105f,1386848,Ambos Equipos Anotan,Sí,false,2026-01-02T03:00:16.585+00:00,0-0
+a0589027-adb0-445e-a703-10870fb52ff2,1386848,Córners (Mercado Alternativo),Southampton Over 6.5 Córners (o Total Over 10.5),false,2026-01-02T03:00:17.326+00:00,0-0
+dcfc1da5-fce3-4716-8f1d-ac0ec0eee5c5,1386849,Handicap Asiático,Ipswich -1.5,false,2026-01-02T03:00:17.575+00:00,2-1
+ffca1752-70cb-43ba-a9c9-68664a977854,1386849,Ganador a Cero,Ipswich gana a cero (Win to Nil),true,2026-01-02T03:00:17.898+00:00,2-1
+4416f941-8b6d-419c-85a7-16780c6b543d,1386850,Ganador del Partido (1X2),Coventry (Visitante),false,2026-01-02T03:00:18.227+00:00,1-1
+abfa6b17-59fc-4c7a-a6b7-64b58208b7e3,1386850,Total de Goles,Más de 2.5 Goles,false,2026-01-02T03:00:18.54+00:00,1-1
+469a2530-3dd7-4cc6-be60-fa42d9eba1d9,1386850,Córners Equipo Local,Charlton - Más de 4.5 Córners,false,2026-01-02T03:00:18.796+00:00,1-1
+b748c886-1a8a-45d7-b87e-59f03b44698a,1437411,Goles Más/Menos,Menos de 2.5,false,2026-01-02T03:00:19.093+00:00,5-3
+6889ba36-1914-4155-b89b-d56792144cab,1437411,Doble Oportunidad,Al-Faisaly o Empate (1X),false,2026-01-02T03:00:19.339+00:00,5-3
+a168ce8e-452f-42fe-b77b-05b435caabee,1386839,Ganador del Partido,Bristol City,true,2026-01-02T03:00:19.65+00:00,5-0
+7c6569bc-e9a9-4ed8-acdb-0430706ebc10,1386839,Total de Goles,Menos de 2.5 Goles,false,2026-01-02T03:00:19.942+00:00,5-0
+548109f5-f86e-4b24-aa04-e9765a16c313,1386839,Ganar a Cero (Win to Nil),Bristol City - Sí,false,2026-01-02T03:00:20.209+00:00,5-0
+7461a7de-2ca7-4aeb-9297-d663384da0d6,1379153,Ambos Equipos Marcan,Sí,true,2026-01-02T03:00:20.495+00:00,1-1
+3cbfa7be-28bd-4822-be0c-ff3ae159fc4f,1379153,Doble Oportunidad,Crystal Palace o Empate,false,2026-01-02T03:00:20.761+00:00,1-1
+309e4c35-f0ea-4c96-b63b-73d18f5e0abc,1386841,Ganador del Partido,Sheffield Utd,true,2026-01-02T03:00:21.008+00:00,3-1
+5a4881ac-4098-46da-8962-a37fddfbcdfa,1386841,Total Goles,Más de 2.5,true,2026-01-02T03:00:21.265+00:00,3-1
+06810b9c-3661-4c40-a0e3-8b669f099bc0,1379150,Hándicap Asiático,Brentford +0 (Empate No Válida),false,2026-01-02T03:00:21.517+00:00,0-0
+ac9e08c8-bc73-4ca8-8013-07918a04d1b3,1379150,Total Goles Equipo Local,Brentford Más de 1.5 Goles,false,2026-01-02T03:00:21.771+00:00,0-0
+0e9bac21-d99c-4b59-b2de-6c85c23ce958,1379150,Ganador del Partido,Brentford,false,2026-01-02T03:00:22.023+00:00,0-0
+05f26117-a492-463b-8d18-cdc4d3ddd788,1379157,Ganador del Partido,Manchester City,false,2026-01-02T03:00:22.269+00:00,0-0
+2f7d9ee6-15c0-4e57-b24e-675b8f066b9d,1379157,Total Goles,Más de 2.5 Goles,false,2026-01-02T03:00:22.541+00:00,0-0
+25c65ee1-6a3e-44b5-8d54-e83f4e273bf1,1379157,Hándicap Asiático,Manchester City -1.0,false,2026-01-02T03:00:22.847+00:00,0-0

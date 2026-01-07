@@ -616,9 +616,14 @@ CRITICAL REMINDERS:
       throw runError;
     }
 
-    // --- STAGE 6.5: SAVE PREDICTIONS TO DEDICATED TABLE ---
+    // --- STAGE 6.5: SAVE PREDICTIONS TO DEDICATED TABLE (WITH A/B TESTING) ---
     const predictions = aiData.predicciones_finales?.detalle || [];
     if (predictions.length > 0 && runData) {
+      // A/B Testing: Seleccionar versión del modelo
+      // Esto distribuye predicciones según traffic_percentage (ej: 70% v1-stable, 30% v2-learning)
+      const modelVersion = 'v1-stable'; // NOTE: A/B testing se implementa en frontend por ahora
+      // TODO: Implementar selectModelVersion() si se quiere A/B desde backend
+
       const predictionsToInsert = predictions.map((p: any) => ({
         analysis_run_id: runData.id,
         fixture_id: api_fixture_id, // Use actual API fixture ID for TopPicks lookup
@@ -626,14 +631,18 @@ CRITICAL REMINDERS:
         selection: p.seleccion || 'Selección',
         probability: p.probabilidad_estimado_porcentaje || 50,
         confidence: (p.probabilidad_estimado_porcentaje || 50) >= 70 ? 'Alta' : 'Media',
-        reasoning: p.justificacion_detallada?.conclusion || ''
+        reasoning: p.justificacion_detallada?.conclusion || '',
+        model_version: modelVersion, // NEW: Track which model version generated this
+        match_date: game.fixture.date.split('T')[0], // YYYY-MM-DD for filtering
+        home_team: homeTeam.name,
+        away_team: awayTeam.name
       }));
 
       const { error: predError } = await supabase.from('predictions').insert(predictionsToInsert);
       if (predError) {
         console.error('[SAVE] Error saving predictions:', predError);
       } else {
-        console.log(`[SAVE] Inserted ${predictionsToInsert.length} predictions for fixture ${api_fixture_id}`);
+        console.log(`[SAVE] Inserted ${predictionsToInsert.length} predictions (${modelVersion}) for fixture ${api_fixture_id}`);
       }
     }
 
@@ -694,6 +703,31 @@ CRITICAL REMINDERS:
     // Update status
     await supabase.from('analysis_jobs').update({ status: 'done', completeness_score: 100 }).eq('id', job.id);
     await supabase.from('analisis').upsert({ partido_id: api_fixture_id, resultado_analisis: { dashboardData: aiData } });
+
+    // CRITICAL FIX: Ensure match exists in daily_matches so fetchTopPicks can see it
+    try {
+      const dailyMatchPayload = {
+        api_fixture_id: api_fixture_id,
+        league_id: game.league.id,
+        league_name: game.league.name,
+        home_team: homeTeam.name,
+        home_team_logo: homeTeam.logo,
+        away_team: awayTeam.name,
+        away_team_logo: awayTeam.logo,
+        match_time: game.fixture.date,
+        match_status: game.fixture.status.short,
+        home_score: game.goals.home,
+        away_score: game.goals.away,
+        match_date: game.fixture.date.split('T')[0],
+        scan_date: new Date().toISOString().split('T')[0]
+      };
+      // Upsert on fixture_id
+      const { error: dmError } = await supabase.from('daily_matches').upsert(dailyMatchPayload, { onConflict: 'api_fixture_id' });
+      if (dmError) console.error('[SAVE] Error updating daily_matches:', dmError);
+      else console.log('[SAVE] Updated daily_matches visibility');
+    } catch (e) {
+      console.error('[SAVE] Failed to update daily_matches (Non-blocking):', e);
+    }
 
 
     return new Response(JSON.stringify({ success: true, job_id: job.id }), { headers: corsHeaders });

@@ -3,6 +3,10 @@ import { supabase } from '../../services/supabaseService';
 import { SparklesIcon, CalendarDaysIcon, DocumentArrowDownIcon } from '../icons/Icons';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useAuth } from '../../hooks/useAuth';
+import { getUserSubscription } from '../../services/subscriptionCheckService'; // CAMBIADO: Usar servicio con bypass
+import { UpgradePlanModal } from '../pricing/UpgradePlanModal';
+import { LockClosedIcon } from '../icons/Icons';
 
 interface AutoParlayListProps {
     date: string;
@@ -25,9 +29,40 @@ export const AutoParlayList: React.FC<AutoParlayListProps> = ({ date }) => {
     const [parlays, setParlays] = useState<AutoParlay[]>([]);
     const [loading, setLoading] = useState(false);
 
+    // Subscription Check
+    const { profile } = useAuth();
+    const [hasAccess, setHasAccess] = useState(false);
+    const [checkingAccess, setCheckingAccess] = useState(true);
+    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
     useEffect(() => {
-        fetchAutoParlays();
-    }, [date]);
+        const checkAccess = async () => {
+            if (!profile?.id) return;
+
+            setCheckingAccess(true);
+            try {
+                const sub = await getUserSubscription(profile.id, profile.organization_id);
+
+                // BYPASS: superadmin y admin tienen acceso
+                // subscriptionCheckService ya retorna plan "unlimited" para admin/superadmin
+                const planName = sub?.planName || 'free';
+                setHasAccess(planName !== 'free');
+            } catch (err) {
+                console.error("Error checking subscription:", err);
+                setHasAccess(false);
+            } finally {
+                setCheckingAccess(false);
+            }
+        };
+
+        checkAccess();
+    }, [profile]);
+
+    useEffect(() => {
+        if (hasAccess) {
+            fetchAutoParlays();
+        }
+    }, [date, hasAccess]);
 
     const fetchAutoParlays = async () => {
         setLoading(true);
@@ -121,6 +156,56 @@ export const AutoParlayList: React.FC<AutoParlayListProps> = ({ date }) => {
 
         doc.save(`parlay-auto-${parlay.parlay_date}.pdf`);
     };
+
+    if (checkingAccess) {
+        return (
+            <div className="flex justify-center items-center h-48">
+                <div className="w-8 h-8 border-4 border-green-accent border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+
+    if (!hasAccess) {
+        return (
+            <div className="bg-gray-800 rounded-lg p-8 border border-gray-700 text-center relative overflow-hidden group">
+                {/* Background decorative elements */}
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-50"></div>
+
+                <div className="relative z-10 flex flex-col items-center">
+                    <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mb-4 border border-gray-700 shadow-[0_0_20px_rgba(6,182,212,0.15)] group-hover:shadow-[0_0_30px_rgba(6,182,212,0.3)] transition-all duration-500">
+                        <LockClosedIcon className="w-8 h-8 text-cyan-400" />
+                    </div>
+
+                    <h3 className="text-2xl font-bold text-white mb-2">
+                        Parlays con IA Bloqueados
+                    </h3>
+
+                    <p className="text-gray-400 max-w-md mx-auto mb-6">
+                        Nuestra IA analiza miles de combinaciones para crear los Parlays de mayor probabilidad matemática.
+                        <br /><span className="text-cyan-400 font-medium">Actualiza a Starter o superior para desbloquear.</span>
+                    </p>
+
+                    <button
+                        onClick={() => setShowUpgradeModal(true)}
+                        className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold py-3 px-8 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+                    >
+                        <SparklesIcon className="w-5 h-5 text-black" />
+                        DESBLOQUEAR AHORA
+                    </button>
+                </div>
+
+                {showUpgradeModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm text-left">
+                        <UpgradePlanModal
+                            isOpen={showUpgradeModal}
+                            onClose={() => setShowUpgradeModal(false)}
+                            currentPlan="free"
+                        />
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     if (loading) return <div className="text-gray-400 text-sm p-4 text-center">Buscando parlays automáticos...</div>;
 

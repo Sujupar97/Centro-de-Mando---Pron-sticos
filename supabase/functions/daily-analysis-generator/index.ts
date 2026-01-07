@@ -1,7 +1,3 @@
-// supabase/functions/daily-analysis-generator/index.ts
-// Edge Function que llama a create-analysis-job para cada partido pendiente
-// Ejecuta: 2:00 AM Colombia (7:00 AM UTC)
-
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -10,7 +6,6 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Procesar 3 partidos por ejecución, de 1 en 1 con pausa de 3 min
 const BATCH_SIZE = 3
 const DELAY_BETWEEN_MATCHES_MS = 3 * 60 * 1000 // 3 minutos
 
@@ -25,9 +20,25 @@ serve(async (req) => {
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+        // 0. VERIFICAR SYSTEM SETTINGS
+        const { data: settings } = await supabase
+            .from('system_settings')
+            .select('key, value')
+            .in('key', ['auto_analysis_enabled', 'auto_parlay_enabled']);
+
+        const analysisEnabled = settings?.find(s => s.key === 'auto_analysis_enabled')?.value ?? true; // Default true (safety)
+        const parlayEnabled = settings?.find(s => s.key === 'auto_parlay_enabled')?.value ?? true;
+
+        if (analysisEnabled === false) {
+            console.log('[AutoAnalyzer] ⏹️ Analysis disabled by system_settings');
+            return new Response(JSON.stringify({ success: true, message: 'Analysis disabled' }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
         console.log(`[AutoAnalyzer] Iniciando análisis (máximo ${BATCH_SIZE} partidos)`)
 
-        // 1. Obtener partidos pendientes (solo 2)
+        // 1. Obtener partidos pendientes (prioridad: los de HOY/MAÑANA más cercanos)
         const { data: pendingMatches, error: fetchError } = await supabase
             .from('daily_matches')
             .select('*')
@@ -39,14 +50,44 @@ serve(async (req) => {
             throw new Error(`Error obteniendo partidos: ${fetchError.message}`)
         }
 
-        // Si no hay partidos pendientes, terminar
+        // Si no hay partidos pendientes, verificar si debemos disparar PARLAY GENERATOR
         if (!pendingMatches || pendingMatches.length === 0) {
-            console.log('[AutoAnalyzer] ✅ No hay partidos pendientes')
+            console.log('[AutoAnalyzer] ✅ No hay partidos pendientes para analizar.')
+
+            // CHECK PARA TRIGGER PARLAY
+            // Solo si está habilitado y es "temprano" o queremos forzarlo. 
+            // Como este script corre cada X tiempo, si disparamos parlay cada vez que no hay partidos, 
+            // podríamos generar muuchos parlays. 
+            // Idealmente, daily-parlay-generator maneja su propia unicidad (borra anterior del día).
+
+            if (parlayEnabled === true) {
+                console.log('[AutoAnalyzer] 🚀 Triggering Daily Parlay Generator...');
+                // Invoking in background (fire and forget pattern not fully supported in pure fetch without wait, 
+                // but we can await it as it shouldn't take too long)
+
+                try {
+                    const parlayResponse = await fetch(
+                        `${supabaseUrl}/functions/v1/daily-parlay-generator`,
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${supabaseServiceKey}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({}) // No args needed, it calculates for "tomorrow" by default
+                        }
+                    );
+                    console.log(`[AutoAnalyzer] Parlay trigger status: ${parlayResponse.status}`);
+                } catch (e) {
+                    console.error('[AutoAnalyzer] Error triggering parlay:', e);
+                }
+            }
+
             return new Response(
                 JSON.stringify({
                     success: true,
                     analyzed: 0,
-                    message: 'No pending matches'
+                    message: 'No pending matches. Checked Parlay.'
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
@@ -63,7 +104,6 @@ serve(async (req) => {
             try {
                 console.log(`[AutoAnalyzer] Analizando: ${match.home_team} vs ${match.away_team}`)
 
-                // Llamar a create-analysis-job
                 const analysisResponse = await fetch(
                     `${supabaseUrl}/functions/v1/create-analysis-job`,
                     {
@@ -91,7 +131,6 @@ serve(async (req) => {
                     const analysisResult = await analysisResponse.json()
                     console.log(`[AutoAnalyzer] ✅ Completado`)
 
-                    // Marcar como analizado
                     await supabase
                         .from('daily_matches')
                         .update({ is_analyzed: true })
@@ -105,8 +144,9 @@ serve(async (req) => {
                     })
                 }
 
-                // Pausa de 3 minutos entre partidos
-                await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_MATCHES_MS))
+                if (pendingMatches.length > 1) {
+                    await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_MATCHES_MS))
+                }
 
             } catch (matchError: any) {
                 console.error(`[AutoAnalyzer] ❌ Error fatal:`, matchError)

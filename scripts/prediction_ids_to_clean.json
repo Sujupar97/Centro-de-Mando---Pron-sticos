@@ -1,0 +1,949 @@
+{
+  "total": 263,
+  "fecha_export": "2026-01-03T03:20:09.061Z",
+  "fecha_x": "2025-12-27T06:31:31.394+00:00",
+  "fecha_fin": "2026-01-02T03:00:22.847+00:00",
+  "prediction_ids": [
+    "3d9b5f0d-42b8-402d-8cde-997b2e22e145",
+    "e2e0916f-f193-4ef2-8165-0e1f9cddac5f",
+    "942d7583-db36-4090-83fe-7ff9ae4db9d3",
+    "ed5683a1-ab21-4d51-8600-bca4dc4e3c85",
+    "66c0478c-e779-497e-be0f-5e090245d75f",
+    "3a0a4c2e-b813-44f3-a457-d760dcb6a8a9",
+    "b3a3a1ed-1987-48b1-9605-b1efce8fdad5",
+    "fc6e0247-e106-40f1-a2fe-d91d261eea49",
+    "20a005cd-0e80-41be-8e1b-e62a93933b4a",
+    "e63cf239-afd1-4aef-a99c-d4bbc4af4405",
+    "e975344d-3f76-468e-8e98-877e0d28f56a",
+    "b0ba4ccc-0474-4701-95d3-99497e6e818c",
+    "a459fadf-5062-49dd-8ff1-6bd4fb7e31ca",
+    "2f797cfa-aecd-4682-b883-d642e109aade",
+    "c85f1562-0f48-44fb-b814-1d34ce97ad5c",
+    "502aeb64-a445-4b8e-b361-965f56a2ec51",
+    "7fe35236-88c3-4379-ad61-e8e2b423ee6b",
+    "631197f8-5d5a-4ea5-b24f-02f3f68e5f9b",
+    "ea7f8a13-c7e4-4a57-ba61-95c570537ac7",
+    "0d108299-dd36-401d-a0be-21d7f71ac3e2",
+    "dd39532a-1019-40da-9933-c461a4b1bea2",
+    "23276c97-b9b6-439c-8fe7-b74bc1328b5d",
+    "89cc5e77-18d5-40d4-ba3c-b4914b5ff8ae",
+    "f7a61e82-47f7-4a00-8ae9-ab7c72d79e00",
+    "5900aa7a-8df1-47c0-b94b-db158a278018",
+    "3cb5b1b0-9d24-4af8-8668-a7b98ffbc740",
+    "de0ae162-e007-4667-a797-24c5951a580b",
+    "60e538a8-3808-484a-b77d-2a86eb251108",
+    "10373de0-f9e9-4efd-91f9-e95d9e4abd43",
+    "5e338d3b-b1cf-4d2f-ae8e-fc1585ffeaf5",
+    "e65fd26e-58be-4dbf-8fb3-ed5d04c593b4",
+    "902390f7-14d3-4526-a147-6d0bc0cfc02d",
+    "0b177e4c-c941-4205-bf2e-2507522e4c3e",
+    "adc357cc-3cb4-43d0-a283-a8d65969d617",
+    "24a6ce05-3fff-4377-8b34-ad36699f1dce",
+    "33d3e5db-c291-4d9c-b3cf-6a7cb9790bf3",
+    "40f64ce4-3eb9-4c11-9884-f00a5a106dbb",
+    "297e143b-582c-4782-996a-f5741d4c2f8f",
+    "9bdb498e-c7c4-45a2-a299-fd652069e720",
+    "2d544a4a-4f1d-49a5-aa74-0295bcbec8b4",
+    "66f3eed9-c323-4175-b2d3-f57729043742",
+    "4b5e0618-a9c6-4af3-a40b-32ee2398ad5f",
+    "234cabaa-a003-40d5-8a66-19ea70d23b9e",
+    "dc03c01e-1976-4613-9a2b-caaf41f8646d",
+    "80e3f3c7-65fa-4899-8294-270b4d689b07",
+    "3a0dbd4e-2575-4c15-8976-560ec34b04f1",
+    "f97fece4-f26d-47a6-b09d-4d0fb71f3033",
+    "66633815-96f7-4ef6-99f8-04a0072e5ae1",
+    "16cf1df0-ba5b-462e-a1a7-541f25a6669e",
+    "b4c4f69d-de02-45c6-842d-22db0c517982",
+    "3614ef43-814b-44c0-b4a5-4ae780261b11",
+    "b0051986-aa28-4432-ac69-fc96f4de1b6d",
+    "1436ca21-15b3-40a8-81db-657939eacc65",
+    "78a1eedf-15dd-4490-bdb8-db535a57cff0",
+    "0d9cbe15-825a-43c5-8caa-87abe883a41d",
+    "8b36ec08-351c-4ccd-a339-a8b24b1179bd",
+    "1c72d4ca-3b2b-43c1-b61a-535a0196b443",
+    "f8fcb32d-3bf1-435f-a4ea-439569ad2b42",
+    "062d4df2-253f-4287-a2ff-f96324eeb4d8",
+    "b2a157de-98c0-4199-a62e-124e1db73d5b",
+    "e6989590-e011-4dd7-88f1-eeeb5b769a79",
+    "d44089fe-f538-46d1-a852-2ecf75adc4cd",
+    "c8c93a33-9242-4de8-b33f-6e9e3dbc7bbb",
+    "5bd822e5-cb31-4960-b9b4-a2fa1eeadf59",
+    "4b7a3134-882e-4b85-a43b-405200756a38",
+    "c3cdad58-4f92-4fad-bd90-b09b3dd32d20",
+    "89685faf-1026-4f8a-aaef-5a20b406dfe1",
+    "e8c99f1f-3307-4720-91ad-0dbe8b8a6013",
+    "64de71c5-cd4b-4910-b40a-60fc9def6383",
+    "01b4d06f-4e5e-4ea4-991b-396e2ed12a51",
+    "65effdb9-36a0-4536-be55-2263943ac738",
+    "0b414630-d720-4696-9ba5-1039df66fcc7",
+    "bc9d573f-d6e9-47bd-89c4-8d9c337a714f",
+    "ff67dcc2-c42f-4aba-a3ca-9dfd01fac9d4",
+    "608263c0-0762-4daf-99c3-37d243b3a953",
+    "e83c8def-6f28-434d-be5e-16c60e2a9790",
+    "3824e6cf-786e-4408-8ae1-13a76061b4ec",
+    "e43c8ca1-5a6d-479a-bdd2-7f7abdc6d2cc",
+    "850310de-d6d5-4212-bfb6-2a9fa5272dab",
+    "122d9ed5-3d91-4af5-988f-70569ba13688",
+    "397cb5e9-4790-49a3-ba47-cf1f71daa107",
+    "c529bea1-0d63-4338-b6cc-af9ec5d3d33d",
+    "45f44f89-3eea-4e0b-8f5e-0ea213716136",
+    "0aafb591-3265-43d8-a364-5150d3d7f48f",
+    "edeb13a7-3d5b-4057-b0a8-acda1b25bd07",
+    "c6185127-7072-4797-b0a8-67c136a9c392",
+    "8df4ee4c-1133-49b7-b644-4a5153d820b4",
+    "f4f281cf-336f-426a-a333-b23167cb3f97",
+    "0fa67c68-ed73-4575-ae9b-d9307918bd4e",
+    "a5f128b2-7397-44a7-9e9b-28ce7f600f08",
+    "c8f60841-e60a-4a30-8b8f-5bf706bb7d12",
+    "586e5f76-6c65-4b5e-92ca-6e43e4de20a5",
+    "b0959d8b-f873-4ed4-a34d-e3a9177b3f76",
+    "ab398151-4f5b-4d00-b2d0-fae1359ad267",
+    "254760e9-ce8b-4fce-94fc-644a45f679ad",
+    "e9d6f41e-123f-44ba-b4d3-252ba6c1d2dd",
+    "aaa62567-1c03-4b30-98b3-054e5c88e6b7",
+    "169704b2-2223-4d36-9b3b-59ebd4e668ea",
+    "fd636566-27de-46de-9145-9506dac206e7",
+    "8a181c54-476f-4d9e-8914-d89ddd474cdc",
+    "1fda6c79-3f42-440a-a5eb-6169407d3a9b",
+    "21ddf14d-0b52-4ffe-b0fe-ebdc14e1ac2a",
+    "8b4d1fac-649b-40ba-b043-d74019d2532e",
+    "1d1ee788-bbd6-4184-bbba-ea4bbc917049",
+    "574c5362-f4d5-4960-ad99-99ee30502f41",
+    "3fa9383b-679d-48b0-ab26-272983b8437f",
+    "9dcfc994-c376-4bb6-8efe-120e208815b7",
+    "7d63b4e5-28d5-4bda-8315-56d3ef78fc92",
+    "09bfd76e-86c8-43b8-9f4a-13b9af684381",
+    "f5655f92-66b3-4a45-9108-f457a01e8d80",
+    "3723d2a9-b728-41a4-8836-8de312e316bd",
+    "9597440f-6736-4c21-a1f5-c33c7fb30945",
+    "ffd7d353-8e00-4f97-95f1-fbbfd333b4d8",
+    "5b9e2118-1151-43f2-a96d-478729b50e48",
+    "97e9f085-10d2-4881-ad46-9523649fd6c5",
+    "30e6c85d-a4ea-4140-b42e-9cab66f463ad",
+    "6094a742-d694-4039-83f2-b6441e829178",
+    "b96cf501-b7c8-48af-bfb7-c929f4f5ed06",
+    "602a3f0e-949a-4910-a3b3-8ae5eafba955",
+    "adb24794-b973-4726-870d-7884ee475eca",
+    "0b0c89cb-2100-464a-8d43-12f5094b7118",
+    "904b9701-afe8-4163-b47f-f30ce697e5d8",
+    "e3760918-a305-402f-8e30-c276f0aaa297",
+    "332c7218-f920-4a85-95b0-ef3ecddd09e2",
+    "6691ab44-bdda-4f3d-a482-0403df18510a",
+    "9d9e1491-8443-4933-b32e-475947b1125f",
+    "a3b23321-7677-4b85-9f9f-af61aa67119f",
+    "b54743d0-790d-47c6-9856-17cc0f71c6d7",
+    "01265c6d-6c43-4362-a71d-c607eed2480c",
+    "e8fd191b-cf32-468d-a0fd-6457c310cf89",
+    "ab0e7558-7895-457a-a82c-eb80fabed0bc",
+    "95543172-7faf-4ed1-b0f1-4b79996ea698",
+    "0b53ae44-5325-4864-a806-b5ca611cbf7c",
+    "3f242009-dac2-4cb0-82af-53c9d0e2734c",
+    "2836c7c8-d494-4e98-86bd-d51fb63b58fd",
+    "7627553c-6748-433a-9d47-82d4f82abbfe",
+    "8830513b-6225-42fa-abff-5f1d372b437d",
+    "345de8df-85e2-4b43-b438-84f19335bc37",
+    "1c4673ea-450f-42ce-b7f2-96d397de04c4",
+    "9c8d728c-2502-4101-b6a5-48aeb7a696ac",
+    "ef2db6a1-24f1-494a-b9c3-0ab58a441bd6",
+    "758caa39-6f49-4524-af64-97e389cb79b4",
+    "07e4691c-e7b1-42d1-a9ac-8f5deb1f27fa",
+    "4a486841-1029-486d-9bbf-9ca5c519044e",
+    "61722f78-f156-4176-8689-9e1d90dd811a",
+    "bfe6aaf5-ddfd-402a-8b37-db8ab7ab7a4d",
+    "20afcf0e-f337-4183-bf80-f7ab4e39d839",
+    "49db73ac-5b17-48e4-8902-0f665500d3c5",
+    "40eeda1b-e401-4b96-8e7e-5f029e8ba570",
+    "1d1fdfef-a3aa-49e4-b907-a8f13b918d7c",
+    "287c2c63-bdcd-438e-aab0-e152b5269e9c",
+    "79a83038-ec9d-44e5-9fd5-4e1c04e331c8",
+    "0fcbe26a-db6f-4437-8e9b-0e6ddf99ee49",
+    "4bbfee88-dac0-41f0-a030-5ade5e077a62",
+    "257b9d33-8a4f-4bf2-ad65-d25d0717daa4",
+    "162aac3b-1572-4f6a-bc07-89f30df82f68",
+    "015d7e17-f2c9-4d5a-a210-03e6097683f3",
+    "7e599aa7-f21c-4d4d-8331-8e53e4ee34f5",
+    "c513e5ea-d322-4022-8e70-98ccab4d18b3",
+    "113b7ab3-f3d9-404f-abe3-fc9c105303c6",
+    "11691bf2-6ec6-4dab-800a-e3f5e527e2da",
+    "3b59c477-9e63-4ff2-abea-e3ee1ffda115",
+    "e274c7ad-a74e-48dc-968c-425ab158e643",
+    "bd42f0cc-9da7-4f65-aa26-fbb683ad6443",
+    "b0aadd1f-0f9d-4801-a49c-e1f410fa9625",
+    "f1b0843e-788d-4559-a465-b15835b91938",
+    "cfaa38fd-0768-493a-86da-e3296f069c39",
+    "820a5215-62c0-4392-959e-4be75bee545e",
+    "881d34f1-d5aa-4b05-871c-16605ba80f1a",
+    "2b20910d-6f5a-444e-afdb-3108462e7c4e",
+    "0d8bc10d-053d-4adb-b2fb-72dfa807ee90",
+    "28eddfe1-5cab-4f27-825f-19b3bee20618",
+    "47928777-62aa-4bea-b5cf-53feeb91a496",
+    "41cdb4b0-7b1d-4dcb-b514-68977daebc85",
+    "80e95c1a-4f9a-4c9a-8313-960448e9f94b",
+    "4efe92ea-85c1-4ac7-80de-225d43e14fb2",
+    "a655371a-79aa-4282-b2aa-b11f45b7e4dc",
+    "d5caddf6-003a-4416-ade5-b685bb8656fa",
+    "dbfe736a-a465-40cb-ade3-fdb396b08924",
+    "8c9d14ba-ee0a-4acf-8672-d02174e30747",
+    "64571ada-3839-4821-9a7f-d81668199327",
+    "03e13d9f-d941-49be-a2a5-dd20c6a39004",
+    "397edbd6-936a-4267-ac1a-69079a18e4cb",
+    "6b69651a-a6b4-4e49-8068-99a62c9dd789",
+    "c73d02a4-06b0-4588-a561-2e8c4bf980dd",
+    "8b001fb0-fca3-4c7e-8b81-2051f17842ec",
+    "cd68b6ba-619d-4b54-920c-978aae2dfb1a",
+    "dbfa6e8f-84c4-4796-b518-8c177c6d5175",
+    "69503364-d06c-4dc6-a81f-81cb1b45955f",
+    "428d82e1-a119-46a1-8ad5-323c1188674e",
+    "ee4df747-693e-42de-90f5-6593e1076351",
+    "2d6f6121-098b-48a4-8102-308d223f0004",
+    "d95f147b-15c2-471b-8bd2-c32a3eaa737e",
+    "6d3ff7a4-a92f-4efe-bcee-1902b4683b1a",
+    "d9cddd52-b9d5-4457-98f6-e5988220697c",
+    "d6dfcee3-bdb0-40db-a195-4bbfab8ab358",
+    "1cb1ff40-1027-4487-a3fa-e1161ab52b4c",
+    "9b208d2d-bb86-4a5b-a981-25146fd5b017",
+    "d7ee0593-5436-43b8-a59a-2bf69cbb82e5",
+    "fbebf20f-3c14-43d5-9c61-483f91fbd6cd",
+    "a7924026-7c1e-4b3b-bc5c-6520845637cb",
+    "dcbaa2f5-9155-4dd8-8e86-137adba13759",
+    "a07d1058-aec3-476f-b611-5c799a7492e1",
+    "9826eea8-905d-4224-aed6-6451c64b0e06",
+    "e6acf00c-a1fc-4930-894b-2d9336425c33",
+    "012f40b5-594f-43ac-96d6-5a5cac4a5f06",
+    "8d18e12d-c8f8-4ba0-a4ef-43859b034138",
+    "d7b40de6-3d67-4ae6-9e4c-1bca0611eafb",
+    "609627d6-a5ea-4922-9000-82efba0a6005",
+    "cdf64ca9-a57e-47c7-bf9a-1f76da892670",
+    "2c77436b-8b5e-4157-8f14-9da42e46e751",
+    "d4df1c29-9ce3-4f47-982e-2575caa19f33",
+    "6770d5ca-9a01-477b-8ca7-63c6531037e0",
+    "bee9eabf-4dae-46b6-afb0-a675da70463c",
+    "29b4b891-2b48-47eb-b796-d218abb4ed23",
+    "5759a2c5-f0bf-4a3c-b69b-94da927a6fe1",
+    "0548221d-f6ee-4d1e-9bf3-6c157cbcb25e",
+    "57d4541e-5024-4dc3-86ec-b57682da41ba",
+    "55cef45e-2744-4ff6-aa5f-de93a3a7a4e5",
+    "94edd8c6-5458-4849-8d47-872a8b011cfb",
+    "06677040-f849-42db-9033-3ef58e8731df",
+    "75f1379c-d03a-4712-8c3d-8a264f91b0e5",
+    "e8cc2643-a7f1-4ba0-ae1d-6e0492449be1",
+    "14ba6df8-e0ef-4aa1-9d9b-0b65b789772f",
+    "b3d46be9-9ec3-411d-915c-dff815a3ee8d",
+    "78ab0ca6-390c-4411-afd3-94004896f619",
+    "a4008086-42b5-40de-a7e5-401fe69a9953",
+    "2b85bb03-1af8-44ac-b3c1-a0c36d4b2071",
+    "5fdc6861-8517-4eea-b6ed-c50a00db452c",
+    "e4690708-7321-4a77-82e0-9b626a1a2e9e",
+    "725e0a2f-5c6b-4f08-ae28-4ef24f7a9cbd",
+    "32884508-939c-4112-83b2-6cd566dbf1ac",
+    "358466dd-eebb-420a-b557-d287494eb118",
+    "2a4d8f4c-315f-480b-90a7-c78592afbbf1",
+    "b3f24b76-5f07-4bec-a4f0-f33c971487d3",
+    "33b15c0e-e43f-46de-9bcc-108be9de1359",
+    "0a0d5137-deda-4119-a57c-a7d126e9743c",
+    "a912e09c-197b-4e88-842e-97358115a7e3",
+    "7e9c5bd8-b296-46bc-b984-67b6d7b57b1b",
+    "3c217445-1db6-4c89-8185-feb6cc2d699d",
+    "0015d717-2845-4f83-b58d-e888eb7539ec",
+    "3f8e6656-b35f-4a8f-9444-e54f6866105f",
+    "a0589027-adb0-445e-a703-10870fb52ff2",
+    "dcfc1da5-fce3-4716-8f1d-ac0ec0eee5c5",
+    "ffca1752-70cb-43ba-a9c9-68664a977854",
+    "4416f941-8b6d-419c-85a7-16780c6b543d",
+    "abfa6b17-59fc-4c7a-a6b7-64b58208b7e3",
+    "469a2530-3dd7-4cc6-be60-fa42d9eba1d9",
+    "b748c886-1a8a-45d7-b87e-59f03b44698a",
+    "6889ba36-1914-4155-b89b-d56792144cab",
+    "a168ce8e-452f-42fe-b77b-05b435caabee",
+    "7c6569bc-e9a9-4ed8-acdb-0430706ebc10",
+    "548109f5-f86e-4b24-aa04-e9765a16c313",
+    "7461a7de-2ca7-4aeb-9297-d663384da0d6",
+    "3cbfa7be-28bd-4822-be0c-ff3ae159fc4f",
+    "309e4c35-f0ea-4c96-b63b-73d18f5e0abc",
+    "5a4881ac-4098-46da-8962-a37fddfbcdfa",
+    "06810b9c-3661-4c40-a0e3-8b669f099bc0",
+    "ac9e08c8-bc73-4ca8-8013-07918a04d1b3",
+    "0e9bac21-d99c-4b59-b2de-6c85c23ce958",
+    "05f26117-a492-463b-8d18-cdc4d3ddd788",
+    "2f7d9ee6-15c0-4e57-b24e-675b8f066b9d",
+    "25c65ee1-6a3e-44b5-8d54-e83f4e273bf1"
+  ],
+  "breakdown_por_mercado": {
+    "Ganador del Partido": {
+      "total": 21,
+      "perdidas": 7,
+      "ganadas": 14,
+      "ids": [
+        "3d9b5f0d-42b8-402d-8cde-997b2e22e145",
+        "502aeb64-a445-4b8e-b361-965f56a2ec51",
+        "ea7f8a13-c7e4-4a57-ba61-95c570537ac7",
+        "9bdb498e-c7c4-45a2-a299-fd652069e720",
+        "e43c8ca1-5a6d-479a-bdd2-7f7abdc6d2cc",
+        "ab398151-4f5b-4d00-b2d0-fae1359ad267",
+        "9d9e1491-8443-4933-b32e-475947b1125f",
+        "1c4673ea-450f-42ce-b7f2-96d397de04c4",
+        "c513e5ea-d322-4022-8e70-98ccab4d18b3",
+        "881d34f1-d5aa-4b05-871c-16605ba80f1a",
+        "28eddfe1-5cab-4f27-825f-19b3bee20618",
+        "cd68b6ba-619d-4b54-920c-978aae2dfb1a",
+        "ee4df747-693e-42de-90f5-6593e1076351",
+        "6d3ff7a4-a92f-4efe-bcee-1902b4683b1a",
+        "29b4b891-2b48-47eb-b796-d218abb4ed23",
+        "75f1379c-d03a-4712-8c3d-8a264f91b0e5",
+        "358466dd-eebb-420a-b557-d287494eb118",
+        "a168ce8e-452f-42fe-b77b-05b435caabee",
+        "309e4c35-f0ea-4c96-b63b-73d18f5e0abc",
+        "0e9bac21-d99c-4b59-b2de-6c85c23ce958",
+        "05f26117-a492-463b-8d18-cdc4d3ddd788"
+      ]
+    },
+    "Ganar a Cero (Win to Nil)": {
+      "total": 2,
+      "perdidas": 2,
+      "ganadas": 0,
+      "ids": [
+        "e2e0916f-f193-4ef2-8165-0e1f9cddac5f",
+        "548109f5-f86e-4b24-aa04-e9765a16c313"
+      ]
+    },
+    "Total de Goles": {
+      "total": 21,
+      "perdidas": 10,
+      "ganadas": 11,
+      "ids": [
+        "942d7583-db36-4090-83fe-7ff9ae4db9d3",
+        "66c0478c-e779-497e-be0f-5e090245d75f",
+        "0aafb591-3265-43d8-a364-5150d3d7f48f",
+        "a5f128b2-7397-44a7-9e9b-28ce7f600f08",
+        "8a181c54-476f-4d9e-8914-d89ddd474cdc",
+        "8b4d1fac-649b-40ba-b043-d74019d2532e",
+        "574c5362-f4d5-4960-ad99-99ee30502f41",
+        "b96cf501-b7c8-48af-bfb7-c929f4f5ed06",
+        "e3760918-a305-402f-8e30-c276f0aaa297",
+        "6691ab44-bdda-4f3d-a482-0403df18510a",
+        "345de8df-85e2-4b43-b438-84f19335bc37",
+        "bfe6aaf5-ddfd-402a-8b37-db8ab7ab7a4d",
+        "287c2c63-bdcd-438e-aab0-e152b5269e9c",
+        "397edbd6-936a-4267-ac1a-69079a18e4cb",
+        "a7924026-7c1e-4b3b-bc5c-6520845637cb",
+        "9826eea8-905d-4224-aed6-6451c64b0e06",
+        "cdf64ca9-a57e-47c7-bf9a-1f76da892670",
+        "bee9eabf-4dae-46b6-afb0-a675da70463c",
+        "06677040-f849-42db-9033-3ef58e8731df",
+        "abfa6b17-59fc-4c7a-a6b7-64b58208b7e3",
+        "7c6569bc-e9a9-4ed8-acdb-0430706ebc10"
+      ]
+    },
+    "Ganador del Partido (1X2)": {
+      "total": 25,
+      "perdidas": 16,
+      "ganadas": 9,
+      "ids": [
+        "ed5683a1-ab21-4d51-8600-bca4dc4e3c85",
+        "5e338d3b-b1cf-4d2f-ae8e-fc1585ffeaf5",
+        "66f3eed9-c323-4175-b2d3-f57729043742",
+        "dc03c01e-1976-4613-9a2b-caaf41f8646d",
+        "b4c4f69d-de02-45c6-842d-22db0c517982",
+        "45f44f89-3eea-4e0b-8f5e-0ea213716136",
+        "edeb13a7-3d5b-4057-b0a8-acda1b25bd07",
+        "8df4ee4c-1133-49b7-b644-4a5153d820b4",
+        "254760e9-ce8b-4fce-94fc-644a45f679ad",
+        "fd636566-27de-46de-9145-9506dac206e7",
+        "9597440f-6736-4c21-a1f5-c33c7fb30945",
+        "6094a742-d694-4039-83f2-b6441e829178",
+        "95543172-7faf-4ed1-b0f1-4b79996ea698",
+        "2836c7c8-d494-4e98-86bd-d51fb63b58fd",
+        "8830513b-6225-42fa-abff-5f1d372b437d",
+        "61722f78-f156-4176-8689-9e1d90dd811a",
+        "257b9d33-8a4f-4bf2-ad65-d25d0717daa4",
+        "03e13d9f-d941-49be-a2a5-dd20c6a39004",
+        "a07d1058-aec3-476f-b611-5c799a7492e1",
+        "e6acf00c-a1fc-4930-894b-2d9336425c33",
+        "2c77436b-8b5e-4157-8f14-9da42e46e751",
+        "6770d5ca-9a01-477b-8ca7-63c6531037e0",
+        "e4690708-7321-4a77-82e0-9b626a1a2e9e",
+        "a912e09c-197b-4e88-842e-97358115a7e3",
+        "4416f941-8b6d-419c-85a7-16780c6b543d"
+      ]
+    },
+    "Equipo - Total de Goles": {
+      "total": 1,
+      "perdidas": 0,
+      "ganadas": 1,
+      "ids": [
+        "3a0a4c2e-b813-44f3-a457-d760dcb6a8a9"
+      ]
+    },
+    "Total Goles": {
+      "total": 46,
+      "perdidas": 19,
+      "ganadas": 27,
+      "ids": [
+        "b3a3a1ed-1987-48b1-9605-b1efce8fdad5",
+        "e63cf239-afd1-4aef-a99c-d4bbc4af4405",
+        "631197f8-5d5a-4ea5-b24f-02f3f68e5f9b",
+        "0d108299-dd36-401d-a0be-21d7f71ac3e2",
+        "5900aa7a-8df1-47c0-b94b-db158a278018",
+        "60e538a8-3808-484a-b77d-2a86eb251108",
+        "e65fd26e-58be-4dbf-8fb3-ed5d04c593b4",
+        "297e143b-582c-4782-996a-f5741d4c2f8f",
+        "80e3f3c7-65fa-4899-8294-270b4d689b07",
+        "3614ef43-814b-44c0-b4a5-4ae780261b11",
+        "0d9cbe15-825a-43c5-8caa-87abe883a41d",
+        "1c72d4ca-3b2b-43c1-b61a-535a0196b443",
+        "b2a157de-98c0-4199-a62e-124e1db73d5b",
+        "d44089fe-f538-46d1-a852-2ecf75adc4cd",
+        "5bd822e5-cb31-4960-b9b4-a2fa1eeadf59",
+        "4b7a3134-882e-4b85-a43b-405200756a38",
+        "608263c0-0762-4daf-99c3-37d243b3a953",
+        "850310de-d6d5-4212-bfb6-2a9fa5272dab",
+        "397cb5e9-4790-49a3-ba47-cf1f71daa107",
+        "586e5f76-6c65-4b5e-92ca-6e43e4de20a5",
+        "b0959d8b-f873-4ed4-a34d-e3a9177b3f76",
+        "3fa9383b-679d-48b0-ab26-272983b8437f",
+        "09bfd76e-86c8-43b8-9f4a-13b9af684381",
+        "f5655f92-66b3-4a45-9108-f457a01e8d80",
+        "ffd7d353-8e00-4f97-95f1-fbbfd333b4d8",
+        "5b9e2118-1151-43f2-a96d-478729b50e48",
+        "ab0e7558-7895-457a-a82c-eb80fabed0bc",
+        "1d1fdfef-a3aa-49e4-b907-a8f13b918d7c",
+        "7e599aa7-f21c-4d4d-8331-8e53e4ee34f5",
+        "e274c7ad-a74e-48dc-968c-425ab158e643",
+        "f1b0843e-788d-4559-a465-b15835b91938",
+        "2b20910d-6f5a-444e-afdb-3108462e7c4e",
+        "80e95c1a-4f9a-4c9a-8313-960448e9f94b",
+        "64571ada-3839-4821-9a7f-d81668199327",
+        "6b69651a-a6b4-4e49-8068-99a62c9dd789",
+        "8b001fb0-fca3-4c7e-8b81-2051f17842ec",
+        "dbfa6e8f-84c4-4796-b518-8c177c6d5175",
+        "428d82e1-a119-46a1-8ad5-323c1188674e",
+        "d7ee0593-5436-43b8-a59a-2bf69cbb82e5",
+        "d7b40de6-3d67-4ae6-9e4c-1bca0611eafb",
+        "5759a2c5-f0bf-4a3c-b69b-94da927a6fe1",
+        "57d4541e-5024-4dc3-86ec-b57682da41ba",
+        "14ba6df8-e0ef-4aa1-9d9b-0b65b789772f",
+        "a4008086-42b5-40de-a7e5-401fe69a9953",
+        "5a4881ac-4098-46da-8962-a37fddfbcdfa",
+        "2f7d9ee6-15c0-4e57-b24e-675b8f066b9d"
+      ]
+    },
+    "Doble Oportunidad": {
+      "total": 17,
+      "perdidas": 17,
+      "ganadas": 0,
+      "ids": [
+        "fc6e0247-e106-40f1-a2fe-d91d261eea49",
+        "23276c97-b9b6-439c-8fe7-b74bc1328b5d",
+        "f7a61e82-47f7-4a00-8ae9-ab7c72d79e00",
+        "f8fcb32d-3bf1-435f-a4ea-439569ad2b42",
+        "89685faf-1026-4f8a-aaef-5a20b406dfe1",
+        "0fa67c68-ed73-4575-ae9b-d9307918bd4e",
+        "c8f60841-e60a-4a30-8b8f-5bf706bb7d12",
+        "9dcfc994-c376-4bb6-8efe-120e208815b7",
+        "904b9701-afe8-4163-b47f-f30ce697e5d8",
+        "b0aadd1f-0f9d-4801-a49c-e1f410fa9625",
+        "820a5215-62c0-4392-959e-4be75bee545e",
+        "d95f147b-15c2-471b-8bd2-c32a3eaa737e",
+        "dcbaa2f5-9155-4dd8-8e86-137adba13759",
+        "b3d46be9-9ec3-411d-915c-dff815a3ee8d",
+        "0015d717-2845-4f83-b58d-e888eb7539ec",
+        "6889ba36-1914-4155-b89b-d56792144cab",
+        "3cbfa7be-28bd-4822-be0c-ff3ae159fc4f"
+      ]
+    },
+    "Ambos Equipos Marcan": {
+      "total": 13,
+      "perdidas": 7,
+      "ganadas": 6,
+      "ids": [
+        "20a005cd-0e80-41be-8e1b-e62a93933b4a",
+        "c85f1562-0f48-44fb-b814-1d34ce97ad5c",
+        "3cb5b1b0-9d24-4af8-8668-a7b98ffbc740",
+        "3a0dbd4e-2575-4c15-8976-560ec34b04f1",
+        "66633815-96f7-4ef6-99f8-04a0072e5ae1",
+        "78a1eedf-15dd-4490-bdb8-db535a57cff0",
+        "e6989590-e011-4dd7-88f1-eeeb5b769a79",
+        "01b4d06f-4e5e-4ea4-991b-396e2ed12a51",
+        "0b414630-d720-4696-9ba5-1039df66fcc7",
+        "47928777-62aa-4bea-b5cf-53feeb91a496",
+        "55cef45e-2744-4ff6-aa5f-de93a3a7a4e5",
+        "3c217445-1db6-4c89-8185-feb6cc2d699d",
+        "7461a7de-2ca7-4aeb-9297-d663384da0d6"
+      ]
+    },
+    "Total Goals": {
+      "total": 1,
+      "perdidas": 0,
+      "ganadas": 1,
+      "ids": [
+        "e975344d-3f76-468e-8e98-877e0d28f56a"
+      ]
+    },
+    "Double Chance": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "b0ba4ccc-0474-4701-95d3-99497e6e818c"
+      ]
+    },
+    "Half Time Result": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "a459fadf-5062-49dd-8ff1-6bd4fb7e31ca"
+      ]
+    },
+    "Resultado Final": {
+      "total": 2,
+      "perdidas": 2,
+      "ganadas": 0,
+      "ids": [
+        "2f797cfa-aecd-4682-b883-d642e109aade",
+        "758caa39-6f49-4524-af64-97e389cb79b4"
+      ]
+    },
+    "Portería a Cero - Local": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "7fe35236-88c3-4379-ad61-e8e2b423ee6b"
+      ]
+    },
+    "Hándicap Asiático": {
+      "total": 20,
+      "perdidas": 20,
+      "ganadas": 0,
+      "ids": [
+        "dd39532a-1019-40da-9933-c461a4b1bea2",
+        "902390f7-14d3-4526-a147-6d0bc0cfc02d",
+        "adc357cc-3cb4-43d0-a283-a8d65969d617",
+        "40f64ce4-3eb9-4c11-9884-f00a5a106dbb",
+        "b0051986-aa28-4432-ac69-fc96f4de1b6d",
+        "c529bea1-0d63-4338-b6cc-af9ec5d3d33d",
+        "21ddf14d-0b52-4ffe-b0fe-ebdc14e1ac2a",
+        "7d63b4e5-28d5-4bda-8315-56d3ef78fc92",
+        "adb24794-b973-4726-870d-7884ee475eca",
+        "332c7218-f920-4a85-95b0-ef3ecddd09e2",
+        "01265c6d-6c43-4362-a71d-c607eed2480c",
+        "015d7e17-f2c9-4d5a-a210-03e6097683f3",
+        "d5caddf6-003a-4416-ade5-b685bb8656fa",
+        "1cb1ff40-1027-4487-a3fa-e1161ab52b4c",
+        "609627d6-a5ea-4922-9000-82efba0a6005",
+        "94edd8c6-5458-4849-8d47-872a8b011cfb",
+        "2b85bb03-1af8-44ac-b3c1-a0c36d4b2071",
+        "33b15c0e-e43f-46de-9bcc-108be9de1359",
+        "06810b9c-3661-4c40-a0e3-8b669f099bc0",
+        "25c65ee1-6a3e-44b5-8d54-e83f4e273bf1"
+      ]
+    },
+    "Ambos Equipos Anotan (BTTS)": {
+      "total": 3,
+      "perdidas": 3,
+      "ganadas": 0,
+      "ids": [
+        "89cc5e77-18d5-40d4-ba3c-b4914b5ff8ae",
+        "97e9f085-10d2-4881-ad46-9523649fd6c5",
+        "d6dfcee3-bdb0-40db-a195-4bbfab8ab358"
+      ]
+    },
+    "Resultado del Partido (1X2)": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "de0ae162-e007-4667-a797-24c5951a580b"
+      ]
+    },
+    "Ganador del Partido (DNB)": {
+      "total": 2,
+      "perdidas": 0,
+      "ganadas": 2,
+      "ids": [
+        "10373de0-f9e9-4efd-91f9-e95d9e4abd43",
+        "33d3e5db-c291-4d9c-b3cf-6a7cb9790bf3"
+      ]
+    },
+    "Asian Handicap": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "0b177e4c-c941-4205-bf2e-2507522e4c3e"
+      ]
+    },
+    "Handicap Asiático": {
+      "total": 6,
+      "perdidas": 6,
+      "ganadas": 0,
+      "ids": [
+        "24a6ce05-3fff-4377-8b34-ad36699f1dce",
+        "ff67dcc2-c42f-4aba-a3ca-9dfd01fac9d4",
+        "1d1ee788-bbd6-4184-bbba-ea4bbc917049",
+        "3b59c477-9e63-4ff2-abea-e3ee1ffda115",
+        "78ab0ca6-390c-4411-afd3-94004896f619",
+        "dcfc1da5-fce3-4716-8f1d-ac0ec0eee5c5"
+      ]
+    },
+    "Total Goles - Local": {
+      "total": 1,
+      "perdidas": 0,
+      "ganadas": 1,
+      "ids": [
+        "2d544a4a-4f1d-49a5-aa74-0295bcbec8b4"
+      ]
+    },
+    "Total Goles Equipo Visitante": {
+      "total": 4,
+      "perdidas": 2,
+      "ganadas": 2,
+      "ids": [
+        "4b5e0618-a9c6-4af3-a40b-32ee2398ad5f",
+        "9c8d728c-2502-4101-b6a5-48aeb7a696ac",
+        "49db73ac-5b17-48e4-8902-0f665500d3c5",
+        "d9cddd52-b9d5-4457-98f6-e5988220697c"
+      ]
+    },
+    "Ambos Equipos Anotan": {
+      "total": 11,
+      "perdidas": 2,
+      "ganadas": 9,
+      "ids": [
+        "234cabaa-a003-40d5-8a66-19ea70d23b9e",
+        "062d4df2-253f-4287-a2ff-f96324eeb4d8",
+        "c8c93a33-9242-4de8-b33f-6e9e3dbc7bbb",
+        "e83c8def-6f28-434d-be5e-16c60e2a9790",
+        "122d9ed5-3d91-4af5-988f-70569ba13688",
+        "07e4691c-e7b1-42d1-a9ac-8f5deb1f27fa",
+        "bd42f0cc-9da7-4f65-aa26-fbb683ad6443",
+        "cfaa38fd-0768-493a-86da-e3296f069c39",
+        "fbebf20f-3c14-43d5-9c61-483f91fbd6cd",
+        "0548221d-f6ee-4d1e-9bf3-6c157cbcb25e",
+        "3f8e6656-b35f-4a8f-9444-e54f6866105f"
+      ]
+    },
+    "Córners del Equipo Local": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "f97fece4-f26d-47a6-b09d-4d0fb71f3033"
+      ]
+    },
+    "Total Córners - Stoke": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "16cf1df0-ba5b-462e-a1a7-541f25a6669e"
+      ]
+    },
+    "Total Corners": {
+      "total": 5,
+      "perdidas": 5,
+      "ganadas": 0,
+      "ids": [
+        "1436ca21-15b3-40a8-81db-657939eacc65",
+        "c3cdad58-4f92-4fad-bd90-b09b3dd32d20",
+        "41cdb4b0-7b1d-4dcb-b514-68977daebc85",
+        "a655371a-79aa-4282-b2aa-b11f45b7e4dc",
+        "b3f24b76-5f07-4bec-a4f0-f33c971487d3"
+      ]
+    },
+    "Total Corners - Stoke": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "8b36ec08-351c-4ccd-a339-a8b24b1179bd"
+      ]
+    },
+    "Goles Más/Menos": {
+      "total": 4,
+      "perdidas": 4,
+      "ganadas": 0,
+      "ids": [
+        "e8c99f1f-3307-4720-91ad-0dbe8b8a6013",
+        "aaa62567-1c03-4b30-98b3-054e5c88e6b7",
+        "602a3f0e-949a-4910-a3b3-8ae5eafba955",
+        "b748c886-1a8a-45d7-b87e-59f03b44698a"
+      ]
+    },
+    "Resultado Final (Hándicap)": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "64de71c5-cd4b-4910-b40a-60fc9def6383"
+      ]
+    },
+    "Total Córners": {
+      "total": 5,
+      "perdidas": 5,
+      "ganadas": 0,
+      "ids": [
+        "65effdb9-36a0-4536-be55-2263943ac738",
+        "4a486841-1029-486d-9bbf-9ca5c519044e",
+        "162aac3b-1572-4f6a-bc07-89f30df82f68",
+        "11691bf2-6ec6-4dab-800a-e3f5e527e2da",
+        "2d6f6121-098b-48a4-8102-308d223f0004"
+      ]
+    },
+    "Total Córners Birmingham": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "bc9d573f-d6e9-47bd-89c4-8d9c337a714f"
+      ]
+    },
+    "Portería a Cero - Visitante": {
+      "total": 2,
+      "perdidas": 2,
+      "ganadas": 0,
+      "ids": [
+        "3824e6cf-786e-4408-8ae1-13a76061b4ec",
+        "d4df1c29-9ce3-4f47-982e-2575caa19f33"
+      ]
+    },
+    "Total de Goles Equipo Visitante": {
+      "total": 1,
+      "perdidas": 0,
+      "ganadas": 1,
+      "ids": [
+        "c6185127-7072-4797-b0a8-67c136a9c392"
+      ]
+    },
+    "Total de Goles - Al-Jazira": {
+      "total": 1,
+      "perdidas": 0,
+      "ganadas": 1,
+      "ids": [
+        "f4f281cf-336f-426a-a333-b23167cb3f97"
+      ]
+    },
+    "Total Goles Local": {
+      "total": 9,
+      "perdidas": 2,
+      "ganadas": 7,
+      "ids": [
+        "e9d6f41e-123f-44ba-b4d3-252ba6c1d2dd",
+        "a3b23321-7677-4b85-9f9f-af61aa67119f",
+        "113b7ab3-f3d9-404f-abe3-fc9c105303c6",
+        "dbfe736a-a465-40cb-ade3-fdb396b08924",
+        "9b208d2d-bb86-4a5b-a981-25146fd5b017",
+        "e8cc2643-a7f1-4ba0-ae1d-6e0492449be1",
+        "725e0a2f-5c6b-4f08-ae28-4ef24f7a9cbd",
+        "2a4d8f4c-315f-480b-90a7-c78592afbbf1",
+        "7e9c5bd8-b296-46bc-b984-67b6d7b57b1b"
+      ]
+    },
+    "Total - Local": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "169704b2-2223-4d36-9b3b-59ebd4e668ea"
+      ]
+    },
+    "Total Goles Equipo Local": {
+      "total": 4,
+      "perdidas": 1,
+      "ganadas": 3,
+      "ids": [
+        "1fda6c79-3f42-440a-a5eb-6169407d3a9b",
+        "30e6c85d-a4ea-4140-b42e-9cab66f463ad",
+        "ef2db6a1-24f1-494a-b9c3-0ab58a441bd6",
+        "ac9e08c8-bc73-4ca8-8013-07918a04d1b3"
+      ]
+    },
+    "Resultado 1ª Mitad": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "3723d2a9-b728-41a4-8836-8de312e316bd"
+      ]
+    },
+    "Córners (Mercado Alternativo)": {
+      "total": 2,
+      "perdidas": 2,
+      "ganadas": 0,
+      "ids": [
+        "0b0c89cb-2100-464a-8d43-12f5094b7118",
+        "a0589027-adb0-445e-a703-10870fb52ff2"
+      ]
+    },
+    "Ganador a Cero (Win to Nil)": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "b54743d0-790d-47c6-9856-17cc0f71c6d7"
+      ]
+    },
+    "Win to Nil - Away (Marruecos Gana a Cero)": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "e8fd191b-cf32-468d-a0fd-6457c310cf89"
+      ]
+    },
+    "Ganador (Sin Empate / DNB)": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "0b53ae44-5325-4864-a806-b5ca611cbf7c"
+      ]
+    },
+    "Total de Goles del Equipo": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "3f242009-dac2-4cb0-82af-53c9d0e2734c"
+      ]
+    },
+    "Total de Goles del Equipo Local": {
+      "total": 1,
+      "perdidas": 0,
+      "ganadas": 1,
+      "ids": [
+        "7627553c-6748-433a-9d47-82d4f82abbfe"
+      ]
+    },
+    "Ganador del Partido y Goles": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "20afcf0e-f337-4183-bf80-f7ab4e39d839"
+      ]
+    },
+    "Ambos Equipos Marcan (BTTS)": {
+      "total": 2,
+      "perdidas": 2,
+      "ganadas": 0,
+      "ids": [
+        "40eeda1b-e401-4b96-8e7e-5f029e8ba570",
+        "69503364-d06c-4dc6-a81f-81cb1b45955f"
+      ]
+    },
+    "Ganar a Cero (Visitante)": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "79a83038-ec9d-44e5-9fd5-4e1c04e331c8"
+      ]
+    },
+    "Win to Nil - Away (Ganar a Cero - Visitante)": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "0fcbe26a-db6f-4437-8e9b-0e6ddf99ee49"
+      ]
+    },
+    "Total Goles - Visitante": {
+      "total": 1,
+      "perdidas": 0,
+      "ganadas": 1,
+      "ids": [
+        "4bbfee88-dac0-41f0-a030-5ade5e077a62"
+      ]
+    },
+    "Total Goles - Rangers (Local)": {
+      "total": 1,
+      "perdidas": 0,
+      "ganadas": 1,
+      "ids": [
+        "0d8bc10d-053d-4adb-b2fb-72dfa807ee90"
+      ]
+    },
+    "Resultado del Partido": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "4efe92ea-85c1-4ac7-80de-225d43e14fb2"
+      ]
+    },
+    "Both Teams Score (Ambos Marcan)": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "8c9d14ba-ee0a-4acf-8672-d02174e30747"
+      ]
+    },
+    "Resultado Final (1X2)": {
+      "total": 1,
+      "perdidas": 0,
+      "ganadas": 1,
+      "ids": [
+        "c73d02a4-06b0-4588-a561-2e8c4bf980dd"
+      ]
+    },
+    "Mitad con más goles": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "012f40b5-594f-43ac-96d6-5a5cac4a5f06"
+      ]
+    },
+    "Ganador (Empate No Válido)": {
+      "total": 1,
+      "perdidas": 0,
+      "ganadas": 1,
+      "ids": [
+        "8d18e12d-c8f8-4ba0-a4ef-43859b034138"
+      ]
+    },
+    "Total Córners Local": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "5fdc6861-8517-4eea-b6ed-c50a00db452c"
+      ]
+    },
+    "Córners": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "32884508-939c-4112-83b2-6cd566dbf1ac"
+      ]
+    },
+    "Total Córners Equipo": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "0a0d5137-deda-4119-a57c-a7d126e9743c"
+      ]
+    },
+    "Ganador a Cero": {
+      "total": 1,
+      "perdidas": 0,
+      "ganadas": 1,
+      "ids": [
+        "ffca1752-70cb-43ba-a9c9-68664a977854"
+      ]
+    },
+    "Córners Equipo Local": {
+      "total": 1,
+      "perdidas": 1,
+      "ganadas": 0,
+      "ids": [
+        "469a2530-3dd7-4cc6-be60-fa42d9eba1d9"
+      ]
+    }
+  }
+}

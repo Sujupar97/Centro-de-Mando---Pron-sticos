@@ -24,6 +24,29 @@ interface UsageStats {
 }
 
 /**
+ * Verifica si el usuario tiene rol de administrador
+ * Incluye: platform_owner (dueño) y agency_admin (empleado agencia)
+ */
+export async function isAdminRole(userId: string): Promise<boolean> {
+    try {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', userId)
+            .single();
+
+        if (error) throw error;
+        return data?.role === 'platform_owner' ||
+            data?.role === 'agency_admin' ||
+            data?.role === 'admin' ||      // Backward compatibility
+            data?.role === 'superadmin';   // Backward compatibility
+    } catch (error) {
+        console.error('Error checking admin role:', error);
+        return false;
+    }
+}
+
+/**
  * Obtiene la suscripción activa del usuario
  */
 export async function getUserSubscription(
@@ -31,6 +54,39 @@ export async function getUserSubscription(
     orgId?: string
 ): Promise<UserSubscription | null> {
     try {
+        // BYPASS: Si es platform_owner o agency_admin, retornar acceso ilimitado
+        const isAdmin = await isAdminRole(userId);
+        if (isAdmin) {
+            // Obtener rol específico para display name
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', userId)
+                .single();
+
+            const displayName = profile?.role === 'platform_owner'
+                ? 'Owner'
+                : profile?.role === 'agency_admin'
+                    ? 'Agencia'
+                    : 'Admin'; // Backward compatibility
+
+            return {
+                planId: 'unlimited',
+                planName: 'unlimited',
+                displayName: `Acceso Total (${displayName})`,
+                predictionsPercentage: 100,
+                monthlyParlayLimit: 999999,
+                monthlyAnalysisLimit: null, // NULL = ilimitado
+                canAnalyzeOwnTickets: true,
+                canAccessMLDashboard: true,
+                canAccessFullStats: true,
+                hasPrioritySupport: true,
+                status: 'active',
+                currentPeriodEnd: ''
+            };
+        }
+
+        // Para usuarios regulares (org_owner, org_member, user), consultar get_user_plan
         const { data, error } = await supabase
             .rpc('get_user_plan', {
                 p_user_id: userId,

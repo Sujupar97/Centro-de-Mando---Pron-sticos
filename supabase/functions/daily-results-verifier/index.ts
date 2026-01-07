@@ -18,273 +18,298 @@ serve(async (req) => {
     try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-        const apiFootballKey = Deno.env.get('API_FOOTBALL_KEYS')!
+        const footballKeys = Deno.env.get('API_FOOTBALL_KEYS');
+        if (!footballKeys) throw new Error("Missing API_FOOTBALL_KEYS");
+        const apiKeys = footballKeys.split(',').map(k => k.trim()).filter(k => k.length > 0);
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-        const today = new Date().toISOString().split('T')[0]
+        // Parsear fecha
+        let reqBody: any = {}
+        let executionDate = new Date().toISOString().split('T')[0]
+        try {
+            reqBody = await req.json().catch(() => ({}))
+            if (reqBody && reqBody.date) {
+                executionDate = reqBody.date
+                console.log(`[Verifier] 🛠️ Ejecución manual detectada para fecha: ${executionDate}`)
+            }
+        } catch (e) { /* ignore */ }
 
-        console.log(`[Verifier] Iniciando verificación de resultados para: ${today}`)
+        const today = executionDate
+        console.log(`[Verifier] Iniciando verificación para: ${today}`)
 
-        // 1. Iniciar log
-        const { data: jobId } = await supabase.rpc('start_automation_job', {
-            p_job_type: 'verifier',
-            p_execution_date: today
-        })
+        // 1. Iniciar log job
+        let jobId = null;
+        try {
+            const { data: id } = await supabase.rpc('start_automation_job', {
+                p_job_type: 'verifier',
+                p_execution_date: today
+            })
+            jobId = id;
+        } catch (err) { console.error('[Verifier] Job Log Error:', err); }
 
-        // 2. Obtener partidos de hoy sin verificar
-        const { data: matches, error: matchError } = await supabase
-            .from('daily_matches')
-            .select('*')
-            .eq('match_date', today)
-            .eq('match_status', 'NS') // No started o pendientes
+        // 2. Obtener partidos
+        let matchQuery = supabase.from('daily_matches').select('*').eq('match_date', today)
+        if (!reqBody || !reqBody.date) {
+            matchQuery = matchQuery.eq('match_status', 'NS')
+        }
+        const { data: matches, error: matchError } = await matchQuery
+        if (matchError) throw matchError;
 
-        if (matchError) {
-            throw new Error(`Error obteniendo partidos: ${matchError.message}`)
+        const fixtureIds = matches?.map(m => m.api_fixture_id) || []
+
+        // 3. Obtener predicciones
+        let predictions = []
+        if (fixtureIds.length > 0) {
+            const { data, error: predError } = await supabase
+                .from('predictions')
+                .select('*')
+                .in('fixture_id', fixtureIds)
+
+            if (predError) throw predError;
+            predictions = data || []
         }
 
-        // También obtener predicciones pendientes
-        const { data: pendingPredictions, error: predError } = await supabase
-            .from('predictions')
-            .select('*')
-            .eq('match_date', today)
-            .is('is_won', null)
+        console.log(`[Verifier] Partidos: ${matches?.length || 0} | Predicciones: ${predictions?.length || 0}`)
 
-        if (predError) {
-            throw new Error(`Error obteniendo predicciones: ${predError.message}`)
-        }
-
-        console.log(`[Verifier] Partidos a verificar: ${matches?.length || 0}`)
-        console.log(`[Verifier] Predicciones pendientes: ${pendingPredictions?.length || 0}`)
-
-        let verified = 0
-        let updated = 0
-        let failed = 0
-
-        // 3. Verificar cada partido
-        if (pendingPredictions && pendingPredictions.length > 0) {
-            // Obtener IDs únicos de fixtures
-            const fixtureIds = [...new Set(pendingPredictions.map(p => p.fixture_id))]
-
-            for (const fixtureId of fixtureIds) {
+        // Helper: API-Football
+        const fetchFootball = async (path: string) => {
+            for (const key of apiKeys) {
                 try {
-                    // Obtener resultado de API-Football
-                    const response = await fetch(
-                        `https://v3.football.api-sports.io/fixtures?id=${fixtureId}`,
-                        {
-                            headers: {
-                                'x-rapidapi-key': apiFootballKey,
-                                'x-rapidapi-host': 'v3.football.api-sports.io'
-                            }
+                    const res = await fetch(`https://v3.football.api-sports.io/${path}`, {
+                        headers: { 'x-apisports-key': key }
+                    });
+                    if (res.ok) {
+                        const json = await res.json();
+                        if (!json.errors || Object.keys(json.errors).length === 0) {
+                            return json.response;
                         }
-                    )
-
-                    if (!response.ok) {
-                        console.error(`[Verifier] Error API para fixture ${fixtureId}`)
-                        failed++
-                        continue
                     }
+                } catch (e) { console.error('[Verifier] API Error:', e); }
+            }
+            return null;
+        };
 
-                    const data = await response.json()
-                    const fixture = data.response?.[0]
+        let verifiedFixtures = 0
+        let updatedPredictions = 0
+        let failedCount = 0
 
-                    if (!fixture) {
-                        console.log(`[Verifier] No se encontró fixture ${fixtureId}`)
-                        continue
-                    }
+        const uniqueFIds = [...new Set(predictions.map(p => p.fixture_id))]
 
-                    // Verificar si el partido terminó
-                    const status = fixture.fixture.status.short
-                    if (!['FT', 'AET', 'PEN'].includes(status)) {
-                        console.log(`[Verifier] Partido ${fixtureId} no ha terminado: ${status}`)
-                        continue
-                    }
-
-                    const homeScore = fixture.goals.home
-                    const awayScore = fixture.goals.away
-
-                    // Actualizar daily_matches
-                    await supabase
-                        .from('daily_matches')
-                        .update({
-                            home_score: homeScore,
-                            away_score: awayScore,
-                            match_status: status
-                        })
-                        .eq('api_fixture_id', fixtureId)
-
-                    // Actualizar predicciones relacionadas
-                    const relatedPredictions = pendingPredictions.filter(p => p.fixture_id === fixtureId)
-
-                    for (const pred of relatedPredictions) {
-                        const isWon = evaluatePrediction(pred, homeScore, awayScore)
-
-                        await supabase
-                            .from('predictions')
-                            .update({
-                                is_won: isWon,
-                                actual_result: `${homeScore}-${awayScore}`,
-                                verified_at: new Date().toISOString()
-                            })
-                            .eq('id', pred.id)
-
-                        // Guardar en predictions_results para ML
-                        await supabase
-                            .from('predictions_results')
-                            .insert({
-                                prediction_id: pred.id,
-                                fixture_id: fixtureId,
-                                was_correct: isWon,
-                                confidence_delta: isWon ? 0 : pred.confidence // Penalización si falló
-                            })
-                            .onConflict('prediction_id')
-
-                        updated++
-                    }
-
-                    verified++
-
-                    // Rate limiting
-                    await new Promise(resolve => setTimeout(resolve, 300))
-
-                } catch (fixtureError) {
-                    console.error(`[Verifier] Error fixture ${fixtureId}:`, fixtureError)
-                    failed++
+        for (const fId of uniqueFIds) {
+            try {
+                const fixtureData = await fetchFootball(`fixtures?id=${fId}`);
+                if (!fixtureData || fixtureData.length === 0) {
+                    failedCount++;
+                    continue;
                 }
+
+                const fixture = fixtureData[0];
+                const homeScore = fixture.goals.home;
+                const awayScore = fixture.goals.away;
+                const status = fixture.fixture.status.short;
+
+                if (!['FT', 'AET', 'PEN'].includes(status)) continue;
+
+                // Sync daily_matches score
+                await supabase.from('daily_matches').update({
+                    home_score: homeScore,
+                    away_score: awayScore,
+                    match_status: status
+                }).eq('api_fixture_id', fId);
+
+                const related = predictions.filter(p => p.fixture_id === fId);
+                const matchInfo = {
+                    home_score: homeScore,
+                    away_score: awayScore,
+                    home_team: fixture.teams.home.name,
+                    away_team: fixture.teams.away.name
+                };
+
+                for (const p of related) {
+                    const isWon = evaluatePrediction(p, matchInfo);
+
+                    if (isWon === null) {
+                        failedCount++;
+                        continue;
+                    }
+
+                    const { error: upError } = await supabase
+                        .from('predictions')
+                        .update({
+                            is_won: isWon,
+                            result_verified_at: new Date().toISOString(),
+                            verification_status: 'verified'
+                        })
+                        .eq('id', p.id);
+
+                    if (upError) {
+                        console.error(`[Verifier] Update error ${p.id}:`, upError.message);
+                        failedCount++;
+                    } else {
+                        updatedPredictions++;
+                        await supabase.from('predictions_results').upsert({
+                            prediction_id: p.id,
+                            fixture_id: fId,
+                            was_correct: isWon,
+                            actual_score: `${homeScore}-${awayScore}`,
+                            verified_at: new Date().toISOString(),
+                            verification_source: 'automation'
+                        }, { onConflict: 'prediction_id' });
+                    }
+                }
+                verifiedFixtures++;
+
+            } catch (err) {
+                console.error(`[Verifier] Fixture ${fId} fail:`, err);
+                failedCount++;
+            }
+            await new Promise(r => setTimeout(r, 100));
+        }
+
+        // Parlays
+        const { data: parlays } = await supabase.from('daily_auto_parlays').select('*').eq('parlay_date', today).eq('status', 'pending');
+        if (parlays) {
+            for (const par of parlays) {
+                const parStatus = await evaluateParlay(supabase, par);
+                await supabase.from('daily_auto_parlays').update({ status: parStatus, updated_at: new Date().toISOString() }).eq('id', par.id);
             }
         }
 
-        // 4. Actualizar parlays automáticos
-        const { data: parlays } = await supabase
-            .from('daily_auto_parlays')
-            .select('*')
-            .eq('parlay_date', today)
-            .eq('status', 'pending')
-
-        if (parlays && parlays.length > 0) {
-            for (const parlay of parlays) {
-                const parlayStatus = await evaluateParlay(supabase, parlay)
-
-                await supabase
-                    .from('daily_auto_parlays')
-                    .update({
-                        status: parlayStatus,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('id', parlay.id)
-            }
+        if (jobId) {
+            await supabase.rpc('complete_automation_job', {
+                p_job_id: jobId,
+                p_status: failedCount > 0 ? 'partial' : 'success',
+                p_processed: verifiedFixtures,
+                p_success: updatedPredictions,
+                p_failed: failedCount,
+                p_details: { fixtures: verifiedFixtures, preds: updatedPredictions }
+            });
         }
 
-        // 5. Completar log
-        await supabase.rpc('complete_automation_job', {
-            p_job_id: jobId,
-            p_status: failed > 0 ? 'partial' : 'success',
-            p_processed: verified,
-            p_success: updated,
-            p_failed: failed,
-            p_details: {
-                fixtures_checked: verified,
-                predictions_updated: updated,
-                parlays_updated: parlays?.length || 0
-            }
-        })
-
-        console.log(`[Verifier] Completado. Verificados: ${verified}, Actualizados: ${updated}`)
-
-        return new Response(
-            JSON.stringify({
-                success: true,
-                verified,
-                updated,
-                failed
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+        return new Response(JSON.stringify({
+            success: true,
+            fixtures: verifiedFixtures,
+            updated: updatedPredictions,
+            failed: failedCount
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     } catch (error: any) {
-        console.error('[Verifier] Error:', error)
-        return new Response(
-            JSON.stringify({ success: false, error: error.message }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-        )
+        return new Response(JSON.stringify({ success: false, error: error.message }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500
+        });
     }
-})
+});
 
-// Evaluar si la predicción fue correcta
-function evaluatePrediction(prediction: any, homeScore: number, awayScore: number): boolean {
-    const { prediction_type, predicted_outcome } = prediction
-    const lowerOutcome = predicted_outcome.toLowerCase()
+function evaluatePrediction(prediction: any, match: any): boolean | null {
+    const { market: marketName, selection: predicted_outcome } = prediction;
+    const m = (marketName || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const o = (predicted_outcome || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const { home_score: h, away_score: a, home_team: ht, away_team: at } = match;
 
-    switch (prediction_type) {
-        case 'result':
-        case '1x2':
-            if (lowerOutcome.includes('local') || lowerOutcome.includes('home') || lowerOutcome === '1') {
-                return homeScore > awayScore
-            }
-            if (lowerOutcome.includes('visit') || lowerOutcome.includes('away') || lowerOutcome === '2') {
-                return awayScore > homeScore
-            }
-            if (lowerOutcome.includes('empate') || lowerOutcome.includes('draw') || lowerOutcome === 'x') {
-                return homeScore === awayScore
-            }
-            break
+    if (h === null || a === null) return null;
 
-        case 'over_under':
-            const totalGoals = homeScore + awayScore
-            if (lowerOutcome.includes('over 2.5') || lowerOutcome.includes('+2.5')) {
-                return totalGoals > 2
-            }
-            if (lowerOutcome.includes('under 2.5') || lowerOutcome.includes('-2.5')) {
-                return totalGoals < 3
-            }
-            if (lowerOutcome.includes('over 1.5') || lowerOutcome.includes('+1.5')) {
-                return totalGoals > 1
-            }
-            break
+    const tot = h + a;
+    const homeWin = h > a;
+    const awayWin = a > h;
+    const draw = h === a;
 
-        case 'btts':
-            const bothScored = homeScore > 0 && awayScore > 0
-            if (lowerOutcome.includes('sí') || lowerOutcome.includes('yes')) {
-                return bothScored
-            }
-            if (lowerOutcome.includes('no')) {
-                return !bothScored
-            }
-            break
+    const cleanHT = (ht || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const cleanAT = (at || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // BTTS
+    if (m.includes('ambos') || m.includes('btts') || m.includes('marcan')) {
+        const both = h > 0 && a > 0;
+        if (o.includes('no')) return !both;
+        return both;
     }
 
-    // Default: intentar match simple
-    return lowerOutcome.includes(homeScore > awayScore ? '1' : awayScore > homeScore ? '2' : 'x')
+    // Over/Under
+    const ou = o.match(/(mas|menos|over|under|o\/u|\+|\-)\s*(de\s+)?(\d+(\.\d+)?)/i);
+    if (ou) {
+        const type = ou[1];
+        const val = parseFloat(ou[3]);
+
+        // CORNERS - Detectar si es de un equipo específico
+        if (m.includes('corner') || m.includes('córner') || m.includes('corners') || m.includes('esquina')) {
+            // Detectar si menciona un equipo específico
+            const isHome = cleanHT && o.includes(cleanHT);
+            const isAway = cleanAT && o.includes(cleanAT);
+
+            if (isHome || isAway) {
+                // Team Corners - necesitamos datos de corners por equipo
+                // Como no los tenemos en match, retornamos null
+                console.warn(`[EVAL] Team Corners detected but no corner data available: ${marketName} | ${predicted_outcome}`);
+                return null;
+            }
+
+            // Total Corners del partido - también necesitamos datos
+            console.warn(`[EVAL] Total Corners detected but no corner data available: ${marketName} | ${predicted_outcome}`);
+            return null;
+        }
+
+        // TEAM TOTALS - Detectar si es "goles de un equipo"
+        const isTeamTotal = m.includes('equipo') || m.includes('team total') ||
+            m.includes('goles del') || m.includes('totales del') ||
+            m.includes('team goals');
+
+        if (isTeamTotal) {
+            // Determinar qué equipo
+            const isHome = m.includes('local') || m.includes('home') ||
+                m.includes('casa') || (cleanHT && (m.includes(cleanHT) || o.includes(cleanHT)));
+            const isAway = m.includes('visita') || m.includes('away') ||
+                m.includes('visitante') || (cleanAT && (m.includes(cleanAT) || o.includes(cleanAT)));
+
+            const teamGoals = isHome ? h : (isAway ? a : null);
+
+            if (teamGoals === null) {
+                console.warn(`[EVAL] Could not determine team for Team Total: ${marketName} | ${predicted_outcome}`);
+                return null;
+            }
+
+            // Evaluar Team Total
+            if (['mas', 'over', '+', 'más'].some(t => type.includes(t))) {
+                return teamGoals > val;
+            }
+            if (['menos', 'under', '-'].some(t => type.includes(t))) {
+                return teamGoals < val;
+            }
+        }
+
+        // Over/Under normal (total del partido)
+        if (['mas', 'over', '+', 'más'].some(t => type.includes(t))) return tot > val;
+        if (['menos', 'under', '-'].some(t => type.includes(t))) return tot < val;
+    }
+
+    // 1X2 / Double Chance
+    if (o.includes('1x') || (o.includes('local') && o.includes('empate'))) return homeWin || draw;
+    if (o.includes('x2') || (o.includes('visita') && o.includes('empate')) || (o.includes('visitante') && o.includes('empate'))) return awayWin || draw;
+    if (o.includes('12')) return homeWin || awayWin;
+    if (o.includes('local') || o.includes('home') || o === '1') return homeWin;
+    if (o.includes('visita') || o.includes('visitante') || o.includes('away') || o === '2') return awayWin;
+    if (o.includes('empate') || o.includes('draw') || o === 'x') return draw;
+
+    // Team Name (para 1X2 con nombre de equipo)
+    if (cleanHT && o.includes(cleanHT)) return homeWin;
+    if (cleanAT && o.includes(cleanAT)) return awayWin;
+
+    console.warn(`[EVAL] Unknown market type: ${marketName} | selection: ${predicted_outcome}`);
+    return null;
 }
 
-// Evaluar estado del parlay
-async function evaluateParlay(supabase: any, parlay: any): Promise<string> {
-    const legs = parlay.legs as any[]
 
-    let won = 0
-    let lost = 0
-    let pending = 0
-
+async function evaluateParlay(supabase: any, par: any): Promise<string> {
+    const legs = par.legs as any[]
+    let won = 0, lost = 0, pending = 0;
     for (const leg of legs) {
-        // Buscar predicción correspondiente
-        const { data: pred } = await supabase
-            .from('predictions')
-            .select('is_won')
-            .eq('match_date', parlay.parlay_date)
-            .ilike('home_team', `%${leg.match.split(' vs ')[0]}%`)
-            .single()
-
-        if (!pred || pred.is_won === null) {
-            pending++
-        } else if (pred.is_won) {
-            won++
-        } else {
-            lost++
-        }
+        const { data: pred } = await supabase.from('predictions').select('is_won').eq('match_date', par.parlay_date).ilike('home_team', `%${leg.match.split(' vs ')[0]}%`).maybeSingle();
+        if (!pred || pred.is_won === null) pending++;
+        else if (pred.is_won) won++;
+        else lost++;
     }
-
-    if (lost > 0) return 'lost'
-    if (pending > 0) return 'pending'
-    if (won === legs.length) return 'won'
-    return 'partial'
+    if (lost > 0) return 'lost';
+    if (pending > 0) return 'pending';
+    if (won === legs.length) return 'won';
+    return 'partial';
 }

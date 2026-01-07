@@ -14,6 +14,7 @@ import {
 } from '../icons/Icons';
 import { useSubscriptionLimits } from '../../hooks/useSubscriptionLimits';
 import { useNavigate } from 'react-router-dom';
+import { getV1VsV2Comparison, ModelVersionStats } from '../../services/modelVersionStatsService';
 
 interface LearnedLesson {
     id: string;
@@ -44,7 +45,7 @@ interface ModelVersion {
 
 export default function MLDashboard() {
     const navigate = useNavigate();
-    const { subscription, loading: subLoading, isPro, isPremium } = useSubscriptionLimits();
+    const { subscription, loading: subLoading, isPro, isPremium, isAdmin } = useSubscriptionLimits();
 
     const [stats, setStats] = useState<MLStats | null>(null);
     const [lessons, setLessons] = useState<LearnedLesson[]>([]);
@@ -52,8 +53,17 @@ export default function MLDashboard() {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-    // Verificar acceso
-    const hasAccess = isPro || isPremium;
+    // NEW: Stats por versión del modelo
+    const [statsV1, setStatsV1] = useState<ModelVersionStats | null>(null);
+    const [statsV2, setStatsV2] = useState<ModelVersionStats | null>(null);
+    const [versionComparison, setVersionComparison] = useState<{
+        accuracyDiff: number;
+        betterVersion: 'v1-stable' | 'v2-learning' | 'tie';
+        isSignificant: boolean;
+    } | null>(null);
+
+    // Verificar acceso (incluye Admin)
+    const hasAccess = isAdmin || isPro || isPremium;
 
     useEffect(() => {
         if (hasAccess) {
@@ -156,6 +166,12 @@ export default function MLDashboard() {
                 .select('version_name, traffic_percentage, is_active')
                 .eq('is_active', true);
             setVersions(versionsData || []);
+
+            // NEW: Cargar comparación v1 vs v2
+            const comparison = await getV1VsV2Comparison();
+            setStatsV1(comparison.v1);
+            setStatsV2(comparison.v2);
+            setVersionComparison(comparison.difference);
 
         } catch (error) {
             console.error('Error loading ML data:', error);
@@ -323,6 +339,134 @@ export default function MLDashboard() {
                     </button>
                 </div>
             </div>
+
+            {/* NEW: Comparación v1 vs v2 */}
+            {(statsV1 || statsV2) && (
+                <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                    <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
+                        <ChartBarIcon className="w-5 h-5 text-purple-500" />
+                        Comparación de Versiones del Modelo
+                    </h2>
+
+                    <div className="grid md:grid-cols-2 gap-6">
+                        {/* v1-stable */}
+                        {statsV1 && (
+                            <div className="bg-slate-800/50 rounded-xl p-6 border border-white/5">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                        <h3 className="text-lg font-bold text-white">v1-stable</h3>
+                                    </div>
+                                    <span className="text-xs px-2 py-1 bg-slate-700 rounded text-slate-300">
+                                        Sin ML
+                                    </span>
+                                </div>
+
+                                <div className="text-4xl font-black text-white mb-2">
+                                    {statsV1.accuracy.toFixed(1)}%
+                                </div>
+
+                                <div className="text-sm text-slate-400 mb-4">
+                                    {statsV1.won}/{statsV1.verified} predicciones correctas
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2 text-xs">
+                                    <div className="bg-slate-700/50 rounded p-2">
+                                        <div className="text-slate-400">Total</div>
+                                        <div className="text-white font-semibold">{statsV1.total}</div>
+                                    </div>
+                                    <div className="bg-green-500/10 rounded p-2">
+                                        <div className="text-green-400">Ganadas</div>
+                                        <div className="text-white font-semibold">{statsV1.won}</div>
+                                    </div>
+                                    <div className="bg-red-500/10 rounded p-2">
+                                        <div className="text-red-400">Perdidas</div>
+                                        <div className="text-white font-semibold">{statsV1.lost}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* v2-learning */}
+                        {statsV2 && (
+                            <div className="bg-slate-800/50 rounded-xl p-6 border border-white/5">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                                        <h3 className="text-lg font-bold text-white">v2-learning</h3>
+                                    </div>
+                                    <span className="text-xs px-2 py-1 bg-purple-500/20 rounded text-purple-300">
+                                        Con ML
+                                    </span>
+                                </div>
+
+                                <div className="text-4xl font-black text-white mb-2">
+                                    {statsV2.accuracy.toFixed(1)}%
+                                </div>
+
+                                <div className="text-sm text-slate-400 mb-4">
+                                    {statsV2.won}/{statsV2.verified} predicciones correctas
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2 text-xs">
+                                    <div className="bg-slate-700/50 rounded p-2">
+                                        <div className="text-slate-400">Total</div>
+                                        <div className="text-white font-semibold">{statsV2.total}</div>
+                                    </div>
+                                    <div className="bg-green-500/10 rounded p-2">
+                                        <div className="text-green-400">Ganadas</div>
+                                        <div className="text-white font-semibold">{statsV2.won}</div>
+                                    </div>
+                                    <div className="bg-red-500/10 rounded p-2">
+                                        <div className="text-red-400">Perdidas</div>
+                                        <div className="text-white font-semibold">{statsV2.lost}</div>
+                                    </div>
+                                </div>
+
+                                {/* Diferencia vs v1 */}
+                                {versionComparison && (
+                                    <div className={`mt-4 p-3 rounded-lg text-center ${versionComparison.betterVersion === 'v2-learning'
+                                            ? 'bg-green-500/10 border border-green-500/30'
+                                            : versionComparison.betterVersion === 'v1-stable'
+                                                ? 'bg-red-500/10 border border-red-500/30'
+                                                : 'bg-slate-700/50'
+                                        }`}>
+                                        <div className={`text-2xl font-bold ${versionComparison.betterVersion === 'v2-learning'
+                                                ? 'text-green-400'
+                                                : versionComparison.betterVersion === 'v1-stable'
+                                                    ? 'text-red-400'
+                                                    : 'text-slate-400'
+                                            }`}>
+                                            {versionComparison.accuracyDiff > 0 ? '+' : ''}
+                                            {versionComparison.accuracyDiff.toFixed(1)}%
+                                        </div>
+                                        <div className="text-xs text-slate-400 mt-1">
+                                            {versionComparison.betterVersion === 'v2-learning'
+                                                ? '🎉 ML funciona mejor'
+                                                : versionComparison.betterVersion === 'v1-stable'
+                                                    ? '⚠️ ML necesita más datos'
+                                                    : 'Sin diferencia significativa'}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Mensaje si no hay suficientes datos */}
+                    {(!statsV2 || statsV2.verified < 50) && (
+                        <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                            <div className="flex items-center gap-2 text-yellow-400 text-sm">
+                                <ExclamationTriangleIcon className="w-4 h-4" />
+                                <span>
+                                    Se necesitan al menos 50 predicciones verificadas por versión para comparación confiable.
+                                    {statsV2 && ` v2-learning tiene ${statsV2.verified} verificadas.`}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* A/B Testing */}
             <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
