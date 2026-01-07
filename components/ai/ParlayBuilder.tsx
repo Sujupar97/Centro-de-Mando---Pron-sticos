@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { getAnalysesByDate } from '../../services/analysisService';
-import { generateDailyParlay } from '../../services/geminiService';
 import { getParlaysByDate, saveParlays, verifyParlays, deleteParlaysForDate, ParlayDB } from '../../services/parlayService';
 import { ParlayAnalysisResult } from '../../types';
 import { fetchFixturesList } from '../../services/liveDataService';
@@ -116,11 +115,36 @@ export const ParlayBuilder: React.FC = () => {
                 setStatusMessage(`Advertencia: Solo hay ${matches.length} partido analizado.`);
             }
 
-            // 2. Call Super Prompt
+            // 2. Call Super Prompt via Edge Function (server-side)
             setAnalyzing(true);
             setStatusMessage(`Analizando ${matches.length} partidos con Super IA... Buscando la combinada perfecta.`);
 
-            let results = await generateDailyParlay(selectedDate, matches);
+            // Call Edge Function instead of direct Gemini to avoid browser API Key issues
+            const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manual-parlay-generator`;
+            console.log('[ParlayBuilder] Calling Edge Function:', edgeFunctionUrl);
+            console.log('[ParlayBuilder] Selected date:', selectedDate);
+
+            const response = await fetch(edgeFunctionUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+                },
+                body: JSON.stringify({ date: selectedDate })
+            });
+
+            console.log('[ParlayBuilder] Response status:', response.status);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('[ParlayBuilder] Edge Function error:', errorText);
+                throw new Error(`Error del servidor: ${errorText}`);
+            }
+
+            const responseData = await response.json();
+            console.log('[ParlayBuilder] Response data:', responseData);
+
+            const { parlays: results } = responseData;
 
             if (results.length > 0) {
                 // --- NEW INTEGRATION: FETCH REAL ODDS ---
