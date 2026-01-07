@@ -1,6 +1,7 @@
 // supabase/functions/daily-parlay-generator/index.ts
-// Edge Function para generar parlays automáticos con los mejores pronósticos
-// Ejecuta: 3:00 AM Colombia (8:00 AM UTC) o on-demand
+// Edge Function para generar parlays automáticos
+// UNIFICADO: Usa EXACTAMENTE la misma lógica que manual-parlay-generator
+// La única diferencia es que se ejecuta automáticamente (cron) en vez de manualmente
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -10,11 +11,6 @@ const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
-
-// Configuración
-// Configuración
-const MIN_PREDICTIONS_FOR_PARLAY = 2
-const MIN_CONFIDENCE = 60
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') {
@@ -39,230 +35,164 @@ serve(async (req) => {
         const enabled = settings?.value ?? true;
 
         if (!enabled) {
-            console.log('[ParlayGen] ⏹️ Parlay generation disabled by system_settings');
+            console.log('[AutoParlayGen] ⏹️ Auto-parlay disabled by system_settings');
             return new Response(JSON.stringify({ success: true, message: 'Disabled' }), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
         }
 
+        // 1. Determinar fecha objetivo (HOY - los partidos de hoy)
         const today = new Date().toISOString().split('T')[0]
+        console.log(`[AutoParlayGen] Generando parlays para: ${today}`)
 
-        // Fecha objetivo: mañana (los partidos que se analizaron hoy)
-        const tomorrow = new Date()
-        tomorrow.setDate(tomorrow.getDate() + 1)
-        const targetDate = tomorrow.toISOString().split('T')[0]
-
-        console.log(`[ParlayGen] Generando parlays para: ${targetDate}`)
-
-        // 1. Obtener Organization ID (Requerido por tabla parlays)
-        // Intentamos obtener la primera organización disponible
+        // 2. Obtener Organization ID
         const { data: orgs } = await supabase.from('organizations').select('id').limit(1);
         const orgId = orgs?.[0]?.id;
 
         if (!orgId) {
-            console.error('[ParlayGen] ❌ No organization found. Cannot save parlay.');
-            return new Response(JSON.stringify({ success: false, error: 'No organizations found' }), {
+            console.error('[AutoParlayGen] ❌ No organization found');
+            return new Response(JSON.stringify({ success: false, error: 'No organizations' }), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
         }
 
-        // 2. Start Automation Log (Optional, if rpc exists)
-        let jobId = null;
-        try {
-            const { data } = await supabase.rpc('start_automation_job', {
-                p_job_type: 'parlay_generator',
-                p_execution_date: today
-            })
-            jobId = data;
-        } catch (e) { console.log('RPC start_automation_job not found, skipping log'); }
+        // 3. MISMA LÓGICA QUE MANUAL: Buscar análisis por match_date
+        // ✅ CRÍTICO: Filtramos por fecha del PARTIDO, no por fecha de creación
+        const { data: runs, error } = await supabase
+            .from('analysis_runs')
+            .select('*, predictions(*)')
+            .eq('match_date', today)  // ✅ FILTRO POR FECHA DEL PARTIDO
 
+        if (error) throw error
 
-        // 3. Obtener mejores predicciones
-        // FIX: Ampliar rango a ayer para cubrir Timezone differences (UTC vs Local)
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const sinceDate = yesterday.toISOString().split('T')[0];
+        console.log(`[AutoParlayGen] Found ${runs?.length || 0} analysis runs for ${today}`)
 
-        const { data: rawPredictions, error: predError } = await supabase
-            .from('predictions')
-            .select('*, analysis_runs(report_pre_jsonb)')
-            .gte('created_at', `${sinceDate}T00:00:00`) // Recientes (48h window)
-            .limit(1000)
+        const matches = runs
+            ?.filter(r => r.predictions && r.predictions.length > 0)
+            .map(r => ({
+                dashboardData: r.report_pre_jsonb,
+                analysisRun: r
+            })) || []
 
-        if (predError) throw new Error(`Error obteniendo predicciones: ${predError.message}`)
-
-        // Helper para normalizar confianza
-        const getConfidenceScore = (val: any): number => {
-            if (typeof val === 'number') return val;
-            if (typeof val === 'string') {
-                const lower = val.toLowerCase();
-                if (lower.includes('alta')) return 85;
-                if (lower.includes('media')) return 65;
-                if (lower.includes('baja')) return 40;
-                const parsed = parseInt(val);
-                return !isNaN(parsed) ? parsed : 50;
-            }
-            return 50;
-        };
-
-        // 3.1 Filtros y Sort
-        // Filtramos por fecha del partido (de predictions o runs) si es posible, o usamos todas las recientes.
-        // Asumimos que created_at reciente implica partido próximo.
-
-        const predictions = rawPredictions
-            ?.map(p => ({ ...p, confidenceScore: getConfidenceScore(p.confidence) }))
-            .filter(p => p.confidenceScore >= MIN_CONFIDENCE)
-            .sort((a, b) => b.confidenceScore - a.confidenceScore)
-            .slice(0, 10); // Top 10
-
-        if (!predictions || predictions.length < MIN_PREDICTIONS_FOR_PARLAY) {
-            console.log(`[ParlayGen] Insuficientes predicciones: ${predictions?.length || 0}`)
+        if (matches.length < 2) {
+            console.log(`[AutoParlayGen] Insuficientes análisis: ${matches.length}`)
             return new Response(
-                JSON.stringify({ success: true, parlays: 0, reason: 'Not enough predictions' }),
+                JSON.stringify({ success: true, parlays: 0, reason: 'Not enough analyses' }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
 
-        console.log(`[ParlayGen] Predicciones candidatas: ${predictions.length}`)
+        console.log(`[AutoParlayGen] ${matches.length} matches with predictions`)
 
-        // 4. Generar parlay con Gemini
-        const parlay = await generateParlayWithAI(genAI, predictions)
+        // 4. MISMA LÓGICA QUE MANUAL: Construir prompt
+        const matchesSummary = matches.map((m, idx) => {
+            const d = m.dashboardData
+            if (!d) return null
 
-        console.log('[ParlayGen] Parlay generado:', parlay.title);
+            const fixtureId = m.analysisRun?.fixture_id || "Unknown"
+            const homeName = d.header_partido?.titulo?.split(' vs ')?.[0] || "Local"
+            const awayName = d.header_partido?.titulo?.split(' vs ')?.[1] || "Visitante"
 
-        // 5. Guardar parlay en TABLA PRINCIPAL (parlays)
-        // Limpiamos anterior para evitar loops
-        await supabase.from('parlays').delete().eq('date', targetDate).eq('organization_id', orgId);
+            const preds = d.predicciones_finales?.detalle?.map(p =>
+                `   > ${p.mercado}: ${p.seleccion} (${p.probabilidad_estimado_porcentaje}%)`
+            ).join('\n') || "   > Sin predicciones"
 
-        const { data: savedParlay, error: saveError } = await supabase
-            .from('parlays')
-            .insert({
-                organization_id: orgId,
-                date: targetDate,
-                title: parlay.title,
-                total_odds: parlay.totalOdds,
-                win_probability: parlay.winProbability,
-                strategy: parlay.strategy,
-                legs: parlay.legs, // JSONB structure
-                status: 'pending' // Default statua
-            })
-            .select()
-            .single()
+            return `=== PARTIDO #${idx + 1} (ID: ${fixtureId}) ===
+EQUIPOS: ${homeName} vs ${awayName}
+COMPETICIÓN: ${d.header_partido?.subtitulo || 'N/A'}
+PREDICCIONES:
+${preds}
+`
+        }).filter(Boolean).join('\n\n')
 
-        if (saveError) {
-            console.error('[ParlayGen] Save Error:', saveError);
-            throw new Error(`Error guardando parlay: ${saveError.message}`)
+        // 5. MISMA LÓGICA QUE MANUAL: Llamar a Gemini
+        const prompt = `
+FECHA: ${today}
+GENERA 2 PARLAYS PROFESIONALES basados en estos análisis.
+PRIORIDAD: MERCADOS ALTERNATIVOS (Goles, Córners, Tarjetas)
+
+DATOS:
+${matchesSummary}
+
+JSON REQUERIDO:
+[
+  {
+    "parlayTitle": "Parlay 'Seguro'",
+    "overallStrategy": "...",
+    "finalOdds": 0.0,
+    "winProbability": 75,
+    "legs": [
+      {
+        "fixtureId": 12345,
+        "game": "Equipo A vs B",
+        "market": "Total Goles",
+        "prediction": "Más de 2.5",
+        "odds": 0,
+        "reasoning": "..."
+      }
+    ]
+  }
+]
+`
+
+        const model = genAI.getGenerativeModel({
+            model: "gemini-2.0-flash-exp",
+            generationConfig: {
+                responseMimeType: "application/json",
+                temperature: 0.5
+            }
+        })
+
+        const result = await model.generateContent(prompt)
+        const text = result.response.text()
+        const clean = text.replace(/```json/g, '').replace(/```/g, '').trim()
+        let parlays = JSON.parse(clean)
+
+        if (!Array.isArray(parlays)) {
+            parlays = [parlays]
         }
 
-        console.log(`[ParlayGen] ✅ Parlay guardado en DB (ID: ${savedParlay.id})`)
+        console.log(`[AutoParlayGen] Generated ${parlays.length} parlays`)
+
+        // 6. Guardar parlays en DB (eliminar anteriores del mismo día)
+        await supabase.from('parlays').delete().eq('date', today).eq('organization_id', orgId);
+
+        for (const parlay of parlays) {
+            const { error: saveError } = await supabase
+                .from('parlays')
+                .insert({
+                    organization_id: orgId,
+                    date: today,
+                    title: parlay.parlayTitle || parlay.title,
+                    total_odds: parlay.finalOdds || 0,
+                    win_probability: parlay.winProbability || 0,
+                    strategy: parlay.overallStrategy || parlay.strategy || '',
+                    legs: parlay.legs,
+                    status: 'pending'
+                })
+
+            if (saveError) {
+                console.error('[AutoParlayGen] Save error:', saveError)
+            }
+        }
+
+        console.log(`[AutoParlayGen] ✅ ${parlays.length} parlays guardados para ${today}`)
 
         return new Response(
             JSON.stringify({
                 success: true,
-                parlay: {
-                    id: savedParlay.id,
-                    title: parlay.title,
-                }
+                parlays: parlays.length,
+                matchesAnalyzed: matches.length,
+                date: today
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
 
     } catch (error: any) {
-        console.error('[ParlayGen] Error:', error)
+        console.error('[AutoParlayGen] Error:', error)
         return new Response(
             JSON.stringify({ success: false, error: error.message }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
         )
     }
 })
-
-// Función helper: Generar parlay con IA
-async function generateParlayWithAI(genAI: GoogleGenerativeAI, predictions: any[]) {
-    const predictionsWithNames = predictions.map((p: any) => {
-        const report = p.analysis_runs?.report_pre_jsonb || {};
-        const titulo = report.header_partido?.titulo || 'Equipo 1 vs Equipo 2';
-        return {
-            ...p,
-            match_title: titulo,
-        };
-    });
-
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-
-    const predictionsText = predictionsWithNames.map((p: any, i: number) =>
-        `${i + 1}. ${p.match_title} (Fixture ID: ${p.fixture_id})
-    - Mercado: ${p.market}
-    - Selección: ${p.selection}
-    - Confianza: ${p.confidence}%
-    - Odds Estimados: ${p.odds || 'N/A'}`
-    ).join('\n')
-
-
-    const prompt = `
-Eres un experto en apuestas deportivas. Crea el MEJOR parlay (combinada) de 3 a 5 selecciones.
-
-CANDIDATOS:
-${predictionsText}
-
-SALIDA JSON (Estricto):
-{
-  "title": "Título corto y atractivo",
-  "strategy": "Explicación breve",
-  "legs": [
-    {
-      "fixtureId": 12345, // USAR ID DEL FIXTURE PROVIDO
-      "match": "Equipo1 vs Equipo2",
-      "market": "Mercado",
-      "prediction": "Selección",
-      "status": "pending"
-    }
-  ],
-  "totalOdds": 4.5, // Calcúlalo multiplicando odds estimados (usa 1.5 si no hay)
-  "winProbability": 35
-}
-
-SOLO JSON.
-`
-
-    try {
-        const result = await model.generateContent(prompt)
-        const text = result.response.text()
-        const cleanJson = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-
-        let parsed = JSON.parse(cleanJson);
-
-        // Post-procesamiento para asegurar estructura
-        if (!parsed.legs) parsed.legs = [];
-        // Asegurar fixtureId correcto (match por nombre o index si la IA falla)
-        parsed.legs = parsed.legs.map((leg: any) => {
-            // Intentar recuperar fixtureId si falta
-            if (!leg.fixtureId) {
-                const original = predictionsWithNames.find((p: any) => p.match_title === leg.match);
-                if (original) leg.fixtureId = original.fixture_id;
-            }
-            return leg;
-        });
-
-        return parsed;
-
-    } catch (error) {
-        console.error('Error parsing parlay from AI:', error)
-        // Fallback básico
-        const top3 = predictionsWithNames.slice(0, 3);
-        const odds = top3.reduce((acc: number, val: any) => acc * 1.5, 1);
-
-        return {
-            title: 'Parlay Automático (Fallback)',
-            strategy: 'Selección por alta confianza',
-            legs: top3.map((p: any) => ({
-                fixtureId: p.fixture_id,
-                match: p.match_title,
-                market: p.market,
-                prediction: p.selection,
-                status: 'pending'
-            })),
-            totalOdds: Math.round(odds * 100) / 100,
-            winProbability: 40
-        }
-    }
-}
