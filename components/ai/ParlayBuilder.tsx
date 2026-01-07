@@ -147,85 +147,69 @@ export const ParlayBuilder: React.FC = () => {
 
             const { parlays: results } = responseData;
 
-            if (results.length > 0) {
-                // --- NEW INTEGRATION: FETCH REAL ODDS ---
-                try {
-                    setStatusMessage('Buscando cuotas reales en casas de apuestas...');
+            if (results && results.length > 0) {
+                // MOSTRAR PARLAYS INMEDIATAMENTE (antes del enriquecimiento de odds)
+                setParlays(results);
+                console.log('[ParlayBuilder] ✅ Parlays generados exitosamente:', results.length);
 
-                    // 1. Collect all Fixture IDs from generated parlays
+                // --- ENRIQUECIMIENTO CON ODDS REALES (Proceso en background, no crítico) ---
+                // Este proceso es complementario. Si falla, los parlays siguen siendo válidos.
+                try {
+                    setStatusMessage('Buscando cuotas reales...');
+
                     const fixtureIds = new Set<number>();
                     results.forEach(p => p.legs.forEach(l => {
-                        if (l.fixtureId) fixtureIds.add(l.fixtureId);
+                        // Solo agregar si es número válido (no UUID)
+                        if (l.fixtureId && typeof l.fixtureId === 'number') {
+                            fixtureIds.add(l.fixtureId);
+                        }
                     }));
 
                     if (fixtureIds.size > 0) {
-                        // 2. Fetch official fixture details to get precise names for matching
-                        // Note: matches (analyzedMatches) passed to generateDailyParlay has run details but maybe not full team names handy structured
-                        // So we fetch again to be robust for the fuzzy matcher
                         const fixtures = await fetchFixturesList(Array.from(fixtureIds));
 
-                        // 3. Prepare items for Batch Odds Check
-                        const checkItems = fixtures.map(f => ({
-                            fixtureId: f.fixture.id,
-                            sportKey: mapLeagueToSportKey(f.league.name),
-                            home: f.teams.home.name,
-                            away: f.teams.away.name,
-                            date: f.fixture.date // ISO string
-                        }));
+                        if (fixtures && fixtures.length > 0) {
+                            const checkItems = fixtures.map(f => ({
+                                fixtureId: f.fixture.id,
+                                sportKey: mapLeagueToSportKey(f.league.name),
+                                home: f.teams.home.name,
+                                away: f.teams.away.name,
+                                date: f.fixture.date
+                            }));
 
-                        // 4. Exec Batch Check
-                        const realOddsMap = await fastBatchOddsCheck(checkItems);
+                            const realOddsMap = await fastBatchOddsCheck(checkItems);
+                            let realOddsFound = 0;
 
-                        // 5. Update Legs with Real Odds - FLEXIBLE MODE
-                        // Show all legs, mark which have real odds vs estimated
-                        let realOddsFound = 0;
+                            results.forEach(parlay => {
+                                parlay.legs.forEach(leg => {
+                                    if (leg.fixtureId && realOddsMap.has(leg.fixtureId)) {
+                                        const event = realOddsMap.get(leg.fixtureId);
+                                        const realPrice = findPriceInEvent(event!, leg.market, leg.prediction);
 
-                        results.forEach(parlay => {
-                            parlay.legs.forEach(leg => {
-                                if (leg.fixtureId && realOddsMap.has(leg.fixtureId)) {
-                                    const event = realOddsMap.get(leg.fixtureId);
-                                    const realPrice = findPriceInEvent(event!, leg.market, leg.prediction);
-
-                                    if (realPrice) {
-                                        leg.odds = realPrice;
-                                        if (!leg.reasoning.includes('✅ Cuota Real')) {
-                                            leg.reasoning += " | ✅ Cuota Real (Live)";
+                                        if (realPrice) {
+                                            leg.odds = realPrice;
+                                            realOddsFound++;
                                         }
-                                        realOddsFound++;
-                                    } else {
-                                        // No real odd found for this market - mark it
-                                        if (!leg.reasoning.includes('⚠️')) {
-                                            leg.reasoning += " | ⚠️ Cuota no disponible en casas";
-                                        }
-                                        console.log(`[ODDS] Cuota no encontrada para: ${leg.market} - ${leg.prediction}`);
                                     }
-                                } else {
-                                    // Fixture not found in odds - use AI estimate
-                                    if (!leg.reasoning.includes('⚠️')) {
-                                        leg.reasoning += " | ⚠️ Cuota estimada (partido sin datos)";
-                                    }
-                                }
+                                });
+
+                                const totalOdds = parlay.legs.reduce((acc, l) => acc * (l.odds || 1.5), 1);
+                                parlay.finalOdds = parseFloat(totalOdds.toFixed(2));
                             });
 
-                            // Recalc total odds with whatever we have
-                            const totalOdds = parlay.legs.reduce((acc, l) => acc * (l.odds || 1.5), 1);
-                            parlay.finalOdds = parseFloat(totalOdds.toFixed(2));
-                        });
-
-                        if (realOddsFound > 0) {
-                            console.log(`[ODDS] ${realOddsFound} legs con cuotas reales de bookmakers.`);
-                            setStatusMessage(`Parlays generados. ${realOddsFound} cuotas reales encontradas.`);
-                        } else {
-                            console.log("[ODDS] No se encontraron cuotas reales. Usando estimaciones de IA.");
-                            setStatusMessage("Parlays generados con cuotas estimadas (mercados especiales sin datos reales).");
+                            // Actualizar UI solo si encontramos odds reales
+                            if (realOddsFound > 0) {
+                                setParlays([...results]); // Trigger re-render
+                                console.log(`[ParlayBuilder] ${realOddsFound} cuotas reales encontradas.`);
+                            }
                         }
                     }
-
                 } catch (oddsError) {
-                    console.error("Failed to fetch real odds, sticking to AI estimates.", oddsError);
+                    // Silencioso - no afecta al usuario
+                    console.warn('[ParlayBuilder] Odds enrichment skipped:', oddsError);
                 }
 
-                setParlays(results); // SHOW RESULTS IMMEDIATELY
+                setStatusMessage(''); // Limpiar mensaje
 
                 // 3. Try to Save to DB (Non-blocking)
                 setStatusMessage('Guardando en historial...');
