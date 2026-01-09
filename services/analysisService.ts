@@ -142,22 +142,12 @@ export const getAnalysesByDate = async (date: string): Promise<VisualAnalysisRes
     const targetDate = date.split('T')[0]; // Asegurar YYYY-MM-DD
     console.log(`[ParlayBuilder] Getting analyses for match date: ${targetDate}`);
 
-    // Query por fecha de creación (created_at) ya que match_date no existe en analysis_runs
-    // Buscamos análisis creados en el rango del día seleccionado (o desde el día anterior para cubrir zona horaria)
-    const startDate = `${targetDate}T00:00:00`;
-    const endDate = `${targetDate}T23:59:59`;
-
-    // NOTA: Idealmente deberíamos joinear con daily_matches para ser exactos con la fecha del partido,
-    // pero filtrar por created_at es una aproximación válida si los análisis se corren el mismo día o víspera.
-    // Para mayor precisión, ampliamos el rango de búsqueda a created_at >= targetDate - 1 day
-
+    // FILTRO CORRECTO: Usar match_date de analysis_runs (fecha del PARTIDO)
+    // No usar created_at que es la fecha de creación del análisis
     const { data: runs, error } = await supabase
         .from('analysis_runs')
         .select('*, predictions(*)')
-        // Buscamos análisis creados HOY o AYER (para cubrir pre-análisis) que coincidan con la fecha
-        // Pero como no tenemos el join fácil aquí sin refactorizar todo, usaremos created_at del día target
-        .gte('created_at', startDate)
-        .lte('created_at', endDate);
+        .eq('match_date', targetDate); // ✅ FILTRA POR FECHA DEL PARTIDO
 
     if (error) {
         console.error("Error fetching daily analyses:", error);
