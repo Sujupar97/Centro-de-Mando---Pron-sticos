@@ -214,7 +214,7 @@ export const fetchTopPicks = async (date: string) => {
         // 3. DEDUPLICACIÓN ROBUSTA (Estrategia Jobs -> Runs -> Predictions)
 
         // A) Obtener Jobs exitosos recientes para estos partidos
-        const { data: jobs, error: jobError } = await supabase
+        let { data: jobs, error: jobError } = await supabase
             .from('analysis_jobs')
             .select('id, api_fixture_id, created_at')
             .in('api_fixture_id', fixtureIds)
@@ -222,6 +222,35 @@ export const fetchTopPicks = async (date: string) => {
             .order('created_at', { ascending: false });
 
         if (jobError) throw jobError;
+
+        // FALLBACK ROBUSTO: Si no encontramos jobs por fixture IDs de daily_matches,
+        // buscar jobs creados HOY que estén 'done' (para cubrir desincronización)
+        if (!jobs || jobs.length < 3) {
+            console.log('[TopPicks] ⚠️ Pocos jobs por fixture IDs, buscando por fecha de creación...');
+
+            const { data: jobsByDate } = await supabase
+                .from('analysis_jobs')
+                .select('id, api_fixture_id, created_at')
+                .eq('status', 'done')
+                .gte('created_at', `${date}T00:00:00`)
+                .lt('created_at', `${date}T23:59:59`)
+                .order('created_at', { ascending: false });
+
+            if (jobsByDate && jobsByDate.length > (jobs?.length || 0)) {
+                console.log(`[TopPicks] ✅ Encontrados ${jobsByDate.length} jobs por created_at (fallback)`);
+                jobs = jobsByDate;
+
+                // Re-construir games a partir de los jobs encontrados (datos mínimos)
+                const additionalFixtureIds = jobsByDate
+                    .map(j => j.api_fixture_id)
+                    .filter(fid => !fixtureIds.includes(fid));
+
+                if (additionalFixtureIds.length > 0) {
+                    console.log(`[TopPicks] Agregando ${additionalFixtureIds.length} fixtures adicionales al pool`);
+                    fixtureIds.push(...additionalFixtureIds);
+                }
+            }
+        }
 
         // B) Filtrar para quedarse solo con el ÚLTIMO Job ID por fixture
         const latestJobIdByFixture = new Map<number, string>();
