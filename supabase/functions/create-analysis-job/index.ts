@@ -616,26 +616,21 @@ CRITICAL REMINDERS:
       throw runError;
     }
 
-    // --- STAGE 6.5: SAVE PREDICTIONS TO DEDICATED TABLE (WITH A/B TESTING) ---
+    // --- STAGE 6.5: SAVE PREDICTIONS TO DEDICATED TABLE ---
     const predictions = aiData.predicciones_finales?.detalle || [];
     if (predictions.length > 0 && runData) {
-      // A/B Testing: Seleccionar versión del modelo
-      // Esto distribuye predicciones según traffic_percentage (ej: 70% v1-stable, 30% v2-learning)
-      const modelVersion = 'v1-stable'; // NOTE: A/B testing se implementa en frontend por ahora
-      // TODO: Implementar selectModelVersion() si se quiere A/B desde backend
+      const modelVersion = 'v1-stable';
 
+      // SCHEMA REAL: analysis_run_id, fixture_id, market, selection, probability, confidence, reasoning, model_version
       const predictionsToInsert = predictions.map((p: any) => ({
         analysis_run_id: runData.id,
-        fixture_id: api_fixture_id, // Use actual API fixture ID for TopPicks lookup
+        fixture_id: api_fixture_id,
         market: p.mercado || 'Mercado',
         selection: p.seleccion || 'Selección',
         probability: p.probabilidad_estimado_porcentaje || 50,
         confidence: (p.probabilidad_estimado_porcentaje || 50) >= 70 ? 'Alta' : 'Media',
         reasoning: p.justificacion_detallada?.conclusion || '',
-        model_version: modelVersion, // NEW: Track which model version generated this
-        match_date: game.fixture.date.split('T')[0], // YYYY-MM-DD for filtering
-        home_team: homeTeam.name,
-        away_team: awayTeam.name
+        model_version: modelVersion
       }));
 
       const { error: predError } = await supabase.from('predictions').insert(predictionsToInsert);
