@@ -39,63 +39,109 @@ export const resetStuckJobs = async (): Promise<number> => {
 };
 
 /**
- * Inicia un trabajo de análisis llamando a la Edge Function segura.
+ * Inicia un trabajo de análisis llamando al Motor V2.
+ * V2 usa pipeline: ETL → Features → Models → Value Engine → Report
  */
 export const createAnalysisJob = async (apiFixtureId: number, timezone: string = 'America/Bogota', organizationId?: string): Promise<string> => {
     try {
-        const { data, error } = await supabase.functions.invoke('create-analysis-job', {
+        console.log(`[V2] Iniciando análisis para fixture ${apiFixtureId}...`);
+
+        // ═══════════════════════════════════════════════════════════════
+        // MOTOR V2: Pipeline completo (5 motores)
+        // ═══════════════════════════════════════════════════════════════
+        const { data, error } = await supabase.functions.invoke('v2-orchestrator', {
             body: {
-                api_fixture_id: apiFixtureId,
-                timezone,
-                organization_id: organizationId,
-                last_n: 10,
-                threshold: 70
+                fixture_id: apiFixtureId
             }
         });
 
         let responseData = data;
 
-        // Robustez: Si data viene como string (problemas de headers), parsearlo manualmente
+        // Robustez: Si data viene como string, parsearlo
         if (typeof data === 'string') {
             try {
                 responseData = JSON.parse(data);
             } catch (e) {
-                console.error("Error parseando respuesta de string:", e);
-                // Continuar con data original por si acaso
+                console.error("[V2] Error parseando respuesta:", e);
             }
         }
 
         if (error) {
-            console.error("Error de Edge Function:", error);
-            // Intentar extraer el mensaje de error real
-            const errorMsg = error.message || JSON.stringify(error);
-            throw new Error(errorMsg);
+            console.error("[V2] Error de Edge Function:", error);
+            throw new Error(error.message || JSON.stringify(error));
         }
 
-        if (responseData.error) {
-            console.error("Error devuelto por Edge Function:", responseData.error);
-            throw new Error(responseData.error);
+        if (!responseData?.success) {
+            console.error("[V2] Pipeline falló:", responseData?.error);
+            throw new Error(responseData?.error || "Pipeline V2 falló");
         }
 
-        if (!responseData || !responseData.job_id) {
-            console.error("Respuesta inesperada de Edge Function (raw):", data);
-            console.error("Respuesta parseada:", responseData);
-            throw new Error("La función no devolvió un job_id válido");
+        if (!responseData.job_id) {
+            console.error("[V2] Respuesta sin job_id:", responseData);
+            throw new Error("V2 no devolvió job_id válido");
         }
 
+        console.log(`[V2] ✅ Análisis completado: ${responseData.job_id}`);
+        console.log(`[V2] Picks: ${responseData.summary?.bet_picks || 0} BET, ${responseData.summary?.watch_picks || 0} WATCH`);
+
+        // V2 guarda en analysis_jobs_v2, pero retornamos el job_id para compatibilidad
         return responseData.job_id;
 
     } catch (err: any) {
-        console.error("Error crítico iniciando análisis:", err);
-        // Mostrar el error real en lugar de un mensaje genérico
-        throw new Error(err.message || "No se pudo conectar con el servidor de análisis. Intenta nuevamente.");
+        console.error("[V2] Error crítico:", err);
+        throw new Error(err.message || "Error en el Motor V2. Intenta nuevamente.");
     }
 };
 
+/* ═══════════════════════════════════════════════════════════════
+   V1 LEGACY (Comentado - usar solo si V2 falla)
+   ═══════════════════════════════════════════════════════════════
+export const createAnalysisJobV1 = async (apiFixtureId: number, timezone: string = 'America/Bogota', organizationId?: string): Promise<string> => {
+    const { data, error } = await supabase.functions.invoke('create-analysis-job', {
+        body: {
+            api_fixture_id: apiFixtureId,
+            timezone,
+            organization_id: organizationId,
+            last_n: 10,
+            threshold: 70
+        }
+    });
+    if (error || !data?.job_id) throw new Error("Error V1");
+    return data.job_id;
+};
+*/
+
 /**
- * Obtiene el estado actual de un trabajo haciendo polling a la tabla 'analysis_jobs'.
+ * Obtiene el estado actual de un trabajo.
+ * V2: Busca primero en analysis_jobs_v2, luego en analysis_jobs (V1).
  */
 export const getAnalysisJob = async (jobId: string): Promise<AnalysisJob | null> => {
+    // Intentar V2 primero
+    const { data: v2Data, error: v2Error } = await supabase
+        .from('analysis_jobs_v2')
+        .select('*')
+        .eq('id', jobId)
+        .single();
+
+    if (v2Data && !v2Error) {
+        // Mapear V2 al formato esperado por la UI (V2 tiene estructura diferente)
+        return {
+            id: v2Data.id,
+            api_fixture_id: v2Data.fixture_id,
+            fixture_id: v2Data.fixture_id,
+            status: v2Data.status === 'done' ? 'done' : v2Data.status === 'failed' ? 'failed' : 'processing',
+            created_at: v2Data.created_at,
+            updated_at: v2Data.updated_at,
+            error_message: v2Data.error_message,
+            organization_id: null,
+            completeness_score: v2Data.data_coverage_score || 100,
+            estimated_calls: 5,
+            actual_calls: 5,
+            progress_jsonb: { step: 'V2', completeness_score: 100, fetched_items: 5, total_items: 5 }
+        } as unknown as AnalysisJob;
+    }
+
+    // Fallback a V1
     const { data, error } = await supabase
         .from('analysis_jobs')
         .select('*')
@@ -109,10 +155,88 @@ export const getAnalysisJob = async (jobId: string): Promise<AnalysisJob | null>
 };
 
 /**
- * Obtiene el resultado final (Run + Predicciones) cuando el job está 'done'.
+ * Obtiene el resultado final del análisis.
+ * V2: Busca en reports_v2 + value_picks_v2, luego fallback a V1.
  */
 export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisResult | null> => {
-    // 1. Obtener el run asociado al job CON sus predicciones
+    // ═══════════════════════════════════════════════════════════════
+    // INTENTAR V2 PRIMERO
+    // ═══════════════════════════════════════════════════════════════
+    const { data: v2Report } = await supabase
+        .from('reports_v2')
+        .select('*')
+        .eq('job_id', jobId)
+        .single();
+
+    if (v2Report?.report_packet) {
+        // Obtener picks V2
+        const { data: v2Picks } = await supabase
+            .from('value_picks_v2')
+            .select('*')
+            .eq('job_id', jobId)
+            .order('rank', { ascending: true });
+
+        // Obtener job V2 para fixture_id
+        const { data: v2Job } = await supabase
+            .from('analysis_jobs_v2')
+            .select('*')
+            .eq('id', jobId)
+            .single();
+
+        // Transformar V2 al formato esperado por la UI
+        const report = v2Report.report_packet;
+        const betPicks = v2Picks?.filter((p: any) => p.decision === 'BET') || [];
+
+        return {
+            analysisText: report.resumen_ejecutivo?.titular || "Análisis V2 completado.",
+            dashboardData: {
+                veredicto_analista: {
+                    decision: betPicks.length > 0 ? 'APOSTAR' : 'OBSERVAR',
+                    titulo_accion: report.resumen_ejecutivo?.titular || '',
+                    seleccion_clave: betPicks[0]?.selection || null,
+                    probabilidad: betPicks[0] ? Math.round(betPicks[0].p_model * 100) : 50,
+                    nivel_confianza: betPicks[0]?.confidence >= 70 ? 'ALTA' : betPicks[0]?.confidence >= 50 ? 'MEDIA' : 'BAJA',
+                    razon_principal: report.conclusion?.veredicto || '',
+                    riesgo_principal: report.resumen_ejecutivo?.riesgo_principal || ''
+                },
+                resumen_ejecutivo: report.resumen_ejecutivo,
+                analisis_detallado: {
+                    contexto_competitivo: report.contexto_competitivo,
+                    analisis_tactico_formaciones: report.analisis_tactico,
+                    analisis_escenarios: report.proyeccion_escenarios
+                },
+                predicciones_finales: {
+                    detalle: v2Picks?.map((p: any) => ({
+                        mercado: p.market,
+                        seleccion: p.selection,
+                        probabilidad_estimado_porcentaje: Math.round(p.p_model * 100),
+                        edge: p.edge ? Math.round(p.edge * 100) : null,
+                        decision: p.decision
+                    })) || []
+                },
+                advertencias: report.factores_riesgo
+            } as unknown as DashboardAnalysisJSON,
+            analysisRun: {
+                id: jobId,
+                job_id: jobId,
+                fixture_id: v2Job?.fixture_id,
+                report_pre_jsonb: report,
+                summary_pre_text: report.resumen_ejecutivo?.titular,
+                predictions: v2Picks?.map((p: any) => ({
+                    id: p.id,
+                    market: p.market,
+                    selection: p.selection,
+                    probability: p.p_model,
+                    confidence: p.confidence,
+                    reasoning: p.risk_notes?.reasons?.join('. ') || ''
+                })) || []
+            } as unknown as AnalysisRun
+        };
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // FALLBACK A V1
+    // ═══════════════════════════════════════════════════════════════
     const { data: runData, error: runError } = await supabase
         .from('analysis_runs')
         .select('*, predictions(*)')
@@ -126,7 +250,6 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
 
     const run = runData as AnalysisRun;
 
-    // 2. Transformar al formato VisualAnalysisResult para la UI
     return {
         analysisText: run.summary_pre_text || "Análisis completado.",
         dashboardData: run.report_pre_jsonb as DashboardAnalysisJSON,
