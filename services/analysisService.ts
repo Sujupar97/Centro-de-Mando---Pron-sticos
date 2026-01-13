@@ -169,14 +169,27 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
         .single();
 
     if (v2Report?.report_packet) {
-        // Obtener picks V2 - SOLO BET, ordenados por edge
-        const { data: v2Picks } = await supabase
+        // Obtener picks V2 - Primero BET, si no hay, WATCH ordenados por edge
+        let { data: v2Picks } = await supabase
             .from('value_picks_v2')
             .select('*')
             .eq('job_id', jobId)
-            .eq('decision', 'BET')  // ✅ SOLO picks BET
+            .eq('decision', 'BET')
             .order('rank', { ascending: true })
-            .limit(3);  // ✅ Máximo 3 picks
+            .limit(3);
+
+        // ✅ FALLBACK: Si no hay BET, mostrar top 3 WATCH por edge
+        if (!v2Picks || v2Picks.length === 0) {
+            const { data: watchPicks } = await supabase
+                .from('value_picks_v2')
+                .select('*')
+                .eq('job_id', jobId)
+                .eq('decision', 'WATCH')
+                .order('edge', { ascending: false })
+                .limit(3);
+            v2Picks = watchPicks || [];
+            console.log(`[V2] Fallback a WATCH picks: ${v2Picks.length}`);
+        }
 
         // Obtener job V2 para fixture_id
         const { data: v2Job } = await supabase

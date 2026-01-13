@@ -8,19 +8,20 @@ import { corsHeaders } from '../_shared/cors.ts'
 
 const ENGINE_VERSION = '2.0.0';
 
-// Umbrales por mercado (más varianza = más edge requerido)
+// Umbrales por mercado - AJUSTADOS para permitir más picks
+// (más varianza = más edge requerido)
 const DEFAULT_THRESHOLDS: Record<string, { min_edge: number; min_confidence: number }> = {
-    'over_2.5_goals': { min_edge: 0.05, min_confidence: 60 },
-    'under_2.5_goals': { min_edge: 0.05, min_confidence: 60 },
-    'over_1.5_goals': { min_edge: 0.04, min_confidence: 65 },
-    'btts_yes': { min_edge: 0.06, min_confidence: 55 },
-    'btts_no': { min_edge: 0.06, min_confidence: 55 },
-    'corners_over_9.5': { min_edge: 0.10, min_confidence: 50 },
-    'corners_over_10.5': { min_edge: 0.12, min_confidence: 50 },
-    'cards_over_4.5': { min_edge: 0.12, min_confidence: 50 },
-    '1x2_home': { min_edge: 0.08, min_confidence: 55 },
-    '1x2_draw': { min_edge: 0.10, min_confidence: 50 },
-    '1x2_away': { min_edge: 0.08, min_confidence: 55 }
+    'over_2.5_goals': { min_edge: 0.02, min_confidence: 50 },  // Antes: 0.05, 60
+    'under_2.5_goals': { min_edge: 0.02, min_confidence: 50 }, // Antes: 0.05, 60
+    'over_1.5_goals': { min_edge: 0.015, min_confidence: 50 }, // Antes: 0.04, 65
+    'btts_yes': { min_edge: 0.03, min_confidence: 45 },        // Antes: 0.06, 55
+    'btts_no': { min_edge: 0.03, min_confidence: 45 },         // Antes: 0.06, 55
+    'corners_over_9.5': { min_edge: 0.05, min_confidence: 45 },  // Antes: 0.10, 50
+    'corners_over_10.5': { min_edge: 0.06, min_confidence: 45 }, // Antes: 0.12, 50
+    'cards_over_4.5': { min_edge: 0.06, min_confidence: 45 },    // Antes: 0.12, 50
+    '1x2_home': { min_edge: 0.04, min_confidence: 50 },        // Antes: 0.08, 55
+    '1x2_draw': { min_edge: 0.05, min_confidence: 45 },        // Antes: 0.10, 50
+    '1x2_away': { min_edge: 0.04, min_confidence: 50 }         // Antes: 0.08, 55
 };
 
 serve(async (req) => {
