@@ -263,13 +263,18 @@ export const fetchTopPicks = async (date: string) => {
                     const game = games.find(g => g.fixture.id === fixtureId);
                     if (!game) continue;
 
-                    // Determinar confianza basada en probabilidad y edge
+                    // ═══════════════════════════════════════════════════════════════
+                    // FIX: Confianza basada SOLO en probabilidad (no en edge)
+                    // ═══════════════════════════════════════════════════════════════
                     let confidence: 'Alta' | 'Media' | 'Baja' = 'Media';
                     const prob = pick.p_model * 100;
-                    if (prob >= 80 || (prob >= 60 && pick.edge >= 0.10)) {
-                        confidence = 'Alta';
-                    } else if (prob < 50) {
-                        confidence = 'Baja';
+
+                    if (prob >= 60) {
+                        confidence = 'Alta';  // 60%+ = Alta confianza (aparece en Oportunidades)
+                    } else if (prob >= 45) {
+                        confidence = 'Media'; // 45-59% = Media
+                    } else {
+                        confidence = 'Baja';  // <45% = Baja (no se muestra)
                     }
 
                     topPicks.push({
