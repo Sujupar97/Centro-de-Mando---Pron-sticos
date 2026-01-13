@@ -241,10 +241,25 @@ export const fetchTopPicks = async (date: string) => {
                 const jobToFixture = new Map<string, number>();
                 v2Jobs.forEach((j: any) => jobToFixture.set(j.id, j.fixture_id));
 
-                const topPicks: TopPickItem[] = [];
-
+                // ═══════════════════════════════════════════════════════════════
+                // FIX BUG 3: DEDUPLICAR - Solo 1 pick por partido (el de mayor prob)
+                // ═══════════════════════════════════════════════════════════════
+                const bestPickByFixture = new Map<number, any>();
                 for (const pick of v2Picks) {
                     const fixtureId = jobToFixture.get(pick.job_id);
+                    if (!fixtureId) continue;
+
+                    const existing = bestPickByFixture.get(fixtureId);
+                    if (!existing || pick.p_model > existing.p_model) {
+                        bestPickByFixture.set(fixtureId, pick);
+                    }
+                }
+
+                console.log(`[TopPicks] V2: Deduplicado de ${v2Picks.length} a ${bestPickByFixture.size} picks (1 por partido)`);
+
+                const topPicks: TopPickItem[] = [];
+
+                for (const [fixtureId, pick] of bestPickByFixture.entries()) {
                     const game = games.find(g => g.fixture.id === fixtureId);
                     if (!game) continue;
 
@@ -258,8 +273,8 @@ export const fetchTopPicks = async (date: string) => {
                     }
 
                     topPicks.push({
-                        gameId: fixtureId!,
-                        analysisRunId: pick.job_id, // Usamos jobId para V2
+                        gameId: fixtureId,
+                        analysisRunId: pick.job_id,
                         matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
                         date: game.fixture.date,
                         league: game.league.name,
@@ -272,10 +287,10 @@ export const fetchTopPicks = async (date: string) => {
                             prediction: pick.selection,
                             probability: Math.round(prob),
                             confidence: confidence,
-                            reasoning: pick.rationale || `Edge: ${pick.edge ? (pick.edge * 100).toFixed(1) : 0}%`
+                            reasoning: pick.rationale || `Probabilidad: ${Math.round(prob)}%`
                         },
                         result: 'Pending',
-                        odds: pick.odds_at_decision
+                        odds: undefined  // FIX BUG 2: NO mostrar cuotas de API-Football
                     });
                 }
 

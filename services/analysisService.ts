@@ -241,12 +241,48 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
         const report = v2Report.report_packet;
         const betPicks = v2Picks || [];
 
-        // Buscar justificación de Gemini para cada pick
+        // ═══════════════════════════════════════════════════════════════
+        // FIX BUG 1: Normalizar market names para hacer match con Gemini
+        // ═══════════════════════════════════════════════════════════════
+        const normalizeMarket = (m: string): string => {
+            return m.toLowerCase()
+                .replace(/[_\.\s]/g, '')
+                .replace('goals', 'goles')
+                .replace('over', 'mas')
+                .replace('under', 'menos')
+                .replace('btts', 'ambosanotan')
+                .replace('yes', 'si')
+                .replace('no', 'no');
+        };
+
         const getJustification = (market: string) => {
-            const justif = report.justificacion_picks?.find((j: any) =>
-                j.pick?.toLowerCase().includes(market.toLowerCase())
-            );
+            const normalized = normalizeMarket(market);
+            const justif = report.justificacion_picks?.find((j: any) => {
+                const pickNorm = normalizeMarket(j.pick || '');
+                return pickNorm.includes(normalized) || normalized.includes(pickNorm);
+            });
+
+            if (!justif) {
+                console.log(`[V2] ⚠️ No encontrada justificación para market: ${market} (normalized: ${normalized})`);
+            }
             return justif || null;
+        };
+
+        // Crear fallbacks inteligentes basados en datos del pick
+        const createSmartFallback = (pick: any) => {
+            const prob = Math.round(pick.p_model * 100);
+            const market = pick.market.replace(/_/g, ' ');
+
+            return {
+                base_estadistica: [
+                    `Probabilidad calculada: ${prob}% basado en estadísticas históricas`,
+                    `Análisis de ${pick.model_name || 'modelo cuantitativo'}`
+                ],
+                contexto_competitivo: [
+                    pick.rationale || `Tendencia favorable para ${market}`
+                ],
+                conclusion: pick.rationale || `El modelo indica ${prob}% de probabilidad para ${pick.selection}.`
+            };
         };
 
         return {
@@ -261,7 +297,6 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                     razon_principal: report.conclusion?.veredicto || '',
                     riesgo_principal: report.resumen_ejecutivo?.riesgo_principal || ''
                 },
-                // ✅ FIX: Mapear resumen_ejecutivo a estructura V1
                 resumen_ejecutivo: {
                     frase_principal: report.resumen_ejecutivo?.titular || '',
                     puntos_clave: [
@@ -270,7 +305,6 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                         report.resumen_ejecutivo?.riesgo_principal
                     ].filter(Boolean)
                 },
-                // ✅ FIX: Mapear análisis detallado con secciones correctas
                 analisis_detallado: {
                     contexto_competitivo: {
                         titulo: report.contexto_competitivo?.titulo || 'Contexto Competitivo',
@@ -296,22 +330,24 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                         ].filter(b => b && b.length > 20)
                     }
                 },
-                // ✅ FIX: Solo picks BET con justificación rica
+                // ═══════════════════════════════════════════════════════════════
+                // FIX BUG 1 & 2: Justificaciones normalizadas, SIN cuotas API-Football
+                // ═══════════════════════════════════════════════════════════════
                 predicciones_finales: {
                     detalle: betPicks.map((p: any) => {
                         const justif = getJustification(p.market);
+                        const fallback = createSmartFallback(p);
+
                         return {
                             mercado: p.market.replace(/_/g, ' ').replace(/\./g, ','),
                             seleccion: p.selection,
                             probabilidad_estimado_porcentaje: Math.round(p.p_model * 100),
-                            // ✅ FIX: Edge ya es decimal (0.31), convertir a % aquí
-                            edge: p.edge ? Math.round(p.edge * 100) : null,
-                            odds: p.odds || null,
-                            // ✅ FIX: Usar justificación de Gemini
+                            edge: null,  // FIX BUG 2: NO mostrar edge sin cuotas reales
+                            odds: null,  // FIX BUG 2: NO mostrar cuotas de API-Football
                             justificacion_detallada: {
-                                base_estadistica: justif?.datos_soporte || ['Modelo cuantitativo Poisson', 'Datos históricos de rendimiento'],
-                                contexto_competitivo: justif?.riesgos_especificos || ['Factor táctico evaluado'],
-                                conclusion: justif?.justificacion_tactica || `Edge de ${p.edge ? Math.round(p.edge * 100) : 0}% detectado por el modelo.`
+                                base_estadistica: justif?.datos_soporte || fallback.base_estadistica,
+                                contexto_competitivo: justif?.riesgos_especificos || fallback.contexto_competitivo,
+                                conclusion: justif?.justificacion_tactica || fallback.conclusion
                             }
                         };
                     })
