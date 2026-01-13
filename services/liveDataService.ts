@@ -242,42 +242,46 @@ export const fetchTopPicks = async (date: string) => {
                 v2Jobs.forEach((j: any) => jobToFixture.set(j.id, j.fixture_id));
 
                 // ═══════════════════════════════════════════════════════════════
-                // FIX BUG 3: DEDUPLICAR - Solo 1 pick por partido (el de mayor prob)
+                // FIX: DEDUPLICAR POR CATEGORÍA - 1 HIGH + 1 MEDIUM por partido
                 // ═══════════════════════════════════════════════════════════════
-                const bestPickByFixture = new Map<number, any>();
+                const highPickByFixture = new Map<number, any>();   // ≥80%
+                const mediumPickByFixture = new Map<number, any>(); // 60-79%
+
                 for (const pick of v2Picks) {
                     const fixtureId = jobToFixture.get(pick.job_id);
                     if (!fixtureId) continue;
 
-                    const existing = bestPickByFixture.get(fixtureId);
-                    if (!existing || pick.p_model > existing.p_model) {
-                        bestPickByFixture.set(fixtureId, pick);
+                    const prob = pick.p_model * 100;
+
+                    if (prob >= 80) {
+                        // HIGH: guardar el mejor ≥80%
+                        const existing = highPickByFixture.get(fixtureId);
+                        if (!existing || pick.p_model > existing.p_model) {
+                            highPickByFixture.set(fixtureId, pick);
+                        }
+                    } else if (prob >= 60) {
+                        // MEDIUM: guardar el mejor 60-79%
+                        const existing = mediumPickByFixture.get(fixtureId);
+                        if (!existing || pick.p_model > existing.p_model) {
+                            mediumPickByFixture.set(fixtureId, pick);
+                        }
                     }
+                    // <60% se ignora (no se muestra en Oportunidades)
                 }
 
-                console.log(`[TopPicks] V2: Deduplicado de ${v2Picks.length} a ${bestPickByFixture.size} picks (1 por partido)`);
+                console.log(`[TopPicks] V2: Deduplicado - HIGH: ${highPickByFixture.size}, MEDIUM: ${mediumPickByFixture.size}`);
 
                 const topPicks: TopPickItem[] = [];
 
-                for (const [fixtureId, pick] of bestPickByFixture.entries()) {
+                // Función helper para crear TopPickItem
+                const createPickItem = (fixtureId: number, pick: any): TopPickItem | null => {
                     const game = games.find(g => g.fixture.id === fixtureId);
-                    if (!game) continue;
+                    if (!game) return null;
 
-                    // ═══════════════════════════════════════════════════════════════
-                    // FIX: Confianza basada SOLO en probabilidad (no en edge)
-                    // ═══════════════════════════════════════════════════════════════
-                    let confidence: 'Alta' | 'Media' | 'Baja' = 'Media';
                     const prob = pick.p_model * 100;
+                    const confidence: 'Alta' | 'Media' | 'Baja' = prob >= 60 ? 'Alta' : prob >= 45 ? 'Media' : 'Baja';
 
-                    if (prob >= 60) {
-                        confidence = 'Alta';  // 60%+ = Alta confianza (aparece en Oportunidades)
-                    } else if (prob >= 45) {
-                        confidence = 'Media'; // 45-59% = Media
-                    } else {
-                        confidence = 'Baja';  // <45% = Baja (no se muestra)
-                    }
-
-                    topPicks.push({
+                    return {
                         gameId: fixtureId,
                         analysisRunId: pick.job_id,
                         matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
@@ -295,11 +299,23 @@ export const fetchTopPicks = async (date: string) => {
                             reasoning: pick.rationale || `Probabilidad: ${Math.round(prob)}%`
                         },
                         result: 'Pending',
-                        odds: undefined  // FIX BUG 2: NO mostrar cuotas de API-Football
-                    });
+                        odds: undefined
+                    };
+                };
+
+                // Agregar todos los HIGH picks
+                for (const [fixtureId, pick] of highPickByFixture.entries()) {
+                    const item = createPickItem(fixtureId, pick);
+                    if (item) topPicks.push(item);
                 }
 
-                // Si encontramos picks V2, retornarlos
+                // Agregar todos los MEDIUM picks
+                for (const [fixtureId, pick] of mediumPickByFixture.entries()) {
+                    const item = createPickItem(fixtureId, pick);
+                    if (item) topPicks.push(item);
+                }
+
+                // Si encontramos picks V2, retornarlos ordenados por probabilidad
                 if (topPicks.length > 0) {
                     return topPicks.sort((a, b) =>
                         (b.bestRecommendation.probability || 0) - (a.bestRecommendation.probability || 0)

@@ -166,6 +166,28 @@ export const FixturesFeed: React.FC = () => {
     const [isJobModalOpen, setIsJobModalOpen] = useState(false);
     const [viewingResult, setViewingResult] = useState<VisualAnalysisResult | null>(null);
 
+    // ═══════════════════════════════════════════════════════════════
+    // FIX: Persistencia de informe en URL (no desaparece al refrescar)
+    // ═══════════════════════════════════════════════════════════════
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const reportFixtureId = urlParams.get('report');
+
+        if (reportFixtureId && !viewingResult) {
+            console.log(`[LiveFeed] Cargando informe desde URL: fixture ${reportFixtureId}`);
+            const loadReportFromUrl = async () => {
+                const result = await getAnalysisResultByFixtureId(Number(reportFixtureId));
+                if (result) {
+                    setViewingResult(result);
+                } else {
+                    // Limpiar URL si no existe el informe
+                    window.history.replaceState(null, '', window.location.pathname);
+                }
+            };
+            loadReportFromUrl();
+        }
+    }, []);
+
     // 1. Cargar Partidos
     useEffect(() => {
         const loadFixtures = async () => {
@@ -395,21 +417,32 @@ export const FixturesFeed: React.FC = () => {
         return true;
     };
 
-    // 4. Ver Reporte
+    // 4. Ver Reporte (con persistencia en URL)
     const handleViewReport = async (jobIdOrGameId: string | number, gameIdIfAvailable?: number) => {
         // Enforce Limits
         const allowed = await verifyReportAccess();
         if (!allowed) return;
 
         let jobId = typeof jobIdOrGameId === 'string' ? jobIdOrGameId : activeJobs[jobIdOrGameId];
-        if (!jobId && typeof jobIdOrGameId === 'string') jobId = jobIdOrGameId; // Fallback if passed string directly
+        if (!jobId && typeof jobIdOrGameId === 'string') jobId = jobIdOrGameId;
 
         if (!jobId) return;
 
         const result = await getAnalysisResult(jobId);
         if (result) {
+            // Persistir fixture en URL para sobrevivir refresh
+            const fixtureId = gameIdIfAvailable || (typeof jobIdOrGameId === 'number' ? jobIdOrGameId : null);
+            if (fixtureId) {
+                window.history.replaceState(null, '', `?report=${fixtureId}`);
+            }
             setViewingResult(result);
         }
+    };
+
+    // Cerrar informe y limpiar URL
+    const handleCloseReport = () => {
+        window.history.replaceState(null, '', window.location.pathname);
+        setViewingResult(null);
     };
 
     return (
@@ -524,7 +557,7 @@ export const FixturesFeed: React.FC = () => {
             </div>
 
             <AnalysisInProgressModal job={currentJob} isOpen={isJobModalOpen} />
-            <AnalysisReportModal analysis={viewingResult} onClose={() => setViewingResult(null)} />
+            <AnalysisReportModal analysis={viewingResult} onClose={handleCloseReport} />
 
             {/* Modal de Upgrade */}
             <UpgradePlanModal
