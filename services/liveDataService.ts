@@ -211,7 +211,88 @@ export const fetchTopPicks = async (date: string) => {
 
         if (fixtureIds.length === 0) return [];
 
-        // 3. DEDUPLICACIÓN ROBUSTA (Estrategia Jobs -> Runs -> Predictions)
+        // ═══════════════════════════════════════════════════════════════
+        // ESTRATEGIA V2 PRIMERO: Buscar en analysis_jobs_v2 + value_picks_v2
+        // ═══════════════════════════════════════════════════════════════
+        const { data: v2Jobs } = await supabase
+            .from('analysis_jobs_v2')
+            .select('id, fixture_id')
+            .in('fixture_id', fixtureIds)
+            .eq('status', 'done');
+
+        if (v2Jobs && v2Jobs.length > 0) {
+            console.log(`[TopPicks] ✅ V2: Encontrados ${v2Jobs.length} jobs V2`);
+
+            const v2JobIds = v2Jobs.map((j: any) => j.id);
+
+            // Obtener value_picks_v2 con BET o WATCH con alta probabilidad
+            const { data: v2Picks } = await supabase
+                .from('value_picks_v2')
+                .select('*')
+                .in('job_id', v2JobIds)
+                .in('decision', ['BET', 'WATCH'])
+                .gte('p_model', 0.50)  // Solo picks con >50% probabilidad
+                .order('p_model', { ascending: false });
+
+            if (v2Picks && v2Picks.length > 0) {
+                console.log(`[TopPicks] ✅ V2: Encontrados ${v2Picks.length} picks con >50% prob`);
+
+                // Mapear v2JobId -> fixtureId
+                const jobToFixture = new Map<string, number>();
+                v2Jobs.forEach((j: any) => jobToFixture.set(j.id, j.fixture_id));
+
+                const topPicks: TopPickItem[] = [];
+
+                for (const pick of v2Picks) {
+                    const fixtureId = jobToFixture.get(pick.job_id);
+                    const game = games.find(g => g.fixture.id === fixtureId);
+                    if (!game) continue;
+
+                    // Determinar confianza basada en probabilidad y edge
+                    let confidence: 'Alta' | 'Media' | 'Baja' = 'Media';
+                    const prob = pick.p_model * 100;
+                    if (prob >= 80 || (prob >= 60 && pick.edge >= 0.10)) {
+                        confidence = 'Alta';
+                    } else if (prob < 50) {
+                        confidence = 'Baja';
+                    }
+
+                    topPicks.push({
+                        gameId: fixtureId!,
+                        analysisRunId: pick.job_id, // Usamos jobId para V2
+                        matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
+                        date: game.fixture.date,
+                        league: game.league.name,
+                        teams: {
+                            home: { name: game.teams.home.name, logo: game.teams.home.logo },
+                            away: { name: game.teams.away.name, logo: game.teams.away.logo }
+                        },
+                        bestRecommendation: {
+                            market: pick.market?.replace(/_/g, ' ').toUpperCase() || pick.market,
+                            prediction: pick.selection,
+                            probability: Math.round(prob),
+                            confidence: confidence,
+                            reasoning: pick.rationale || `Edge: ${pick.edge ? (pick.edge * 100).toFixed(1) : 0}%`
+                        },
+                        result: 'Pending',
+                        odds: pick.odds_at_decision
+                    });
+                }
+
+                // Si encontramos picks V2, retornarlos
+                if (topPicks.length > 0) {
+                    return topPicks.sort((a, b) =>
+                        (b.bestRecommendation.probability || 0) - (a.bestRecommendation.probability || 0)
+                    );
+                }
+            }
+        }
+
+        console.log('[TopPicks] ⚠️ Sin picks V2 válidos, buscando en V1...');
+
+        // ═══════════════════════════════════════════════════════════════
+        // FALLBACK V1: Estrategia Jobs -> Runs -> Predictions
+        // ═══════════════════════════════════════════════════════════════
 
         // A) Obtener Jobs exitosos recientes para estos partidos
         let { data: jobs, error: jobError } = await supabase

@@ -155,6 +155,45 @@ export const getAnalysisJob = async (jobId: string): Promise<AnalysisJob | null>
 };
 
 /**
+ * Busca análisis por fixture_id (para persistencia al refrescar).
+ * Prioriza V2, luego fallback a V1.
+ */
+export const getAnalysisResultByFixture = async (fixtureId: number): Promise<VisualAnalysisResult | null> => {
+    // 1. Buscar último job V2 completado para este fixture
+    const { data: v2Job } = await supabase
+        .from('analysis_jobs_v2')
+        .select('id')
+        .eq('fixture_id', fixtureId)
+        .eq('status', 'done')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+    if (v2Job) {
+        console.log(`[V2] Encontrado análisis para fixture ${fixtureId}: job ${v2Job.id}`);
+        return getAnalysisResult(v2Job.id);
+    }
+
+    // 2. Fallback: Buscar en V1
+    const { data: v1Job } = await supabase
+        .from('analysis_jobs')
+        .select('id')
+        .eq('api_fixture_id', fixtureId)
+        .eq('status', 'done')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+    if (v1Job) {
+        console.log(`[V1] Encontrado análisis para fixture ${fixtureId}: job ${v1Job.id}`);
+        return getAnalysisResult(v1Job.id);
+    }
+
+    console.log(`[Analysis] No hay análisis para fixture ${fixtureId}`);
+    return null;
+};
+
+/**
  * Obtiene el resultado final del análisis.
  * V2: Busca en reports_v2 + value_picks_v2, luego fallback a V1.
  */

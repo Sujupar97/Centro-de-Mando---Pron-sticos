@@ -72,21 +72,34 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
 
     const allowedCount = getAllowedCount();
 
-
+    // ═══════════════════════════════════════════════════════════════
+    // FILTRO ESTRICTO: Solo alta probabilidad o media con alta confianza
+    // ═══════════════════════════════════════════════════════════════
     const filteredPicks = topPicks.filter(pick => {
         const prob = pick.bestRecommendation.probability;
+        const conf = pick.bestRecommendation.confidence?.toLowerCase() || '';
+
+        // HIGH (>= 80%): Siempre mostrar
         if (filter === 'HIGH') return prob >= 80;
+
+        // MEDIUM (60-79%): Solo si tiene ALTA confianza
         if (filter === 'MEDIUM') {
             const inRange = prob >= 60 && prob < 80;
             if (showOnlyHighConfidence) {
-                // Normalizamos a minúsculas para comparar por seguridad, aunque la UI muestra "Alta"
-                const conf = pick.bestRecommendation.confidence?.toLowerCase() || '';
                 return inRange && (conf === 'alta' || conf === 'high');
             }
-            return inRange;
+            return inRange && (conf === 'alta' || conf === 'high'); // Siempre requiere alta confianza
         }
-        if (filter === 'LOW') return prob < 60;
-        return true;
+
+        // ALL: Solo HIGH + MEDIUM con alta confianza (NO incluye LOW)
+        if (filter === 'ALL') {
+            if (prob >= 80) return true; // HIGH siempre
+            if (prob >= 60 && (conf === 'alta' || conf === 'high')) return true; // MEDIUM + Alta
+            return false; // LOW nunca
+        }
+
+        // LOW: NO mostrar (se deshabilita en UI, pero por seguridad)
+        return false;
     });
 
     // Reset secondary filter when changing main filter
@@ -184,36 +197,20 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                             Mejores Opciones del Día
                         </h3>
                         <p className="text-sm text-gray-400 mt-1">
-                            Mostrando únicamente el escenario de <strong>mayor probabilidad</strong> para los partidos analizados del {new Date(date + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}.
+                            Mostrando únicamente pronósticos de <strong>alta probabilidad</strong> y valor para los partidos analizados del {new Date(date + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}.
                         </p>
 
-                        {/* Filters */}
+                        {/* Filters - Solo HIGH, MEDIUM y TODAS (sin LOW) */}
                         <div className="flex flex-wrap items-center gap-2 mt-3">
                             <button onClick={() => setFilter('HIGH')} className={`px-3 py-1 text-xs font-bold rounded-full border transition-all ${filter === 'HIGH' ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
                                 ALTA (+80%)
                             </button>
                             <button onClick={() => setFilter('MEDIUM')} className={`px-3 py-1 text-xs font-bold rounded-full border transition-all ${filter === 'MEDIUM' ? 'bg-yellow-500/20 border-yellow-500 text-yellow-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
-                                MEDIA (60-79%)
-                            </button>
-                            <button onClick={() => setFilter('LOW')} className={`px-3 py-1 text-xs font-bold rounded-full border transition-all ${filter === 'LOW' ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
-                                BAJA (-60%)
+                                MEDIA + CONFIANZA
                             </button>
                             <button onClick={() => setFilter('ALL')} className={`px-3 py-1 text-xs font-bold rounded-full border transition-all ${filter === 'ALL' ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
                                 TODAS
                             </button>
-
-                            {/* Secondary Filter for MEDIUM */}
-                            {filter === 'MEDIUM' && (
-                                <div className="w-full md:w-auto mt-2 md:mt-0 md:ml-2 md:pl-2 md:border-l border-gray-600 flex items-center animate-fade-in">
-                                    <button
-                                        onClick={() => setShowOnlyHighConfidence(!showOnlyHighConfidence)}
-                                        className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-full border transition-all ${showOnlyHighConfidence ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-500'}`}
-                                    >
-                                        {showOnlyHighConfidence && <CheckCircleIcon className="w-3 h-3" />}
-                                        SOLO CONFIANZA ALTA
-                                    </button>
-                                </div>
-                            )}
                         </div>
                     </div>
 
