@@ -404,6 +404,27 @@ const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
     const color = prob >= 70 ? 'text-green-accent' : prob >= 55 ? 'text-yellow-400' : 'text-gray-300';
     const border = prob >= 70 ? 'border-green-accent' : 'border-gray-600';
 
+    // V2 Compatible: Detectar si es estructura V1 o V2
+    const hasV1Structure = pred.justificacion_detallada?.base_estadistica;
+    const hasV2Structure = (pred as any).edge !== undefined || (pred as any).decision !== undefined;
+
+    // Extraer datos según versión
+    const baseStats = hasV1Structure
+        ? pred.justificacion_detallada.base_estadistica
+        : [(pred as any).reasoning || 'Análisis basado en modelo cuantitativo'];
+
+    const context = hasV1Structure
+        ? pred.justificacion_detallada.contexto_competitivo?.[0]
+        : hasV2Structure && (pred as any).edge
+            ? `Edge calculado: ${((pred as any).edge * 100).toFixed(1)}%`
+            : 'Factor táctico considerado';
+
+    const conclusion = hasV1Structure
+        ? pred.justificacion_detallada.conclusion
+        : hasV2Structure && (pred as any).decision
+            ? `Decisión del modelo: ${(pred as any).decision}`
+            : 'Conclusión basada en el análisis de datos';
+
     return (
         <div className={`bg-gray-800 rounded-xl overflow-hidden border-l-4 ${border} shadow-lg mb-6`}>
             <div className="p-5 border-b border-gray-700 flex justify-between items-center bg-gray-700/20">
@@ -420,6 +441,12 @@ const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
                             @{pred.odds.toFixed(2)}
                         </div>
                     )}
+                    {/* V2: Show Edge */}
+                    {hasV2Structure && (pred as any).edge && (
+                        <div className="mt-2 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white px-3 py-1 rounded-md text-xs font-bold">
+                            Edge: +{((pred as any).edge * 100).toFixed(0)}%
+                        </div>
+                    )}
                 </div>
             </div>
             <div className="p-5">
@@ -428,19 +455,19 @@ const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
                     <div>
-                        <strong className="text-gray-400 block mb-1">Base Estadística:</strong>
+                        <strong className="text-gray-400 block mb-1">{hasV2Structure ? 'Razones:' : 'Base Estadística:'}</strong>
                         <ul className="list-disc pl-4 text-gray-300 space-y-1">
-                            {pred.justificacion_detallada.base_estadistica.map((t, i) => <li key={i}>{t}</li>)}
+                            {(Array.isArray(baseStats) ? baseStats : [baseStats]).map((t, i) => <li key={i}>{t}</li>)}
                         </ul>
                     </div>
                     <div>
                         <strong className="text-gray-400 block mb-1">Factor Clave:</strong>
-                        <p className="text-gray-300">{pred.justificacion_detallada.contexto_competitivo[0]}</p>
+                        <p className="text-gray-300">{context}</p>
                     </div>
                 </div>
                 <div className="bg-blue-900/20 p-3 rounded text-sm text-blue-200 border border-blue-900/50">
                     <strong className="block mb-1 text-blue-400">Conclusión:</strong>
-                    {pred.justificacion_detallada.conclusion}
+                    {conclusion}
                 </div>
             </div>
         </div>
