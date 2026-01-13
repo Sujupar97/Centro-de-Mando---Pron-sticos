@@ -207,6 +207,28 @@ export const FixturesFeed: React.FC = () => {
                 ];
 
                 if (fixtureIds.length > 0) {
+                    const newReportsAvailable: Record<number, boolean> = {};
+                    const newGameJobStatus: Record<number, AnalysisJob['status']> = {};
+                    const newActiveJobs: Record<number, string> = {};
+
+                    // ═══════════════════════════════════════════════════════════════
+                    // FIX: Consultar V2 primero para mostrar INFORME correctamente
+                    // ═══════════════════════════════════════════════════════════════
+                    const { data: v2Jobs, error: v2Error } = await supabase
+                        .from('analysis_jobs_v2')
+                        .select('fixture_id, status, id')
+                        .in('fixture_id', fixtureIds)
+                        .eq('status', 'done');
+
+                    if (!v2Error && v2Jobs) {
+                        v2Jobs.forEach(job => {
+                            newReportsAvailable[job.fixture_id] = true;
+                            newActiveJobs[job.fixture_id] = job.id;
+                        });
+                        console.log(`[LiveFeed] V2 Jobs encontrados: ${v2Jobs.length}`);
+                    }
+
+                    // Fallback: Consultar V1 para los que no tienen V2
                     const { data: existingJobs, error: fetchError } = await supabase
                         .from('analysis_jobs')
                         .select('api_fixture_id, status, id')
@@ -214,28 +236,27 @@ export const FixturesFeed: React.FC = () => {
                         .in('status', ['done', 'analyzing', 'queued', 'ingesting', 'data_ready', 'collecting_evidence']);
 
                     if (fetchError) {
-                        console.error("Error fetching existing jobs:", fetchError);
+                        console.error("Error fetching existing V1 jobs:", fetchError);
                     }
 
                     if (existingJobs) {
-                        const newReportsAvailable: Record<number, boolean> = {};
-                        const newGameJobStatus: Record<number, AnalysisJob['status']> = {};
-                        const newActiveJobs: Record<number, string> = {};
-
                         existingJobs.forEach(job => {
-                            if (job.status === 'done') {
-                                newReportsAvailable[job.api_fixture_id] = true;
-                                newActiveJobs[job.api_fixture_id] = job.id;
-                            } else {
-                                newGameJobStatus[job.api_fixture_id] = job.status as any;
-                                newActiveJobs[job.api_fixture_id] = job.id;
+                            // Solo agregar si no hay ya un V2 para este fixture
+                            if (!newActiveJobs[job.api_fixture_id]) {
+                                if (job.status === 'done') {
+                                    newReportsAvailable[job.api_fixture_id] = true;
+                                    newActiveJobs[job.api_fixture_id] = job.id;
+                                } else {
+                                    newGameJobStatus[job.api_fixture_id] = job.status as any;
+                                    newActiveJobs[job.api_fixture_id] = job.id;
+                                }
                             }
                         });
-
-                        setReportsAvailable(prev => ({ ...prev, ...newReportsAvailable }));
-                        setGameJobStatus(prev => ({ ...prev, ...newGameJobStatus }));
-                        setActiveJobs(prev => ({ ...prev, ...newActiveJobs }));
                     }
+
+                    setReportsAvailable(prev => ({ ...prev, ...newReportsAvailable }));
+                    setGameJobStatus(prev => ({ ...prev, ...newGameJobStatus }));
+                    setActiveJobs(prev => ({ ...prev, ...newActiveJobs }));
                 }
 
             } catch (err: any) {

@@ -242,46 +242,70 @@ export const fetchTopPicks = async (date: string) => {
                 v2Jobs.forEach((j: any) => jobToFixture.set(j.id, j.fixture_id));
 
                 // ═══════════════════════════════════════════════════════════════
-                // FIX: DEDUPLICAR POR CATEGORÍA - 1 HIGH + 1 MEDIUM por partido
+                // DICCIONARIO DE TRADUCCIÓN DE MERCADOS (del inglés al español)
                 // ═══════════════════════════════════════════════════════════════
-                const highPickByFixture = new Map<number, any>();   // ≥80%
-                const mediumPickByFixture = new Map<number, any>(); // 60-79%
+                const MARKET_TRANSLATIONS: Record<string, string> = {
+                    'btts_yes': 'Ambos Equipos Anotan: Sí',
+                    'btts_no': 'Ambos Equipos Anotan: No',
+                    'btts yes': 'Ambos Equipos Anotan: Sí',
+                    'btts no': 'Ambos Equipos Anotan: No',
+                    'over_0.5_goals': 'Más de 0.5 Goles',
+                    'over_1.5_goals': 'Más de 1.5 Goles',
+                    'over_2.5_goals': 'Más de 2.5 Goles',
+                    'over_3.5_goals': 'Más de 3.5 Goles',
+                    'under_0.5_goals': 'Menos de 0.5 Goles',
+                    'under_1.5_goals': 'Menos de 1.5 Goles',
+                    'under_2.5_goals': 'Menos de 2.5 Goles',
+                    'under_3.5_goals': 'Menos de 3.5 Goles',
+                    'home_win': 'Victoria Local',
+                    'away_win': 'Victoria Visitante',
+                    'draw': 'Empate',
+                    '1x2_home': 'Victoria Local',
+                    '1x2_away': 'Victoria Visitante',
+                    '1x2_draw': 'Empate',
+                };
+
+                const translateMarket = (market: string): string => {
+                    const key = market.toLowerCase().replace(/\s+/g, '_').replace(/\./g, '.');
+                    if (MARKET_TRANSLATIONS[key]) return MARKET_TRANSLATIONS[key];
+                    // Fallback: normalizar el market
+                    return market
+                        .replace(/_/g, ' ')
+                        .replace('over', 'Más de')
+                        .replace('under', 'Menos de')
+                        .replace('goals', 'Goles')
+                        .replace('btts', 'Ambos Anotan')
+                        .replace('yes', 'Sí')
+                        .replace('no', 'No');
+                };
+
+                const translateSelection = (selection: string): string => {
+                    const lower = selection.toLowerCase();
+                    if (lower === 'yes' || lower === 'sí') return 'Sí';
+                    if (lower === 'no') return 'No';
+                    if (lower === 'over') return 'Más';
+                    if (lower === 'under') return 'Menos';
+                    return selection;
+                };
+
+                // ═══════════════════════════════════════════════════════════════
+                // FIX: MOSTRAR TODOS LOS PICKS ≥60% (sin deduplicar)
+                // ═══════════════════════════════════════════════════════════════
+                const topPicks: TopPickItem[] = [];
 
                 for (const pick of v2Picks) {
                     const fixtureId = jobToFixture.get(pick.job_id);
                     if (!fixtureId) continue;
 
                     const prob = pick.p_model * 100;
+                    if (prob < 60) continue; // Ignorar <60%
 
-                    if (prob >= 80) {
-                        // HIGH: guardar el mejor ≥80%
-                        const existing = highPickByFixture.get(fixtureId);
-                        if (!existing || pick.p_model > existing.p_model) {
-                            highPickByFixture.set(fixtureId, pick);
-                        }
-                    } else if (prob >= 60) {
-                        // MEDIUM: guardar el mejor 60-79%
-                        const existing = mediumPickByFixture.get(fixtureId);
-                        if (!existing || pick.p_model > existing.p_model) {
-                            mediumPickByFixture.set(fixtureId, pick);
-                        }
-                    }
-                    // <60% se ignora (no se muestra en Oportunidades)
-                }
-
-                console.log(`[TopPicks] V2: Deduplicado - HIGH: ${highPickByFixture.size}, MEDIUM: ${mediumPickByFixture.size}`);
-
-                const topPicks: TopPickItem[] = [];
-
-                // Función helper para crear TopPickItem
-                const createPickItem = (fixtureId: number, pick: any): TopPickItem | null => {
                     const game = games.find(g => g.fixture.id === fixtureId);
-                    if (!game) return null;
+                    if (!game) continue;
 
-                    const prob = pick.p_model * 100;
-                    const confidence: 'Alta' | 'Media' | 'Baja' = prob >= 60 ? 'Alta' : prob >= 45 ? 'Media' : 'Baja';
+                    const confidence: 'Alta' | 'Media' | 'Baja' = prob >= 80 ? 'Alta' : prob >= 60 ? 'Alta' : 'Media';
 
-                    return {
+                    topPicks.push({
                         gameId: fixtureId,
                         analysisRunId: pick.job_id,
                         matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
@@ -292,28 +316,18 @@ export const fetchTopPicks = async (date: string) => {
                             away: { name: game.teams.away.name, logo: game.teams.away.logo }
                         },
                         bestRecommendation: {
-                            market: pick.market?.replace(/_/g, ' ').toUpperCase() || pick.market,
-                            prediction: pick.selection,
+                            market: translateMarket(pick.market || ''),
+                            prediction: translateSelection(pick.selection || ''),
                             probability: Math.round(prob),
                             confidence: confidence,
                             reasoning: pick.rationale || `Probabilidad: ${Math.round(prob)}%`
                         },
                         result: 'Pending',
                         odds: undefined
-                    };
-                };
-
-                // Agregar todos los HIGH picks
-                for (const [fixtureId, pick] of highPickByFixture.entries()) {
-                    const item = createPickItem(fixtureId, pick);
-                    if (item) topPicks.push(item);
+                    });
                 }
 
-                // Agregar todos los MEDIUM picks
-                for (const [fixtureId, pick] of mediumPickByFixture.entries()) {
-                    const item = createPickItem(fixtureId, pick);
-                    if (item) topPicks.push(item);
-                }
+                console.log(`[TopPicks] V2: Total picks ≥60%: ${topPicks.length}`);
 
                 // Si encontramos picks V2, retornarlos ordenados por probabilidad
                 if (topPicks.length > 0) {

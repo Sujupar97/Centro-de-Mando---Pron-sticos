@@ -467,6 +467,26 @@ export const getAnalysisResultByRunId = async (runId: string): Promise<VisualAna
  * Útil para Top Picks donde las predicciones no tienen analysis_run_id.
  */
 export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<VisualAnalysisResult | null> => {
+    // ═══════════════════════════════════════════════════════════════
+    // FIX: Buscar en V2 primero (analysis_jobs_v2)
+    // ═══════════════════════════════════════════════════════════════
+    const { data: v2Job } = await supabase
+        .from('analysis_jobs_v2')
+        .select('id')
+        .eq('fixture_id', fixtureId)
+        .eq('status', 'done')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+    if (v2Job) {
+        console.log(`[analysisService] V2 job encontrado para fixture ${fixtureId}: ${v2Job.id}`);
+        return await getAnalysisResult(v2Job.id);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // FALLBACK: Buscar en tabla legacy 'analisis'
+    // ═══════════════════════════════════════════════════════════════
     const { data, error } = await supabase
         .from('analisis')
         .select('resultado_analisis')
@@ -474,7 +494,7 @@ export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<V
         .single();
 
     if (error || !data) {
-        console.error("Error fetching analysis by fixture ID:", error);
+        console.log(`[analysisService] No se encontró análisis para fixture ${fixtureId} en ninguna fuente`);
         return null;
     }
 
