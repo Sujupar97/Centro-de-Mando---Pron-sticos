@@ -142,70 +142,90 @@ serve(async (req) => {
         });
 
         // ═══════════════════════════════════════════════════════════════
-        // MODEL 3: CORNERS - AVERAGE + STD
+        // MODEL 3: CORNERS - SOLO SI HAY DATOS SUFICIENTES
         // ═══════════════════════════════════════════════════════════════
         const corners = metrics.corners;
-        const expectedCorners = corners.combined.expected_total || 9.0;
-        const cornersStd = Math.sqrt((corners.home.std || 1.5) ** 2 + (corners.away.std || 1.5) ** 2);
+        const expectedCorners = corners?.combined?.expected_total || 0;
+        const hasGoodCornersData = expectedCorners > 5 && !quality_flags?.low_coverage_corners;
 
-        // Over 9.5 corners probability (using normal approximation)
-        const zScore95 = (9.5 - expectedCorners) / Math.max(cornersStd, 0.1);
-        const over95Corners = 1 - normalCdf(zScore95);
-        const cornersUncertainty = quality_flags?.low_coverage_corners ? 0.15 : 0.12;
+        if (hasGoodCornersData) {
+            const cornersStd = Math.sqrt((corners.home?.std || 2.0) ** 2 + (corners.away?.std || 2.0) ** 2);
+            const cornersUncertainty = quality_flags?.low_coverage_corners ? 0.20 : 0.12;
 
-        marketProbs.push({
-            fixture_id,
-            job_id,
-            market: 'corners_over_9.5',
-            selection: 'Over 9.5',
-            p_model: Math.round(Math.max(0, Math.min(1, over95Corners)) * 10000) / 10000,
-            uncertainty: Math.round(cornersUncertainty * 10000) / 10000,
-            model_name: 'normal_approximation',
-            model_inputs: { expected: expectedCorners, std: cornersStd },
-            rationale: `Expected corners: ${expectedCorners.toFixed(1)} ± ${cornersStd.toFixed(1)}. Z-score for 9.5: ${zScore95.toFixed(2)}.`,
-            engine_version: ENGINE_VERSION
-        });
+            // Over 9.5 corners probability (using normal approximation)
+            const zScore95 = (9.5 - expectedCorners) / Math.max(cornersStd, 1.5);
+            const over95Corners = 1 - normalCdf(zScore95);
 
-        // Over 10.5 corners
-        const zScore105 = (10.5 - expectedCorners) / Math.max(cornersStd, 0.1);
-        const over105Corners = 1 - normalCdf(zScore105);
+            // Solo añadir si la probabilidad es razonable (>10%)
+            if (over95Corners > 0.10) {
+                marketProbs.push({
+                    fixture_id,
+                    job_id,
+                    market: 'corners_over_9.5',
+                    selection: 'Over 9.5',
+                    p_model: Math.round(Math.max(0.10, Math.min(0.95, over95Corners)) * 10000) / 10000,
+                    uncertainty: Math.round(cornersUncertainty * 10000) / 10000,
+                    model_name: 'normal_approximation',
+                    model_inputs: { expected: expectedCorners, std: cornersStd },
+                    rationale: `Expected corners: ${expectedCorners.toFixed(1)} ± ${cornersStd.toFixed(1)}. Probability: ${(over95Corners * 100).toFixed(1)}%.`,
+                    engine_version: ENGINE_VERSION
+                });
+            }
 
-        marketProbs.push({
-            fixture_id,
-            job_id,
-            market: 'corners_over_10.5',
-            selection: 'Over 10.5',
-            p_model: Math.round(Math.max(0, Math.min(1, over105Corners)) * 10000) / 10000,
-            uncertainty: Math.round(cornersUncertainty * 10000) / 10000,
-            model_name: 'normal_approximation',
-            model_inputs: { expected: expectedCorners, std: cornersStd },
-            rationale: `${(over105Corners * 100).toFixed(1)}% probability of 11+ corners.`,
-            engine_version: ENGINE_VERSION
-        });
+            // Over 10.5 corners
+            const zScore105 = (10.5 - expectedCorners) / Math.max(cornersStd, 1.5);
+            const over105Corners = 1 - normalCdf(zScore105);
+
+            if (over105Corners > 0.10) {
+                marketProbs.push({
+                    fixture_id,
+                    job_id,
+                    market: 'corners_over_10.5',
+                    selection: 'Over 10.5',
+                    p_model: Math.round(Math.max(0.10, Math.min(0.95, over105Corners)) * 10000) / 10000,
+                    uncertainty: Math.round(cornersUncertainty * 10000) / 10000,
+                    model_name: 'normal_approximation',
+                    model_inputs: { expected: expectedCorners, std: cornersStd },
+                    rationale: `${(over105Corners * 100).toFixed(1)}% probability of 11+ corners.`,
+                    engine_version: ENGINE_VERSION
+                });
+            }
+        } else {
+            console.log(`[V2-MODELS] ⚠️ Corners data insufficient (expected: ${expectedCorners}), skipping corners markets`);
+        }
 
         // ═══════════════════════════════════════════════════════════════
-        // MODEL 4: CARDS - AVERAGE + REFEREE FACTOR
+        // MODEL 4: CARDS - SOLO SI HAY DATOS SUFICIENTES
         // ═══════════════════════════════════════════════════════════════
         const cards = metrics.cards;
-        const expectedCards = cards.combined.expected_total || 4.0;
-        const cardsUncertainty = quality_flags?.low_coverage_cards ? 0.15 : 0.12;
+        const expectedCards = cards?.combined?.expected_total || 0;
+        const hasGoodCardsData = expectedCards > 2 && !quality_flags?.low_coverage_cards;
 
-        // Over 4.5 cards probability
-        const zScore45Cards = (4.5 - expectedCards) / 1.5; // Assumed std of 1.5
-        const over45Cards = 1 - normalCdf(zScore45Cards);
+        if (hasGoodCardsData) {
+            const cardsUncertainty = quality_flags?.low_coverage_cards ? 0.20 : 0.12;
+            const cardsStd = 1.5; // Standard deviation assumption
 
-        marketProbs.push({
-            fixture_id,
-            job_id,
-            market: 'cards_over_4.5',
-            selection: 'Over 4.5',
-            p_model: Math.round(Math.max(0, Math.min(1, over45Cards)) * 10000) / 10000,
-            uncertainty: Math.round(cardsUncertainty * 10000) / 10000,
-            model_name: 'normal_approximation',
-            model_inputs: { expected: expectedCards, referee_factor: cards.referee_factor },
-            rationale: `Expected cards: ${expectedCards.toFixed(1)} (referee factor: ${cards.referee_factor?.toFixed(2) || 1}).`,
-            engine_version: ENGINE_VERSION
-        });
+            // Over 4.5 cards probability
+            const zScore45Cards = (4.5 - expectedCards) / cardsStd;
+            const over45Cards = 1 - normalCdf(zScore45Cards);
+
+            if (over45Cards > 0.10) {
+                marketProbs.push({
+                    fixture_id,
+                    job_id,
+                    market: 'cards_over_4.5',
+                    selection: 'Over 4.5',
+                    p_model: Math.round(Math.max(0.10, Math.min(0.95, over45Cards)) * 10000) / 10000,
+                    uncertainty: Math.round(cardsUncertainty * 10000) / 10000,
+                    model_name: 'normal_approximation',
+                    model_inputs: { expected: expectedCards, referee_factor: cards.referee_factor },
+                    rationale: `Expected cards: ${expectedCards.toFixed(1)} (referee factor: ${cards.referee_factor?.toFixed(2) || 1}).`,
+                    engine_version: ENGINE_VERSION
+                });
+            }
+        } else {
+            console.log(`[V2-MODELS] ⚠️ Cards data insufficient (expected: ${expectedCards}), skipping cards markets`);
+        }
 
         // ═══════════════════════════════════════════════════════════════
         // MODEL 5: 1X2 - DERIVED FROM GOALS

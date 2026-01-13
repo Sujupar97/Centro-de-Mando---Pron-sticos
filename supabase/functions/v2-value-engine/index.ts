@@ -110,15 +110,20 @@ serve(async (req) => {
             if (quality_flags?.small_sample) {
                 risks.push('Muestra pequeña (< 5 partidos)');
             }
-            if (quality_flags?.odds_missing) {
-                risks.push('Odds no disponibles');
+
+            // ════════════════════════════════════════════════════════
+            // SIN CUOTAS = SKIP (no mostrar este mercado)
+            // ════════════════════════════════════════════════════════
+            if (!odds) {
+                decision = 'SKIP';  // No incluir en resultados
+                reasons.push('Sin odds disponibles - mercado no evaluable');
+                // NO hacer push a allPicks, continuar al siguiente
+                console.log(`[V2-VALUE] ⚠️ Skipping ${market} - no odds available`);
+                continue; // Saltar este mercado completamente
             }
 
-            // Determine decision
-            if (!odds) {
-                decision = 'WATCH';
-                reasons.push('Sin odds disponibles para comparar');
-            } else if (edge && edge >= threshold.min_edge && confidence >= threshold.min_confidence) {
+            // Solo evaluar si hay cuotas
+            if (edge && edge >= threshold.min_edge && confidence >= threshold.min_confidence) {
                 // Check for disqualifying flags
                 const hasDisqualifyingFlag =
                     (quality_flags?.high_variance_goals && market.includes('goal')) ||
