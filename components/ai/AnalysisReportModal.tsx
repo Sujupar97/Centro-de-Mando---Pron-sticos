@@ -404,26 +404,14 @@ const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
     const color = prob >= 70 ? 'text-green-accent' : prob >= 55 ? 'text-yellow-400' : 'text-gray-300';
     const border = prob >= 70 ? 'border-green-accent' : 'border-gray-600';
 
-    // V2 Compatible: Detectar si es estructura V1 o V2
-    const hasV1Structure = pred.justificacion_detallada?.base_estadistica;
-    const hasV2Structure = (pred as any).edge !== undefined || (pred as any).decision !== undefined;
+    // V2 ahora viene mapeado a estructura V1, así que usamos justificacion_detallada
+    const justif = pred.justificacion_detallada;
+    const edge = (pred as any).edge; // Ya es porcentaje entero (31, no 0.31)
 
-    // Extraer datos según versión
-    const baseStats = hasV1Structure
-        ? pred.justificacion_detallada.base_estadistica
-        : [(pred as any).reasoning || 'Análisis basado en modelo cuantitativo'];
-
-    const context = hasV1Structure
-        ? pred.justificacion_detallada.contexto_competitivo?.[0]
-        : hasV2Structure && (pred as any).edge
-            ? `Edge calculado: ${((pred as any).edge * 100).toFixed(1)}%`
-            : 'Factor táctico considerado';
-
-    const conclusion = hasV1Structure
-        ? pred.justificacion_detallada.conclusion
-        : hasV2Structure && (pred as any).decision
-            ? `Decisión del modelo: ${(pred as any).decision}`
-            : 'Conclusión basada en el análisis de datos';
+    // Extraer datos con fallbacks seguros
+    const baseStats = justif?.base_estadistica || ['Análisis cuantitativo aplicado'];
+    const context = justif?.contexto_competitivo?.[0] || (edge ? `Ventaja de +${edge}% sobre las cuotas` : 'Factor táctico evaluado');
+    const conclusion = justif?.conclusion || 'Recomendación basada en el modelo de análisis';
 
     return (
         <div className={`bg-gray-800 rounded-xl overflow-hidden border-l-4 ${border} shadow-lg mb-6`}>
@@ -435,16 +423,16 @@ const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
                 <div className="flex flex-col items-center justify-center bg-gray-900 rounded-lg p-2 min-w-[80px]">
                     <span className={`text-2xl font-bold ${color}`}>{prob}%</span>
                     <span className="text-[10px] text-gray-500 uppercase">Prob.</span>
-                    {/* Odds Badge - IMPROVED VISIBILITY */}
+                    {/* Odds Badge */}
                     {pred.odds && (
                         <div className="mt-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-3 py-1 rounded-md text-sm font-black shadow-[0_0_10px_rgba(59,130,246,0.5)] animate-pulse-slow border border-blue-400">
                             @{pred.odds.toFixed(2)}
                         </div>
                     )}
-                    {/* V2: Show Edge */}
-                    {hasV2Structure && (pred as any).edge && (
+                    {/* Edge Badge - Ya es porcentaje, NO multiplicar */}
+                    {edge && edge > 0 && (
                         <div className="mt-2 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white px-3 py-1 rounded-md text-xs font-bold">
-                            Edge: +{((pred as any).edge * 100).toFixed(0)}%
+                            Edge: +{edge}%
                         </div>
                     )}
                 </div>
@@ -455,7 +443,7 @@ const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
                     <div>
-                        <strong className="text-gray-400 block mb-1">{hasV2Structure ? 'Razones:' : 'Base Estadística:'}</strong>
+                        <strong className="text-gray-400 block mb-1">Base Estadística:</strong>
                         <ul className="list-disc pl-4 text-gray-300 space-y-1">
                             {(Array.isArray(baseStats) ? baseStats : [baseStats]).map((t, i) => <li key={i}>{t}</li>)}
                         </ul>

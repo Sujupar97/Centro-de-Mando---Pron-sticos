@@ -169,12 +169,14 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
         .single();
 
     if (v2Report?.report_packet) {
-        // Obtener picks V2
+        // Obtener picks V2 - SOLO BET, ordenados por edge
         const { data: v2Picks } = await supabase
             .from('value_picks_v2')
             .select('*')
             .eq('job_id', jobId)
-            .order('rank', { ascending: true });
+            .eq('decision', 'BET')  // ✅ SOLO picks BET
+            .order('rank', { ascending: true })
+            .limit(3);  // ✅ Máximo 3 picks
 
         // Obtener job V2 para fixture_id
         const { data: v2Job } = await supabase
@@ -185,7 +187,15 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
 
         // Transformar V2 al formato esperado por la UI
         const report = v2Report.report_packet;
-        const betPicks = v2Picks?.filter((p: any) => p.decision === 'BET') || [];
+        const betPicks = v2Picks || [];
+
+        // Buscar justificación de Gemini para cada pick
+        const getJustification = (market: string) => {
+            const justif = report.justificacion_picks?.find((j: any) =>
+                j.pick?.toLowerCase().includes(market.toLowerCase())
+            );
+            return justif || null;
+        };
 
         return {
             analysisText: report.resumen_ejecutivo?.titular || "Análisis V2 completado.",
@@ -199,22 +209,65 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                     razon_principal: report.conclusion?.veredicto || '',
                     riesgo_principal: report.resumen_ejecutivo?.riesgo_principal || ''
                 },
-                resumen_ejecutivo: report.resumen_ejecutivo,
+                // ✅ FIX: Mapear resumen_ejecutivo a estructura V1
+                resumen_ejecutivo: {
+                    frase_principal: report.resumen_ejecutivo?.titular || '',
+                    puntos_clave: [
+                        report.contexto_competitivo?.situacion_local,
+                        report.contexto_competitivo?.situacion_visitante,
+                        report.resumen_ejecutivo?.riesgo_principal
+                    ].filter(Boolean)
+                },
+                // ✅ FIX: Mapear análisis detallado con secciones correctas
                 analisis_detallado: {
-                    contexto_competitivo: report.contexto_competitivo,
-                    analisis_tactico_formaciones: report.analisis_tactico,
-                    analisis_escenarios: report.proyeccion_escenarios
+                    contexto_competitivo: {
+                        titulo: report.contexto_competitivo?.titulo || 'Contexto Competitivo',
+                        bullets: [
+                            report.contexto_competitivo?.situacion_local,
+                            report.contexto_competitivo?.situacion_visitante,
+                            report.contexto_competitivo?.implicaciones
+                        ].filter(Boolean)
+                    },
+                    analisis_tactico_formaciones: {
+                        titulo: report.analisis_tactico?.titulo || 'Análisis Táctico',
+                        bullets: [
+                            report.analisis_tactico?.enfoque_local,
+                            report.analisis_tactico?.enfoque_visitante,
+                            report.analisis_tactico?.matchup
+                        ].filter(Boolean)
+                    },
+                    analisis_escenarios: {
+                        titulo: 'Escenarios Proyectados',
+                        bullets: [
+                            `Probable (${report.proyeccion_escenarios?.escenario_probable?.probabilidad || '60-70%'}): ${report.proyeccion_escenarios?.escenario_probable?.descripcion || ''}`,
+                            `Alternativo (${report.proyeccion_escenarios?.escenario_alternativo?.probabilidad || '20-30%'}): ${report.proyeccion_escenarios?.escenario_alternativo?.descripcion || ''}`
+                        ].filter(b => b && b.length > 20)
+                    }
                 },
+                // ✅ FIX: Solo picks BET con justificación rica
                 predicciones_finales: {
-                    detalle: v2Picks?.map((p: any) => ({
-                        mercado: p.market,
-                        seleccion: p.selection,
-                        probabilidad_estimado_porcentaje: Math.round(p.p_model * 100),
-                        edge: p.edge ? Math.round(p.edge * 100) : null,
-                        decision: p.decision
-                    })) || []
+                    detalle: betPicks.map((p: any) => {
+                        const justif = getJustification(p.market);
+                        return {
+                            mercado: p.market.replace(/_/g, ' ').replace(/\./g, ','),
+                            seleccion: p.selection,
+                            probabilidad_estimado_porcentaje: Math.round(p.p_model * 100),
+                            // ✅ FIX: Edge ya es decimal (0.31), convertir a % aquí
+                            edge: p.edge ? Math.round(p.edge * 100) : null,
+                            odds: p.odds || null,
+                            // ✅ FIX: Usar justificación de Gemini
+                            justificacion_detallada: {
+                                base_estadistica: justif?.datos_soporte || ['Modelo cuantitativo Poisson', 'Datos históricos de rendimiento'],
+                                contexto_competitivo: justif?.riesgos_especificos || ['Factor táctico evaluado'],
+                                conclusion: justif?.justificacion_tactica || `Edge de ${p.edge ? Math.round(p.edge * 100) : 0}% detectado por el modelo.`
+                            }
+                        };
+                    })
                 },
-                advertencias: report.factores_riesgo
+                advertencias: {
+                    titulo: 'Factores de Riesgo',
+                    riesgos: report.factores_riesgo?.riesgos || []
+                }
             } as unknown as DashboardAnalysisJSON,
             analysisRun: {
                 id: jobId,
@@ -222,14 +275,16 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                 fixture_id: v2Job?.fixture_id,
                 report_pre_jsonb: report,
                 summary_pre_text: report.resumen_ejecutivo?.titular,
-                predictions: v2Picks?.map((p: any) => ({
+                predictions: betPicks.map((p: any) => ({
                     id: p.id,
                     market: p.market,
                     selection: p.selection,
-                    probability: p.p_model,
+                    probability: Math.round(p.p_model * 100),
                     confidence: p.confidence,
-                    reasoning: p.risk_notes?.reasons?.join('. ') || ''
-                })) || []
+                    reasoning: report.justificacion_picks?.find((j: any) =>
+                        j.pick?.toLowerCase().includes(p.market.toLowerCase())
+                    )?.justificacion_tactica || ''
+                }))
             } as unknown as AnalysisRun
         };
     }
