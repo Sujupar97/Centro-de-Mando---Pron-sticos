@@ -216,20 +216,31 @@ export const fetchTopPicks = async (date: string) => {
         // ═══════════════════════════════════════════════════════════════
         const { data: v2Jobs } = await supabase
             .from('analysis_jobs_v2')
-            .select('id, fixture_id')
+            .select('id, fixture_id, created_at')
             .in('fixture_id', fixtureIds)
             .eq('status', 'done');
 
         if (v2Jobs && v2Jobs.length > 0) {
             console.log(`[TopPicks] ✅ V2: Encontrados ${v2Jobs.length} jobs V2`);
 
-            const v2JobIds = v2Jobs.map((j: any) => j.id);
+            // ═══════════════════════════════════════════════════════════════
+            // FIX: Solo el job MÁS RECIENTE por fixture (evita duplicados)
+            // ═══════════════════════════════════════════════════════════════
+            const latestJobByFixture = new Map<number, any>();
+            for (const job of v2Jobs) {
+                const existing = latestJobByFixture.get(job.fixture_id);
+                if (!existing || new Date(job.created_at) > new Date(existing.created_at)) {
+                    latestJobByFixture.set(job.fixture_id, job);
+                }
+            }
+            const latestJobIds = Array.from(latestJobByFixture.values()).map((j: any) => j.id);
+            console.log(`[TopPicks] V2: Filtrado a ${latestJobIds.length} jobs (más recientes por fixture)`);
 
             // Obtener value_picks_v2 con BET o WATCH con alta probabilidad
             const { data: v2Picks } = await supabase
                 .from('value_picks_v2')
                 .select('*')
-                .in('job_id', v2JobIds)
+                .in('job_id', latestJobIds)
                 .in('decision', ['BET', 'WATCH'])
                 .gte('p_model', 0.50)  // Solo picks con >50% probabilidad
                 .order('p_model', { ascending: false });
@@ -303,7 +314,8 @@ export const fetchTopPicks = async (date: string) => {
                     const game = games.find(g => g.fixture.id === fixtureId);
                     if (!game) continue;
 
-                    const confidence: 'Alta' | 'Media' | 'Baja' = prob >= 80 ? 'Alta' : prob >= 60 ? 'Alta' : 'Media';
+                    // FIX: ≥80%→Alta, 60-79%→Media, <60%→Baja
+                    const confidence: 'Alta' | 'Media' | 'Baja' = prob >= 80 ? 'Alta' : prob >= 60 ? 'Media' : 'Baja';
 
                     topPicks.push({
                         gameId: fixtureId,
