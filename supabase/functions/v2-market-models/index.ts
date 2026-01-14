@@ -142,56 +142,73 @@ serve(async (req) => {
         });
 
         // ═══════════════════════════════════════════════════════════════
-        // MODEL 3: CORNERS - SOLO SI HAY DATOS SUFICIENTES
+        // MODEL 3: CORNERS - FASE 3: FALLBACK INTELIGENTE
         // ═══════════════════════════════════════════════════════════════
         const corners = metrics.corners;
-        const expectedCorners = corners?.combined?.expected_total || 0;
-        const hasGoodCornersData = expectedCorners > 5 && !quality_flags?.low_coverage_corners;
+        let expectedCorners = corners?.combined?.expected_total || 0;
+        let cornersStd = Math.sqrt((corners?.home?.std || 2.5) ** 2 + (corners?.away?.std || 2.5) ** 2);
+        let cornersUncertainty = 0.12;
+        let cornersSource = 'calculated';
 
-        if (hasGoodCornersData) {
-            const cornersStd = Math.sqrt((corners.home?.std || 2.0) ** 2 + (corners.away?.std || 2.0) ** 2);
-            const cornersUncertainty = quality_flags?.low_coverage_corners ? 0.20 : 0.12;
+        // FASE 3: FALLBACK - Si no hay datos, usar promedios de liga típicos
+        if (expectedCorners < 5 || quality_flags?.low_coverage_corners) {
+            // Promedios típicos: mayoría de ligas tienen ~10-11 corners por partido
+            expectedCorners = 10.5;
+            cornersStd = 3.2;
+            cornersUncertainty = 0.18;
+            cornersSource = 'league_average';
+            console.log(`[V2-MODELS] 📊 Corners fallback: usando promedio de liga (${expectedCorners})`);
+        }
 
-            // Over 9.5 corners probability (using normal approximation)
-            const zScore95 = (9.5 - expectedCorners) / Math.max(cornersStd, 1.5);
-            const over95Corners = 1 - normalCdf(zScore95);
+        // Over 8.5 corners
+        const zScore85 = (8.5 - expectedCorners) / Math.max(cornersStd, 1.5);
+        const over85Corners = 1 - normalCdf(zScore85);
+        if (over85Corners > 0.10) {
+            marketProbs.push({
+                fixture_id, job_id,
+                market: 'corners_over_8.5',
+                selection: 'Over 8.5 Corners',
+                p_model: Math.round(Math.max(0.10, Math.min(0.95, over85Corners)) * 10000) / 10000,
+                uncertainty: Math.round(cornersUncertainty * 10000) / 10000,
+                model_name: 'normal_approximation',
+                model_inputs: { expected: expectedCorners, source: cornersSource },
+                rationale: `Expected: ${expectedCorners.toFixed(1)} corners (${cornersSource}). Prob: ${(over85Corners * 100).toFixed(1)}%.`,
+                engine_version: ENGINE_VERSION
+            });
+        }
 
-            // Solo añadir si la probabilidad es razonable (>10%)
-            if (over95Corners > 0.10) {
-                marketProbs.push({
-                    fixture_id,
-                    job_id,
-                    market: 'corners_over_9.5',
-                    selection: 'Over 9.5',
-                    p_model: Math.round(Math.max(0.10, Math.min(0.95, over95Corners)) * 10000) / 10000,
-                    uncertainty: Math.round(cornersUncertainty * 10000) / 10000,
-                    model_name: 'normal_approximation',
-                    model_inputs: { expected: expectedCorners, std: cornersStd },
-                    rationale: `Expected corners: ${expectedCorners.toFixed(1)} ± ${cornersStd.toFixed(1)}. Probability: ${(over95Corners * 100).toFixed(1)}%.`,
-                    engine_version: ENGINE_VERSION
-                });
-            }
+        // Over 9.5 corners
+        const zScore95 = (9.5 - expectedCorners) / Math.max(cornersStd, 1.5);
+        const over95Corners = 1 - normalCdf(zScore95);
+        if (over95Corners > 0.10) {
+            marketProbs.push({
+                fixture_id, job_id,
+                market: 'corners_over_9.5',
+                selection: 'Over 9.5 Corners',
+                p_model: Math.round(Math.max(0.10, Math.min(0.95, over95Corners)) * 10000) / 10000,
+                uncertainty: Math.round(cornersUncertainty * 10000) / 10000,
+                model_name: 'normal_approximation',
+                model_inputs: { expected: expectedCorners, source: cornersSource },
+                rationale: `Expected: ${expectedCorners.toFixed(1)}. Probability: ${(over95Corners * 100).toFixed(1)}%.`,
+                engine_version: ENGINE_VERSION
+            });
+        }
 
-            // Over 10.5 corners
-            const zScore105 = (10.5 - expectedCorners) / Math.max(cornersStd, 1.5);
-            const over105Corners = 1 - normalCdf(zScore105);
-
-            if (over105Corners > 0.10) {
-                marketProbs.push({
-                    fixture_id,
-                    job_id,
-                    market: 'corners_over_10.5',
-                    selection: 'Over 10.5',
-                    p_model: Math.round(Math.max(0.10, Math.min(0.95, over105Corners)) * 10000) / 10000,
-                    uncertainty: Math.round(cornersUncertainty * 10000) / 10000,
-                    model_name: 'normal_approximation',
-                    model_inputs: { expected: expectedCorners, std: cornersStd },
-                    rationale: `${(over105Corners * 100).toFixed(1)}% probability of 11+ corners.`,
-                    engine_version: ENGINE_VERSION
-                });
-            }
-        } else {
-            console.log(`[V2-MODELS] ⚠️ Corners data insufficient (expected: ${expectedCorners}), skipping corners markets`);
+        // Over 10.5 corners
+        const zScore105 = (10.5 - expectedCorners) / Math.max(cornersStd, 1.5);
+        const over105Corners = 1 - normalCdf(zScore105);
+        if (over105Corners > 0.10) {
+            marketProbs.push({
+                fixture_id, job_id,
+                market: 'corners_over_10.5',
+                selection: 'Over 10.5 Corners',
+                p_model: Math.round(Math.max(0.10, Math.min(0.95, over105Corners)) * 10000) / 10000,
+                uncertainty: Math.round(cornersUncertainty * 10000) / 10000,
+                model_name: 'normal_approximation',
+                model_inputs: { expected: expectedCorners, source: cornersSource },
+                rationale: `${(over105Corners * 100).toFixed(1)}% probability of 11+ corners.`,
+                engine_version: ENGINE_VERSION
+            });
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -481,13 +498,12 @@ serve(async (req) => {
         });
 
         // ═══════════════════════════════════════════════════════════════
-        // MODEL 10: CORNERS EXTENDIDOS
+        // MODEL 10: CORNERS EXTENDIDOS (12.5)
         // ═══════════════════════════════════════════════════════════════
-        if (hasGoodCornersData && expectedCorners > 8) {
-            const cornersStdVal = Math.sqrt((corners.home?.std || 2.0) ** 2 + (corners.away?.std || 2.0) ** 2);
-
+        // FASE 3: Ahora sempre calculamos (con fallback) - solo verificamos umbral alto
+        if (expectedCorners > 8) {
             // Over 12.5 corners
-            const zScore125 = (12.5 - expectedCorners) / Math.max(cornersStdVal, 1.5);
+            const zScore125 = (12.5 - expectedCorners) / Math.max(cornersStd, 1.5);
             const over125Corners = 1 - normalCdf(zScore125);
 
             if (over125Corners > 0.05) {
@@ -496,10 +512,10 @@ serve(async (req) => {
                     market: 'corners_over_12.5',
                     selection: 'Over 12.5 Corners',
                     p_model: Math.round(over125Corners * 10000) / 10000,
-                    uncertainty: 0.15,
+                    uncertainty: cornersUncertainty + 0.03, // Mayor incertidumbre en extremos
                     model_name: 'normal_approximation',
-                    model_inputs: { expected: expectedCorners },
-                    rationale: `Probabilidad de 13+ corners: ${(over125Corners * 100).toFixed(1)}%.`,
+                    model_inputs: { expected: expectedCorners, source: cornersSource },
+                    rationale: `Probabilidad de 13+ corners: ${(over125Corners * 100).toFixed(1)}% (${cornersSource}).`,
                     engine_version: ENGINE_VERSION
                 });
             }
