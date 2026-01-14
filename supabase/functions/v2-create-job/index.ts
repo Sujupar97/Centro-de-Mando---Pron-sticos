@@ -138,6 +138,18 @@ serve(async (req) => {
             away_id: f.teams.away.id,
             score_home: f.goals.home,
             score_away: f.goals.away,
+            // ═══════════════════════════════════════════════════════════════
+            // FASE 1: DATOS DE PRIMER TIEMPO (HALFTIME)
+            // ═══════════════════════════════════════════════════════════════
+            score_home_1t: f.score?.halftime?.home ?? null,
+            score_away_1t: f.score?.halftime?.away ?? null,
+            // Goles segundo tiempo = total - primer tiempo
+            score_home_2t: (f.goals.home != null && f.score?.halftime?.home != null)
+                ? f.goals.home - f.score.halftime.home
+                : null,
+            score_away_2t: (f.goals.away != null && f.score?.halftime?.away != null)
+                ? f.goals.away - f.score.halftime.away
+                : null,
             stats: stats ? {
                 home: stats.find((t: any) => t.team.id === f.teams.home.id)?.statistics?.reduce((acc: any, s: any) => ({ ...acc, [s.type]: s.value }), {}) || {},
                 away: stats.find((t: any) => t.team.id === f.teams.away.id)?.statistics?.reduce((acc: any, s: any) => ({ ...acc, [s.type]: s.value }), {}) || {}

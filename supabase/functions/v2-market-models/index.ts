@@ -566,7 +566,87 @@ serve(async (req) => {
             engine_version: ENGINE_VERSION
         });
 
-        console.log(`[V2-MODELS] 🚀 Generated ${marketProbs.length} market probabilities (PREMIUM)`);
+        // ═══════════════════════════════════════════════════════════════
+        // MODEL 13: GOLES PRIMER TIEMPO (1T)
+        // ═══════════════════════════════════════════════════════════════
+        // Lambda 1T ≈ 0.42-0.45 del total (estadísticamente ~45% goles en 1T)
+        const lambda1T_home = (goals.home?.as_home?.scored_1t_avg) || (lambdaHome * 0.45);
+        const lambda1T_away = (goals.away?.as_away?.scored_1t_avg) || (lambdaAway * 0.45);
+        const lambda1T_total = lambda1T_home + lambda1T_away;
+
+        // Over 0.5 1T
+        const over05_1T = 1 - (poissonPmf(0, lambda1T_home) * poissonPmf(0, lambda1T_away));
+        marketProbs.push({
+            fixture_id, job_id,
+            market: '1t_over_0.5',
+            selection: '1T Over 0.5',
+            p_model: Math.round(over05_1T * 10000) / 10000,
+            uncertainty: 0.10,
+            model_name: 'poisson_1t',
+            model_inputs: { lambda_1t: lambda1T_total },
+            rationale: `Probabilidad de gol en 1T: ${(over05_1T * 100).toFixed(1)}% (λ1T: ${lambda1T_total.toFixed(2)}).`,
+            engine_version: ENGINE_VERSION
+        });
+
+        // Over 1.5 1T (si probable)
+        const over15_1T = 1 - (poissonPmf(0, lambda1T_home) * poissonPmf(0, lambda1T_away))
+            - (poissonPmf(1, lambda1T_home) * poissonPmf(0, lambda1T_away))
+            - (poissonPmf(0, lambda1T_home) * poissonPmf(1, lambda1T_away));
+        if (over15_1T > 0.20) {
+            marketProbs.push({
+                fixture_id, job_id,
+                market: '1t_over_1.5',
+                selection: '1T Over 1.5',
+                p_model: Math.round(Math.max(0.10, over15_1T) * 10000) / 10000,
+                uncertainty: 0.12,
+                model_name: 'poisson_1t',
+                model_inputs: { lambda_1t: lambda1T_total },
+                rationale: `Probabilidad de 2+ goles en 1T: ${(over15_1T * 100).toFixed(1)}%.`,
+                engine_version: ENGINE_VERSION
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // MODEL 14: GOLES SEGUNDO TIEMPO (2T)
+        // ═══════════════════════════════════════════════════════════════
+        // Lambda 2T ≈ 0.55 del total (estadísticamente ~55% goles en 2T)
+        const lambda2T_home = (goals.home?.as_home?.scored_2t_avg) || (lambdaHome * 0.55);
+        const lambda2T_away = (goals.away?.as_away?.scored_2t_avg) || (lambdaAway * 0.55);
+        const lambda2T_total = lambda2T_home + lambda2T_away;
+
+        // Over 0.5 2T
+        const over05_2T = 1 - (poissonPmf(0, lambda2T_home) * poissonPmf(0, lambda2T_away));
+        marketProbs.push({
+            fixture_id, job_id,
+            market: '2t_over_0.5',
+            selection: '2T Over 0.5',
+            p_model: Math.round(over05_2T * 10000) / 10000,
+            uncertainty: 0.10,
+            model_name: 'poisson_2t',
+            model_inputs: { lambda_2t: lambda2T_total },
+            rationale: `Probabilidad de gol en 2T: ${(over05_2T * 100).toFixed(1)}% (λ2T: ${lambda2T_total.toFixed(2)}).`,
+            engine_version: ENGINE_VERSION
+        });
+
+        // Over 1.5 2T (más probable que 1T)
+        const over15_2T = 1 - (poissonPmf(0, lambda2T_home) * poissonPmf(0, lambda2T_away))
+            - (poissonPmf(1, lambda2T_home) * poissonPmf(0, lambda2T_away))
+            - (poissonPmf(0, lambda2T_home) * poissonPmf(1, lambda2T_away));
+        if (over15_2T > 0.20) {
+            marketProbs.push({
+                fixture_id, job_id,
+                market: '2t_over_1.5',
+                selection: '2T Over 1.5',
+                p_model: Math.round(Math.max(0.10, over15_2T) * 10000) / 10000,
+                uncertainty: 0.12,
+                model_name: 'poisson_2t',
+                model_inputs: { lambda_2t: lambda2T_total },
+                rationale: `Probabilidad de 2+ goles en 2T: ${(over15_2T * 100).toFixed(1)}%.`,
+                engine_version: ENGINE_VERSION
+            });
+        }
+
+        console.log(`[V2-MODELS] 🚀 Generated ${marketProbs.length} market probabilities (PREMIUM + 1T/2T)`);
 
 
         // ═══════════════════════════════════════════════════════════════

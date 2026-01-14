@@ -303,6 +303,12 @@ export const fetchTopPicks = async (date: string) => {
                     'cards_over_5.5': 'Más de 5.5 Tarjetas',
                     // Marcador Exacto
                     'correct_score_0_0': 'Marcador Exacto 0-0',
+                    // FASE 1: Primer Tiempo (1T)
+                    '1t_over_0.5': '1T Más de 0.5 Goles',
+                    '1t_over_1.5': '1T Más de 1.5 Goles',
+                    // FASE 1: Segundo Tiempo (2T)
+                    '2t_over_0.5': '2T Más de 0.5 Goles',
+                    '2t_over_1.5': '2T Más de 1.5 Goles',
                 };
 
                 const translateMarket = (market: string): string => {

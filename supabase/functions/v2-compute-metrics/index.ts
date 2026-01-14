@@ -66,18 +66,37 @@ serve(async (req) => {
         const awayAsAway = datasets.away_team_last40?.as_away || [];
 
         // ═══════════════════════════════════════════════════════════════
-        // GOALS METRICS
+        // GOALS METRICS (incluye 1T/2T)
         // ═══════════════════════════════════════════════════════════════
         const extractGoals = (matches: any[], teamId: number, isHome: boolean) => {
             return matches.map(m => {
                 const scored = isHome ? m.score_home : m.score_away;
                 const conceded = isHome ? m.score_away : m.score_home;
-                return { scored, conceded, total: (scored || 0) + (conceded || 0) };
+                // FASE 1: Datos de primer/segundo tiempo
+                const scored_1t = isHome ? m.score_home_1t : m.score_away_1t;
+                const conceded_1t = isHome ? m.score_away_1t : m.score_home_1t;
+                const scored_2t = isHome ? m.score_home_2t : m.score_away_2t;
+                const conceded_2t = isHome ? m.score_away_2t : m.score_home_2t;
+                return {
+                    scored,
+                    conceded,
+                    total: (scored || 0) + (conceded || 0),
+                    scored_1t,
+                    conceded_1t,
+                    total_1t: (scored_1t || 0) + (conceded_1t || 0),
+                    scored_2t,
+                    conceded_2t,
+                    total_2t: (scored_2t || 0) + (conceded_2t || 0)
+                };
             });
         };
 
         const homeGoalsAsHome = extractGoals(homeAsHome, homeId, true);
         const awayGoalsAsAway = extractGoals(awayAsAway, awayId, false);
+
+        // Filtrar partidos con datos de 1T válidos
+        const homeWith1T = homeGoalsAsHome.filter(g => g.scored_1t !== null);
+        const awayWith1T = awayGoalsAsAway.filter(g => g.scored_1t !== null);
 
         const goalsMetrics = {
             home: {
@@ -89,7 +108,15 @@ serve(async (req) => {
                     total_avg: avg(homeGoalsAsHome.map(g => g.total)),
                     last5_scored_avg: avg(homeGoalsAsHome.slice(0, 5).map(g => g.scored || 0)),
                     last5_total_avg: avg(homeGoalsAsHome.slice(0, 5).map(g => g.total)),
-                    sample_size: homeGoalsAsHome.length
+                    sample_size: homeGoalsAsHome.length,
+                    // FASE 1: Métricas 1T/2T
+                    scored_1t_avg: avg(homeWith1T.map(g => g.scored_1t || 0)),
+                    conceded_1t_avg: avg(homeWith1T.map(g => g.conceded_1t || 0)),
+                    total_1t_avg: avg(homeWith1T.map(g => g.total_1t)),
+                    scored_2t_avg: avg(homeWith1T.map(g => g.scored_2t || 0)),
+                    conceded_2t_avg: avg(homeWith1T.map(g => g.conceded_2t || 0)),
+                    total_2t_avg: avg(homeWith1T.map(g => g.total_2t)),
+                    sample_1t_size: homeWith1T.length
                 }
             },
             away: {
@@ -101,12 +128,23 @@ serve(async (req) => {
                     total_avg: avg(awayGoalsAsAway.map(g => g.total)),
                     last5_scored_avg: avg(awayGoalsAsAway.slice(0, 5).map(g => g.scored || 0)),
                     last5_total_avg: avg(awayGoalsAsAway.slice(0, 5).map(g => g.total)),
-                    sample_size: awayGoalsAsAway.length
+                    sample_size: awayGoalsAsAway.length,
+                    // FASE 1: Métricas 1T/2T
+                    scored_1t_avg: avg(awayWith1T.map(g => g.scored_1t || 0)),
+                    conceded_1t_avg: avg(awayWith1T.map(g => g.conceded_1t || 0)),
+                    total_1t_avg: avg(awayWith1T.map(g => g.total_1t)),
+                    scored_2t_avg: avg(awayWith1T.map(g => g.scored_2t || 0)),
+                    conceded_2t_avg: avg(awayWith1T.map(g => g.conceded_2t || 0)),
+                    total_2t_avg: avg(awayWith1T.map(g => g.total_2t)),
+                    sample_1t_size: awayWith1T.length
                 }
             },
             combined: {
                 expected_total: 0, // Will be calculated
-                over_2_5_rate: 0
+                over_2_5_rate: 0,
+                // FASE 1: Métricas combinadas 1T/2T
+                expected_1t: 0,
+                expected_2t: 0
             }
         };
 
@@ -114,10 +152,18 @@ serve(async (req) => {
         goalsMetrics.combined.expected_total =
             goalsMetrics.home.as_home.scored_avg + goalsMetrics.away.as_away.scored_avg;
 
+        // FASE 1: Expected 1T/2T
+        goalsMetrics.combined.expected_1t =
+            goalsMetrics.home.as_home.scored_1t_avg + goalsMetrics.away.as_away.scored_1t_avg;
+        goalsMetrics.combined.expected_2t =
+            goalsMetrics.home.as_home.scored_2t_avg + goalsMetrics.away.as_away.scored_2t_avg;
+
         // Over 2.5 historical rate
         const allHomeGames = homeGoalsAsHome.filter(g => g.total > 2.5).length / Math.max(homeGoalsAsHome.length, 1);
         const allAwayGames = awayGoalsAsAway.filter(g => g.total > 2.5).length / Math.max(awayGoalsAsAway.length, 1);
         goalsMetrics.combined.over_2_5_rate = (allHomeGames + allAwayGames) / 2;
+
+        console.log(`[V2-METRICS] 📊 1T expected: ${goalsMetrics.combined.expected_1t.toFixed(2)}, 2T expected: ${goalsMetrics.combined.expected_2t.toFixed(2)}`);
 
         // ═══════════════════════════════════════════════════════════════
         // CORNERS METRICS (from enriched comparables)
