@@ -283,6 +283,293 @@ serve(async (req) => {
         });
 
         // ═══════════════════════════════════════════════════════════════
+        // MODEL 6: DOBLE OPORTUNIDAD (1X, X2, 12)
+        // ═══════════════════════════════════════════════════════════════
+        const dobleOp1X = homeWinProb + drawProb;
+        const dobleOpX2 = drawProb + awayWinProb;
+        const dobleOp12 = homeWinProb + awayWinProb;
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'double_chance_1x',
+            selection: '1X',
+            p_model: Math.round(dobleOp1X * 10000) / 10000,
+            uncertainty: 0.08,
+            model_name: 'derived_1x2',
+            model_inputs: { home: homeWinProb, draw: drawProb },
+            rationale: `Doble oportunidad 1X: ${(dobleOp1X * 100).toFixed(1)}% (local o empate).`,
+            engine_version: ENGINE_VERSION
+        });
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'double_chance_x2',
+            selection: 'X2',
+            p_model: Math.round(dobleOpX2 * 10000) / 10000,
+            uncertainty: 0.08,
+            model_name: 'derived_1x2',
+            model_inputs: { draw: drawProb, away: awayWinProb },
+            rationale: `Doble oportunidad X2: ${(dobleOpX2 * 100).toFixed(1)}% (empate o visitante).`,
+            engine_version: ENGINE_VERSION
+        });
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'double_chance_12',
+            selection: '12',
+            p_model: Math.round(dobleOp12 * 10000) / 10000,
+            uncertainty: 0.08,
+            model_name: 'derived_1x2',
+            model_inputs: { home: homeWinProb, away: awayWinProb },
+            rationale: `Doble oportunidad 12: ${(dobleOp12 * 100).toFixed(1)}% (sin empate).`,
+            engine_version: ENGINE_VERSION
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // MODEL 7: OVER/UNDER EXTENDIDOS (0.5, 4.5, 5.5)
+        // ═══════════════════════════════════════════════════════════════
+        const over05 = goalsDist.slice(1).reduce((a, b) => a + b, 0);
+        const over45 = goalsDist.slice(5).reduce((a, b) => a + b, 0);
+        const over55 = goalsDist.slice(6).reduce((a, b) => a + b, 0);
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'over_0.5_goals',
+            selection: 'Over 0.5',
+            p_model: Math.round(over05 * 10000) / 10000,
+            uncertainty: 0.05,
+            model_name: 'poisson_baseline',
+            model_inputs: { lambda_total: lambdaTotal },
+            rationale: `Probabilidad de al menos 1 gol: ${(over05 * 100).toFixed(1)}%.`,
+            engine_version: ENGINE_VERSION
+        });
+
+        if (over45 > 0.10) {
+            marketProbs.push({
+                fixture_id, job_id,
+                market: 'over_4.5_goals',
+                selection: 'Over 4.5',
+                p_model: Math.round(over45 * 10000) / 10000,
+                uncertainty: 0.12,
+                model_name: 'poisson_baseline',
+                model_inputs: { lambda_total: lambdaTotal },
+                rationale: `Probabilidad de 5+ goles: ${(over45 * 100).toFixed(1)}%.`,
+                engine_version: ENGINE_VERSION
+            });
+        }
+
+        if (over55 > 0.05) {
+            marketProbs.push({
+                fixture_id, job_id,
+                market: 'over_5.5_goals',
+                selection: 'Over 5.5',
+                p_model: Math.round(over55 * 10000) / 10000,
+                uncertainty: 0.15,
+                model_name: 'poisson_baseline',
+                model_inputs: { lambda_total: lambdaTotal },
+                rationale: `Probabilidad de 6+ goles: ${(over55 * 100).toFixed(1)}%.`,
+                engine_version: ENGINE_VERSION
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // MODEL 8: GOLES POR EQUIPO (Local Over 0.5/1.5, Visitante Over 0.5/1.5)
+        // ═══════════════════════════════════════════════════════════════
+        const homeScores = 1 - poissonPmf(0, lambdaHome);
+        const homeScores2 = 1 - poissonPmf(0, lambdaHome) - poissonPmf(1, lambdaHome);
+        const awayScores = 1 - poissonPmf(0, lambdaAway);
+        const awayScores2 = 1 - poissonPmf(0, lambdaAway) - poissonPmf(1, lambdaAway);
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'home_over_0.5',
+            selection: 'Local +0.5 Goles',
+            p_model: Math.round(homeScores * 10000) / 10000,
+            uncertainty: 0.08,
+            model_name: 'poisson_team',
+            model_inputs: { lambda_home: lambdaHome },
+            rationale: `Local marca al menos 1 gol: ${(homeScores * 100).toFixed(1)}%.`,
+            engine_version: ENGINE_VERSION
+        });
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'home_over_1.5',
+            selection: 'Local +1.5 Goles',
+            p_model: Math.round(homeScores2 * 10000) / 10000,
+            uncertainty: 0.10,
+            model_name: 'poisson_team',
+            model_inputs: { lambda_home: lambdaHome },
+            rationale: `Local marca 2+ goles: ${(homeScores2 * 100).toFixed(1)}%.`,
+            engine_version: ENGINE_VERSION
+        });
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'away_over_0.5',
+            selection: 'Visitante +0.5 Goles',
+            p_model: Math.round(awayScores * 10000) / 10000,
+            uncertainty: 0.08,
+            model_name: 'poisson_team',
+            model_inputs: { lambda_away: lambdaAway },
+            rationale: `Visitante marca al menos 1 gol: ${(awayScores * 100).toFixed(1)}%.`,
+            engine_version: ENGINE_VERSION
+        });
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'away_over_1.5',
+            selection: 'Visitante +1.5 Goles',
+            p_model: Math.round(awayScores2 * 10000) / 10000,
+            uncertainty: 0.10,
+            model_name: 'poisson_team',
+            model_inputs: { lambda_away: lambdaAway },
+            rationale: `Visitante marca 2+ goles: ${(awayScores2 * 100).toFixed(1)}%.`,
+            engine_version: ENGINE_VERSION
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // MODEL 9: HANDICAP ASIÁTICO (-0.5, -1.5)
+        // ═══════════════════════════════════════════════════════════════
+        // Handicap -0.5 = Victoria del equipo
+        // Handicap -1.5 = Victoria por 2+ goles
+        let homeWinBy2Plus = 0;
+        let awayWinBy2Plus = 0;
+
+        for (let h = 0; h <= 10; h++) {
+            for (let a = 0; a <= 10; a++) {
+                const prob = poissonPmf(h, lambdaHome) * poissonPmf(a, lambdaAway);
+                if (h - a >= 2) homeWinBy2Plus += prob;
+                if (a - h >= 2) awayWinBy2Plus += prob;
+            }
+        }
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'handicap_home_-0.5',
+            selection: 'Local -0.5',
+            p_model: Math.round(homeWinProb * 10000) / 10000,
+            uncertainty: 0.10,
+            model_name: 'poisson_handicap',
+            model_inputs: { handicap: -0.5 },
+            rationale: `Local gana (handicap -0.5): ${(homeWinProb * 100).toFixed(1)}%.`,
+            engine_version: ENGINE_VERSION
+        });
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'handicap_home_-1.5',
+            selection: 'Local -1.5',
+            p_model: Math.round(homeWinBy2Plus * 10000) / 10000,
+            uncertainty: 0.12,
+            model_name: 'poisson_handicap',
+            model_inputs: { handicap: -1.5 },
+            rationale: `Local gana por 2+ goles: ${(homeWinBy2Plus * 100).toFixed(1)}%.`,
+            engine_version: ENGINE_VERSION
+        });
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'handicap_away_+0.5',
+            selection: 'Visitante +0.5',
+            p_model: Math.round((1 - homeWinProb) * 10000) / 10000,
+            uncertainty: 0.10,
+            model_name: 'poisson_handicap',
+            model_inputs: { handicap: 0.5 },
+            rationale: `Visitante no pierde (handicap +0.5): ${((1 - homeWinProb) * 100).toFixed(1)}%.`,
+            engine_version: ENGINE_VERSION
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // MODEL 10: CORNERS EXTENDIDOS
+        // ═══════════════════════════════════════════════════════════════
+        if (hasGoodCornersData && expectedCorners > 8) {
+            const cornersStdVal = Math.sqrt((corners.home?.std || 2.0) ** 2 + (corners.away?.std || 2.0) ** 2);
+
+            // Over 12.5 corners
+            const zScore125 = (12.5 - expectedCorners) / Math.max(cornersStdVal, 1.5);
+            const over125Corners = 1 - normalCdf(zScore125);
+
+            if (over125Corners > 0.05) {
+                marketProbs.push({
+                    fixture_id, job_id,
+                    market: 'corners_over_12.5',
+                    selection: 'Over 12.5 Corners',
+                    p_model: Math.round(over125Corners * 10000) / 10000,
+                    uncertainty: 0.15,
+                    model_name: 'normal_approximation',
+                    model_inputs: { expected: expectedCorners },
+                    rationale: `Probabilidad de 13+ corners: ${(over125Corners * 100).toFixed(1)}%.`,
+                    engine_version: ENGINE_VERSION
+                });
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // MODEL 11: CARDS EXTENDIDOS (3.5, 5.5)
+        // ═══════════════════════════════════════════════════════════════
+        if (hasGoodCardsData) {
+            const cardsStdVal = 1.5;
+
+            // Over 3.5 cards
+            const zScore35Cards = (3.5 - expectedCards) / cardsStdVal;
+            const over35Cards = 1 - normalCdf(zScore35Cards);
+
+            if (over35Cards > 0.15) {
+                marketProbs.push({
+                    fixture_id, job_id,
+                    market: 'cards_over_3.5',
+                    selection: 'Over 3.5 Tarjetas',
+                    p_model: Math.round(over35Cards * 10000) / 10000,
+                    uncertainty: 0.12,
+                    model_name: 'normal_approximation',
+                    model_inputs: { expected: expectedCards },
+                    rationale: `Probabilidad de 4+ tarjetas: ${(over35Cards * 100).toFixed(1)}%.`,
+                    engine_version: ENGINE_VERSION
+                });
+            }
+
+            // Over 5.5 cards
+            const zScore55Cards = (5.5 - expectedCards) / cardsStdVal;
+            const over55Cards = 1 - normalCdf(zScore55Cards);
+
+            if (over55Cards > 0.10) {
+                marketProbs.push({
+                    fixture_id, job_id,
+                    market: 'cards_over_5.5',
+                    selection: 'Over 5.5 Tarjetas',
+                    p_model: Math.round(over55Cards * 10000) / 10000,
+                    uncertainty: 0.15,
+                    model_name: 'normal_approximation',
+                    model_inputs: { expected: expectedCards },
+                    rationale: `Probabilidad de 6+ tarjetas: ${(over55Cards * 100).toFixed(1)}%.`,
+                    engine_version: ENGINE_VERSION
+                });
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // MODEL 12: SIN GOLES (0-0) y AMBOS NO MARCAN
+        // ═══════════════════════════════════════════════════════════════
+        const noGoals = poissonPmf(0, lambdaHome) * poissonPmf(0, lambdaAway);
+        const bttsNo = 1 - (1 - poissonPmf(0, lambdaHome)) * (1 - poissonPmf(0, lambdaAway));
+
+        marketProbs.push({
+            fixture_id, job_id,
+            market: 'correct_score_0_0',
+            selection: '0-0',
+            p_model: Math.round(noGoals * 10000) / 10000,
+            uncertainty: 0.15,
+            model_name: 'poisson_exact',
+            model_inputs: { lambda_home: lambdaHome, lambda_away: lambdaAway },
+            rationale: `Probabilidad de 0-0: ${(noGoals * 100).toFixed(1)}%.`,
+            engine_version: ENGINE_VERSION
+        });
+
+        console.log(`[V2-MODELS] 🚀 Generated ${marketProbs.length} market probabilities (PREMIUM)`);
+
+
+        // ═══════════════════════════════════════════════════════════════
         // SAVE TO DATABASE
         // ═══════════════════════════════════════════════════════════════
         const { error: saveError } = await supabase

@@ -256,24 +256,53 @@ export const fetchTopPicks = async (date: string) => {
                 // DICCIONARIO DE TRADUCCIÓN DE MERCADOS (del inglés al español)
                 // ═══════════════════════════════════════════════════════════════
                 const MARKET_TRANSLATIONS: Record<string, string> = {
+                    // BTTS
                     'btts_yes': 'Ambos Equipos Anotan: Sí',
                     'btts_no': 'Ambos Equipos Anotan: No',
                     'btts yes': 'Ambos Equipos Anotan: Sí',
                     'btts no': 'Ambos Equipos Anotan: No',
+                    // Goles Over/Under
                     'over_0.5_goals': 'Más de 0.5 Goles',
                     'over_1.5_goals': 'Más de 1.5 Goles',
                     'over_2.5_goals': 'Más de 2.5 Goles',
                     'over_3.5_goals': 'Más de 3.5 Goles',
+                    'over_4.5_goals': 'Más de 4.5 Goles',
+                    'over_5.5_goals': 'Más de 5.5 Goles',
                     'under_0.5_goals': 'Menos de 0.5 Goles',
                     'under_1.5_goals': 'Menos de 1.5 Goles',
                     'under_2.5_goals': 'Menos de 2.5 Goles',
                     'under_3.5_goals': 'Menos de 3.5 Goles',
+                    // 1X2
                     'home_win': 'Victoria Local',
                     'away_win': 'Victoria Visitante',
                     'draw': 'Empate',
                     '1x2_home': 'Victoria Local',
                     '1x2_away': 'Victoria Visitante',
                     '1x2_draw': 'Empate',
+                    // Doble Oportunidad
+                    'double_chance_1x': 'Doble Oportunidad 1X',
+                    'double_chance_x2': 'Doble Oportunidad X2',
+                    'double_chance_12': 'Doble Oportunidad 12',
+                    // Goles por Equipo
+                    'home_over_0.5': 'Local Anota +0.5',
+                    'home_over_1.5': 'Local Anota +1.5',
+                    'away_over_0.5': 'Visitante Anota +0.5',
+                    'away_over_1.5': 'Visitante Anota +1.5',
+                    // Handicaps
+                    'handicap_home_-0.5': 'Handicap Local -0.5',
+                    'handicap_home_-1.5': 'Handicap Local -1.5',
+                    'handicap_away_+0.5': 'Handicap Visitante +0.5',
+                    'handicap_away_+1.5': 'Handicap Visitante +1.5',
+                    // Corners
+                    'corners_over_8.5': 'Más de 8.5 Corners',
+                    'corners_over_10.5': 'Más de 10.5 Corners',
+                    'corners_over_12.5': 'Más de 12.5 Corners',
+                    // Tarjetas
+                    'cards_over_3.5': 'Más de 3.5 Tarjetas',
+                    'cards_over_4.5': 'Más de 4.5 Tarjetas',
+                    'cards_over_5.5': 'Más de 5.5 Tarjetas',
+                    // Marcador Exacto
+                    'correct_score_0_0': 'Marcador Exacto 0-0',
                 };
 
                 const translateMarket = (market: string): string => {
