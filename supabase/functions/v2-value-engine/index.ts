@@ -8,20 +8,53 @@ import { corsHeaders } from '../_shared/cors.ts'
 
 const ENGINE_VERSION = '2.0.0';
 
-// Umbrales por mercado - AJUSTADOS para permitir más picks
+// Umbrales por mercado - FASE 2: RELAJADOS para más diversidad
 // (más varianza = más edge requerido)
 const DEFAULT_THRESHOLDS: Record<string, { min_edge: number; min_confidence: number }> = {
-    'over_2.5_goals': { min_edge: 0.02, min_confidence: 50 },  // Antes: 0.05, 60
-    'under_2.5_goals': { min_edge: 0.02, min_confidence: 50 }, // Antes: 0.05, 60
-    'over_1.5_goals': { min_edge: 0.015, min_confidence: 50 }, // Antes: 0.04, 65
-    'btts_yes': { min_edge: 0.03, min_confidence: 45 },        // Antes: 0.06, 55
-    'btts_no': { min_edge: 0.03, min_confidence: 45 },         // Antes: 0.06, 55
-    'corners_over_9.5': { min_edge: 0.05, min_confidence: 45 },  // Antes: 0.10, 50
-    'corners_over_10.5': { min_edge: 0.06, min_confidence: 45 }, // Antes: 0.12, 50
-    'cards_over_4.5': { min_edge: 0.06, min_confidence: 45 },    // Antes: 0.12, 50
-    '1x2_home': { min_edge: 0.04, min_confidence: 50 },        // Antes: 0.08, 55
-    '1x2_draw': { min_edge: 0.05, min_confidence: 45 },        // Antes: 0.10, 50
-    '1x2_away': { min_edge: 0.04, min_confidence: 50 }         // Antes: 0.08, 55
+    // Goles totales
+    'over_0.5_goals': { min_edge: 0.005, min_confidence: 50 },   // Casi seguro
+    'over_1.5_goals': { min_edge: 0.01, min_confidence: 50 },    // RELAJADO
+    'over_2.5_goals': { min_edge: 0.015, min_confidence: 50 },   // RELAJADO
+    'over_3.5_goals': { min_edge: 0.02, min_confidence: 50 },
+    'over_4.5_goals': { min_edge: 0.03, min_confidence: 50 },
+    'over_5.5_goals': { min_edge: 0.04, min_confidence: 50 },
+    'under_2.5_goals': { min_edge: 0.015, min_confidence: 50 },
+    // BTTS
+    'btts_yes': { min_edge: 0.02, min_confidence: 45 },          // RELAJADO
+    'btts_no': { min_edge: 0.02, min_confidence: 45 },
+    // 1X2 - FASE 2: UMBRALES BAJOS
+    '1x2_home': { min_edge: 0.01, min_confidence: 50 },          // ANTES: 0.04
+    '1x2_draw': { min_edge: 0.02, min_confidence: 45 },          // ANTES: 0.05
+    '1x2_away': { min_edge: 0.01, min_confidence: 50 },          // ANTES: 0.04
+    // FASE 2: DOBLE OPORTUNIDAD (umbrales bajos, mercado conservador)
+    'double_chance_1x': { min_edge: 0.005, min_confidence: 50 },
+    'double_chance_x2': { min_edge: 0.005, min_confidence: 50 },
+    'double_chance_12': { min_edge: 0.005, min_confidence: 50 },
+    // FASE 2: HANDICAPS
+    'handicap_home_-0.5': { min_edge: 0.01, min_confidence: 50 },
+    'handicap_home_-1.5': { min_edge: 0.02, min_confidence: 50 },
+    'handicap_away_+0.5': { min_edge: 0.01, min_confidence: 50 },
+    // FASE 2: GOLES POR EQUIPO
+    'home_over_0.5': { min_edge: 0.01, min_confidence: 50 },
+    'home_over_1.5': { min_edge: 0.02, min_confidence: 50 },
+    'away_over_0.5': { min_edge: 0.01, min_confidence: 50 },
+    'away_over_1.5': { min_edge: 0.02, min_confidence: 50 },
+    // Corners
+    'corners_over_8.5': { min_edge: 0.03, min_confidence: 45 },
+    'corners_over_9.5': { min_edge: 0.04, min_confidence: 45 },
+    'corners_over_10.5': { min_edge: 0.05, min_confidence: 45 },
+    'corners_over_12.5': { min_edge: 0.06, min_confidence: 45 },
+    // Tarjetas
+    'cards_over_3.5': { min_edge: 0.04, min_confidence: 45 },
+    'cards_over_4.5': { min_edge: 0.05, min_confidence: 45 },
+    'cards_over_5.5': { min_edge: 0.06, min_confidence: 45 },
+    // FASE 1: Primer/Segundo Tiempo
+    '1t_over_0.5': { min_edge: 0.01, min_confidence: 50 },
+    '1t_over_1.5': { min_edge: 0.02, min_confidence: 50 },
+    '2t_over_0.5': { min_edge: 0.01, min_confidence: 50 },
+    '2t_over_1.5': { min_edge: 0.02, min_confidence: 50 },
+    // Marcador exacto
+    'correct_score_0_0': { min_edge: 0.05, min_confidence: 45 }
 };
 
 serve(async (req) => {
