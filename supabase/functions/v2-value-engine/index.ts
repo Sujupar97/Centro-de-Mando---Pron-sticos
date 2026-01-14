@@ -145,39 +145,57 @@ serve(async (req) => {
             }
 
             // ════════════════════════════════════════════════════════
-            // SIN CUOTAS = SKIP (no mostrar este mercado)
+            // NUEVA LÓGICA: DECISIÓN BASADA EN PROBABILIDAD (NO en cuotas)
             // ════════════════════════════════════════════════════════
-            if (!odds) {
-                decision = 'SKIP';  // No incluir en resultados
-                reasons.push('Sin odds disponibles - mercado no evaluable');
-                // NO hacer push a allPicks, continuar al siguiente
-                console.log(`[V2-VALUE] ⚠️ Skipping ${market} - no odds available`);
-                continue; // Saltar este mercado completamente
+            // ALTA: prob >= 80% → BET (si no hay flags)
+            // MEDIA: prob >= 60% y < 80% → WATCH (podría ser BET si tiene edge)
+            // BAJA: prob < 60% → SKIP
+
+            const probPercent = p_model * 100;
+
+            // Si hay cuotas, calcular edge y usarlo como BONUS
+            if (odds && edge !== null) {
+                if (probPercent >= 60 && edge >= threshold.min_edge && confidence >= threshold.min_confidence) {
+                    // Check for disqualifying flags
+                    const hasDisqualifyingFlag =
+                        (quality_flags?.high_variance_goals && market.includes('goal')) ||
+                        (quality_flags?.small_sample);
+
+                    if (hasDisqualifyingFlag) {
+                        decision = 'WATCH';
+                        reasons.push('Edge positivo pero flags de calidad presentes');
+                    } else {
+                        decision = 'BET';
+                        reasons.push(`Probabilidad ${probPercent.toFixed(0)}% + Edge +${(edge * 100).toFixed(1)}%`);
+                    }
+                } else if (edge < -0.10) {
+                    decision = 'AVOID';
+                    reasons.push(`Edge negativo de ${(edge * 100).toFixed(1)}% - valor en contra`);
+                } else if (probPercent >= 60) {
+                    decision = 'WATCH';
+                    reasons.push(`Probabilidad ${probPercent.toFixed(0)}% pero edge insuficiente`);
+                }
+            } else {
+                // SIN CUOTAS: Decidir SOLO por probabilidad
+                if (probPercent >= 80) {
+                    // Alta probabilidad sin cuotas = BET (informativo)
+                    const hasDisqualifyingFlag = quality_flags?.small_sample;
+                    if (hasDisqualifyingFlag) {
+                        decision = 'WATCH';
+                        reasons.push(`Probabilidad alta ${probPercent.toFixed(0)}% pero muestra pequeña`);
+                    } else {
+                        decision = 'BET';
+                        reasons.push(`Alta probabilidad ${probPercent.toFixed(0)}% (sin cuotas disponibles)`);
+                    }
+                } else if (probPercent >= 60) {
+                    decision = 'WATCH';
+                    reasons.push(`Probabilidad media ${probPercent.toFixed(0)}% (sin cuotas)`);
+                }
+                // Si prob < 60%, decision queda en WATCH por defecto
             }
 
-            // Solo evaluar si hay cuotas
-            if (edge && edge >= threshold.min_edge && confidence >= threshold.min_confidence) {
-                // Check for disqualifying flags
-                const hasDisqualifyingFlag =
-                    (quality_flags?.high_variance_goals && market.includes('goal')) ||
-                    (quality_flags?.small_sample);
-
-                if (hasDisqualifyingFlag) {
-                    decision = 'WATCH';
-                    reasons.push('Edge positivo pero flags de calidad presentes');
-                } else {
-                    decision = 'BET';
-                    reasons.push(`Edge de ${(edge * 100).toFixed(1)}% supera umbral de ${(threshold.min_edge * 100).toFixed(1)}%`);
-                    reasons.push(`Confianza ${confidence}% supera mínimo de ${threshold.min_confidence}%`);
-                }
-            } else if (edge && edge < -0.10) {
-                decision = 'AVOID';
-                reasons.push(`Edge negativo de ${(edge * 100).toFixed(1)}% - valor en contra`);
-            } else {
-                decision = 'WATCH';
-                if (edge !== null && edge < threshold.min_edge) {
-                    reasons.push(`Edge de ${(edge * 100).toFixed(1)}% insuficiente (mínimo: ${(threshold.min_edge * 100).toFixed(1)}%)`);
-                }
+            // Skip si probabilidad muy baja
+            if (probPercent < 55) {
                 if (confidence < threshold.min_confidence) {
                     reasons.push(`Confianza ${confidence}% por debajo del mínimo ${threshold.min_confidence}%`);
                 }
@@ -202,12 +220,85 @@ serve(async (req) => {
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // RANK AND LIMIT BET PICKS (Max 3)
+        // MERCADOS COMBINADOS INTELIGENTES (cuando hay favorito muy claro)
+        // ═══════════════════════════════════════════════════════════════
+        // Nombres ESTANDARIZADOS (siempre iguales, sin nombres de equipos)
+        const COMBINED_MARKET_NAMES: Record<string, string> = {
+            // Resultado + Goles
+            'double_chance_1x+over_1.5': 'Local o Empate + Más de 1.5 Goles',
+            'double_chance_1x+over_2.5': 'Local o Empate + Más de 2.5 Goles',
+            'double_chance_x2+over_1.5': 'Visitante o Empate + Más de 1.5 Goles',
+            'double_chance_x2+over_2.5': 'Visitante o Empate + Más de 2.5 Goles',
+            '1x2_home+over_1.5': 'Victoria Local + Más de 1.5 Goles',
+            '1x2_home+over_2.5': 'Victoria Local + Más de 2.5 Goles',
+            '1x2_away+over_1.5': 'Victoria Visitante + Más de 1.5 Goles',
+            '1x2_away+over_2.5': 'Victoria Visitante + Más de 2.5 Goles',
+            // Resultado + BTTS
+            'double_chance_1x+btts_yes': 'Local o Empate + Ambos Marcan',
+            'double_chance_x2+btts_yes': 'Visitante o Empate + Ambos Marcan',
+            '1x2_home+btts_yes': 'Victoria Local + Ambos Marcan',
+            '1x2_away+btts_yes': 'Victoria Visitante + Ambos Marcan',
+        };
+
+        // Buscar favorito muy claro (resultado ≥85%)
+        const resultPicks = allPicks.filter(p =>
+            p.decision === 'BET' &&
+            p.p_model >= 0.85 &&
+            (p.market.includes('double_chance') || p.market.includes('1x2'))
+        );
+
+        // Buscar goles/BTTS con alta prob (≥80%)
+        const goalPicks = allPicks.filter(p =>
+            p.decision === 'BET' &&
+            p.p_model >= 0.80 &&
+            (p.market.includes('over_1.5') || p.market.includes('over_2.5') || p.market === 'btts_yes')
+        );
+
+        // Crear combinados si hay candidatos
+        for (const resultPick of resultPicks) {
+            for (const goalPick of goalPicks) {
+                const comboKey = `${resultPick.market}+${goalPick.market}`;
+                const comboName = COMBINED_MARKET_NAMES[comboKey];
+
+                if (comboName) {
+                    // Probabilidad combinada (conservadora: producto)
+                    const combinedProb = resultPick.p_model * goalPick.p_model;
+
+                    // Solo crear si la combinada sigue siendo alta (≥65%)
+                    if (combinedProb >= 0.65) {
+                        allPicks.push({
+                            job_id,
+                            fixture_id,
+                            market: `combined_${comboKey}`,
+                            selection: comboName,
+                            odds: null,
+                            p_implied: null,
+                            p_model: Math.round(combinedProb * 10000) / 10000,
+                            edge: null,
+                            decision: 'BET',
+                            confidence: Math.round(combinedProb * 100),
+                            risk_notes: {
+                                risks: [],
+                                reasons: [`Combinado: ${resultPick.selection} (${(resultPick.p_model * 100).toFixed(0)}%) + ${goalPick.selection} (${(goalPick.p_model * 100).toFixed(0)}%)`],
+                                data_gaps: false
+                            },
+                            is_primary_pick: false,
+                            rank: null,
+                            engine_version: ENGINE_VERSION
+                        });
+                        console.log(`[V2-VALUE] 🔗 Created combined: ${comboName} (${(combinedProb * 100).toFixed(0)}%)`);
+                    }
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // RANK AND LIMIT BET PICKS (Max 5 - aumentado por combinados)
         // ═══════════════════════════════════════════════════════════════
         const betPicks = allPicks
             .filter(p => p.decision === 'BET')
-            .sort((a, b) => (b.edge || 0) - (a.edge || 0))
-            .slice(0, 3);
+            .sort((a, b) => (b.p_model || 0) - (a.p_model || 0)) // Ordenar por probabilidad
+            .slice(0, 5); // Aumentado a 5 para incluir combinados
 
         // Mark ranks
         betPicks.forEach((pick, idx) => {
@@ -220,7 +311,7 @@ serve(async (req) => {
         allPicks.forEach(pick => {
             if (pick.decision === 'BET' && !betMarkets.has(pick.market)) {
                 pick.decision = 'WATCH';
-                pick.risk_notes.reasons.push('Excede límite de 3 picks');
+                pick.risk_notes.reasons.push('Excede límite de 5 picks principales');
             }
         });
 
