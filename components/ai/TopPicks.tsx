@@ -82,20 +82,14 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
         // HIGH (>= 80%): Siempre mostrar
         if (filter === 'HIGH') return prob >= 80;
 
-        // MEDIUM (60-79%): Solo si tiene ALTA confianza
+        // MEDIUM (60-79%): Filtrar por rango de probabilidad
         if (filter === 'MEDIUM') {
-            const inRange = prob >= 60 && prob < 80;
-            if (showOnlyHighConfidence) {
-                return inRange && (conf === 'alta' || conf === 'high');
-            }
-            return inRange && (conf === 'alta' || conf === 'high'); // Siempre requiere alta confianza
+            return prob >= 60 && prob < 80;
         }
 
-        // ALL: Solo HIGH + MEDIUM con alta confianza (NO incluye LOW)
+        // ALL: HIGH + MEDIUM (no incluye LOW)
         if (filter === 'ALL') {
-            if (prob >= 80) return true; // HIGH siempre
-            if (prob >= 60 && (conf === 'alta' || conf === 'high')) return true; // MEDIUM + Alta
-            return false; // LOW nunca
+            return prob >= 60; // ≥60% = HIGH o MEDIUM
         }
 
         // LOW: NO mostrar (se deshabilita en UI, pero por seguridad)
