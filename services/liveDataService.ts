@@ -300,46 +300,83 @@ export const fetchTopPicks = async (date: string) => {
                 };
 
                 // ═══════════════════════════════════════════════════════════════
-                // FIX: MOSTRAR TODOS LOS PICKS ≥60% (sin deduplicar)
+                // FASE 1: Agrupar picks por fixture para encontrar alternativas
                 // ═══════════════════════════════════════════════════════════════
-                const topPicks: TopPickItem[] = [];
-
+                const picksByFixture = new Map<number, any[]>();
                 for (const pick of v2Picks) {
                     const fixtureId = jobToFixture.get(pick.job_id);
                     if (!fixtureId) continue;
+                    if (!picksByFixture.has(fixtureId)) {
+                        picksByFixture.set(fixtureId, []);
+                    }
+                    picksByFixture.get(fixtureId)!.push(pick);
+                }
 
-                    const prob = pick.p_model * 100;
-                    if (prob < 60) continue; // Ignorar <60%
+                const topPicks: TopPickItem[] = [];
 
+                // ═══════════════════════════════════════════════════════════════
+                // FASE 2: Procesar cada fixture
+                // ═══════════════════════════════════════════════════════════════
+                for (const [fixtureId, fixturePicks] of picksByFixture.entries()) {
                     const game = games.find(g => g.fixture.id === fixtureId);
                     if (!game) continue;
 
-                    // FIX: ≥80%→Alta, 60-79%→Media, <60%→Baja
-                    const confidence: 'Alta' | 'Media' | 'Baja' = prob >= 80 ? 'Alta' : prob >= 60 ? 'Media' : 'Baja';
+                    // Clasificar picks por tipo de mercado para encontrar alternativas
+                    const goalLines = fixturePicks.filter(p =>
+                        p.market?.includes('over_') && p.market?.includes('goals')
+                    ).sort((a, b) => b.p_model - a.p_model);
 
-                    topPicks.push({
-                        gameId: fixtureId,
-                        analysisRunId: pick.job_id,
-                        matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
-                        date: game.fixture.date,
-                        league: game.league.name,
-                        teams: {
-                            home: { name: game.teams.home.name, logo: game.teams.home.logo },
-                            away: { name: game.teams.away.name, logo: game.teams.away.logo }
-                        },
-                        bestRecommendation: {
-                            market: translateMarket(pick.market || ''),
-                            prediction: translateSelection(pick.selection || ''),
-                            probability: Math.round(prob),
-                            confidence: confidence,
-                            reasoning: pick.rationale || `Probabilidad: ${Math.round(prob)}%`
-                        },
-                        result: 'Pending',
-                        odds: undefined
-                    });
+                    for (const pick of fixturePicks) {
+                        const prob = pick.p_model * 100;
+
+                        // Ignorar prob < 60% (muy baja)
+                        if (prob < 60) continue;
+
+                        // Ignorar prob > 92% (demasiado obvia, cuota ~1.10)
+                        if (prob > 92) continue;
+
+                        // Determinar confidence
+                        const confidence: 'Alta' | 'Media' | 'Baja' = prob >= 80 ? 'Alta' : prob >= 60 ? 'Media' : 'Baja';
+
+                        // Buscar alternativa si es línea de goles y hay una opción más segura
+                        let alternative: { market: string; probability: number } | undefined = undefined;
+                        if (pick.market?.includes('goals')) {
+                            const saferLine = goalLines.find(p =>
+                                p.p_model > pick.p_model && p.p_model <= 0.92 && p.market !== pick.market
+                            );
+                            if (saferLine) {
+                                alternative = {
+                                    market: translateMarket(saferLine.market),
+                                    probability: Math.round(saferLine.p_model * 100)
+                                };
+                            }
+                        }
+
+                        topPicks.push({
+                            gameId: fixtureId,
+                            analysisRunId: pick.job_id,
+                            matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
+                            date: game.fixture.date,
+                            league: game.league.name,
+                            teams: {
+                                home: { name: game.teams.home.name, logo: game.teams.home.logo },
+                                away: { name: game.teams.away.name, logo: game.teams.away.logo }
+                            },
+                            bestRecommendation: {
+                                market: translateMarket(pick.market || ''),
+                                prediction: translateSelection(pick.selection || ''),
+                                probability: Math.round(prob),
+                                confidence: confidence,
+                                reasoning: pick.rationale || `Probabilidad: ${Math.round(prob)}%`
+                            },
+                            result: 'Pending',
+                            odds: undefined,
+                            alternative: alternative
+                        });
+                    }
                 }
 
-                console.log(`[TopPicks] V2: Total picks ≥60%: ${topPicks.length}`);
+                console.log(`[TopPicks] V2: Total picks 60-92%: ${topPicks.length}`);
 
                 // Si encontramos picks V2, retornarlos ordenados por probabilidad
                 if (topPicks.length > 0) {

@@ -334,9 +334,15 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                                 </div>
 
                                 {/* Footer informativo */}
-                                <div className="bg-gray-900/50 px-4 py-2 flex justify-between items-center text-xs text-gray-500">
+                                <div className="bg-gray-900/50 px-4 py-2 flex flex-wrap justify-between items-center text-xs text-gray-500 gap-2">
                                     <span>{pick.league}</span>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        {/* Badge de Alternativa Más Segura */}
+                                        {pick.alternative && !isLocked && (
+                                            <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/50 text-[10px] font-medium">
+                                                💡 También: {pick.alternative.market} ({pick.alternative.probability}%)
+                                            </span>
+                                        )}
                                         <span className="uppercase text-[10px] font-bold tracking-widest bg-gray-800 px-2 py-0.5 rounded border border-gray-600 text-gray-300 group-hover:bg-green-accent group-hover:text-black transition-colors">
                                             {isLocked ? 'Bloqueado' : 'Ver Informe'}
                                         </span>
