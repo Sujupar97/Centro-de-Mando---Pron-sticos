@@ -361,8 +361,7 @@ export const fetchTopPicks = async (date: string) => {
                         // Ignorar prob < 60% (muy baja)
                         if (prob < 60) continue;
 
-                        // Ignorar prob > 92% (demasiado obvia, cuota ~1.10)
-                        if (prob > 92) continue;
+                        // NOTA: Mostramos TODOS los picks ≥60% (incluidos >92%)
 
                         // Determinar confidence
                         const confidence: 'Alta' | 'Media' | 'Baja' = prob >= 80 ? 'Alta' : prob >= 60 ? 'Media' : 'Baja';
