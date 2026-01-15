@@ -325,12 +325,115 @@ export const fetchTopPicks = async (date: string) => {
                         .replace('no', 'No');
                 };
 
+                // ═══════════════════════════════════════════════════════════════
+                // TRADUCCIÓN CON NOMBRES DE EQUIPOS (para mostrar en UI)
+                // ═══════════════════════════════════════════════════════════════
+                const translateMarketWithTeams = (market: string, selection: string, homeTeam: string, awayTeam: string): { market: string, selection: string } => {
+                    const m = market.toLowerCase();
+
+                    // 1X2 con nombres de equipos
+                    if (m === '1x2_home' || m === 'home_win') {
+                        return {
+                            market: 'Resultado Final',
+                            selection: `Gana ${homeTeam}`
+                        };
+                    }
+                    if (m === '1x2_away' || m === 'away_win') {
+                        return {
+                            market: 'Resultado Final',
+                            selection: `Gana ${awayTeam}`
+                        };
+                    }
+                    if (m === '1x2_draw' || m === 'draw') {
+                        return {
+                            market: 'Resultado Final',
+                            selection: 'Empate'
+                        };
+                    }
+
+                    // Doble Oportunidad con nombres
+                    if (m === 'double_chance_1x') {
+                        return {
+                            market: 'Doble Oportunidad',
+                            selection: `${homeTeam} o Empate`
+                        };
+                    }
+                    if (m === 'double_chance_x2') {
+                        return {
+                            market: 'Doble Oportunidad',
+                            selection: `${awayTeam} o Empate`
+                        };
+                    }
+                    if (m === 'double_chance_12') {
+                        return {
+                            market: 'Doble Oportunidad',
+                            selection: `${homeTeam} o ${awayTeam}`
+                        };
+                    }
+
+                    // Goles por equipo
+                    if (m === 'home_over_0.5' || m === 'home_over_1.5') {
+                        const line = m.includes('0.5') ? '0.5' : '1.5';
+                        return {
+                            market: `Goles ${homeTeam}`,
+                            selection: `Más de ${line}`
+                        };
+                    }
+                    if (m === 'away_over_0.5' || m === 'away_over_1.5') {
+                        const line = m.includes('0.5') ? '0.5' : '1.5';
+                        return {
+                            market: `Goles ${awayTeam}`,
+                            selection: `Más de ${line}`
+                        };
+                    }
+
+                    // Handicaps con nombres
+                    if (m.includes('handicap_home')) {
+                        const handicap = m.replace('handicap_home_', '');
+                        return {
+                            market: 'Handicap',
+                            selection: `${homeTeam} (${handicap})`
+                        };
+                    }
+                    if (m.includes('handicap_away')) {
+                        const handicap = m.replace('handicap_away_', '');
+                        return {
+                            market: 'Handicap',
+                            selection: `${awayTeam} (${handicap})`
+                        };
+                    }
+
+                    // Mercados combinados (ya tienen formato legible)
+                    if (m.startsWith('combined_')) {
+                        // El selection ya viene formateado como "Local o Empate + Más de 1.5 Goles"
+                        // Reemplazar "Local" y "Visitante" con nombres reales
+                        let readableSelection = selection
+                            .replace('Local', homeTeam)
+                            .replace('Visitante', awayTeam)
+                            .replace('Victoria Local', `Gana ${homeTeam}`)
+                            .replace('Victoria Visitante', `Gana ${awayTeam}`);
+                        return {
+                            market: 'Combinado',
+                            selection: readableSelection
+                        };
+                    }
+
+                    // Default: usar traducción estándar
+                    return {
+                        market: translateMarket(market),
+                        selection: translateSelection(selection)
+                    };
+                };
+
                 const translateSelection = (selection: string): string => {
                     const lower = selection.toLowerCase();
                     if (lower === 'yes' || lower === 'sí') return 'Sí';
                     if (lower === 'no') return 'No';
                     if (lower === 'over') return 'Más';
                     if (lower === 'under') return 'Menos';
+                    if (lower === '1' || lower === 'home') return 'Local';
+                    if (lower === '2' || lower === 'away') return 'Visitante';
+                    if (lower === 'x' || lower === 'draw') return 'Empate';
                     return selection;
                 };
 
@@ -396,13 +499,22 @@ export const fetchTopPicks = async (date: string) => {
                                 home: { name: game.teams.home.name, logo: game.teams.home.logo },
                                 away: { name: game.teams.away.name, logo: game.teams.away.logo }
                             },
-                            bestRecommendation: {
-                                market: translateMarket(pick.market || ''),
-                                prediction: translateSelection(pick.selection || ''),
-                                probability: Math.round(prob),
-                                confidence: confidence,
-                                reasoning: pick.rationale || `Probabilidad: ${Math.round(prob)}%`
-                            },
+                            bestRecommendation: (() => {
+                                // Usar traducción con nombres de equipos
+                                const translated = translateMarketWithTeams(
+                                    pick.market || '',
+                                    pick.selection || '',
+                                    game.teams.home.name,
+                                    game.teams.away.name
+                                );
+                                return {
+                                    market: translated.market,
+                                    prediction: translated.selection,
+                                    probability: Math.round(prob),
+                                    confidence: confidence,
+                                    reasoning: pick.rationale || `Probabilidad: ${Math.round(prob)}%`
+                                };
+                            })(),
                             result: 'Pending',
                             odds: undefined,
                             alternative: alternative

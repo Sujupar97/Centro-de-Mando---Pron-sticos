@@ -293,6 +293,17 @@ serve(async (req) => {
         }
 
         // ═══════════════════════════════════════════════════════════════
+        // REGLA: OVER 0.5 NUNCA SOLO (cuota muy baja, solo combinado)
+        // ═══════════════════════════════════════════════════════════════
+        allPicks.forEach(pick => {
+            if (pick.decision === 'BET' && pick.market === 'over_0.5_goals') {
+                pick.decision = 'WATCH'; // Degradar a WATCH
+                pick.risk_notes.reasons.push('Over 0.5 solo tiene cuota muy baja - usar en combinado');
+                console.log(`[V2-VALUE] ⚠️ Over 0.5 degradado a WATCH (solo permitido en combinados)`);
+            }
+        });
+
+        // ═══════════════════════════════════════════════════════════════
         // RANK AND LIMIT BET PICKS (Max 5 - aumentado por combinados)
         // ═══════════════════════════════════════════════════════════════
         const betPicks = allPicks
