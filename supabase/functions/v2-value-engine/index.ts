@@ -293,22 +293,41 @@ serve(async (req) => {
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // REGLA: OVER 0.5 NUNCA SOLO (cuota muy baja, solo combinado)
-        // Aplica a TODAS las variantes: global, 1T, 2T, home, away
+        // V2.1: LÓGICA CONTEXTUAL PARA OVER 0.5
+        // - over_0.5_goals GLOBAL → siempre WATCH (cuota ~1.05, sin valor)
+        // - 1T/2T/equipo Over 0.5 → BET si prob ≥85% (cuota mejor ~1.30-1.60)
         // ═══════════════════════════════════════════════════════════════
-        const over05Variants = [
-            'over_0.5_goals',
-            '1t_over_0.5',
-            '2t_over_0.5',
-            'home_over_0.5',
-            'away_over_0.5'
-        ];
-
         allPicks.forEach(pick => {
-            if (pick.decision === 'BET' && over05Variants.includes(pick.market)) {
-                pick.decision = 'WATCH'; // Degradar a WATCH
-                pick.risk_notes.reasons.push('Over 0.5 solo tiene cuota muy baja - solo permitido en combinados');
-                console.log(`[V2-VALUE] ⚠️ ${pick.market} degradado a WATCH (solo en combinados)`);
+            if (pick.decision === 'BET') {
+                const m = pick.market;
+                const prob = pick.p_model * 100;
+
+                // CASO 1: over_0.5_goals GLOBAL → siempre WATCH (cuota muy baja ~1.05)
+                if (m === 'over_0.5_goals') {
+                    pick.decision = 'WATCH';
+                    pick.risk_notes.reasons.push('Over 0.5 global tiene cuota muy baja (~1.05) - sin valor individual');
+                    console.log(`[V2-VALUE] ⚠️ ${m} degradado a WATCH (cuota muy baja)`);
+                }
+                // CASO 2: 1T/2T Over 0.5 → BET solo si prob ≥85% (cuota mejor ~1.40-1.60)
+                else if (m === '1t_over_0.5' || m === '2t_over_0.5') {
+                    if (prob < 85) {
+                        pick.decision = 'WATCH';
+                        pick.risk_notes.reasons.push(`${m} requiere prob ≥85% para ser BET (actual: ${prob.toFixed(0)}%)`);
+                        console.log(`[V2-VALUE] ⚠️ ${m} degradado a WATCH (prob ${prob.toFixed(0)}% < 85%)`);
+                    } else {
+                        console.log(`[V2-VALUE] ✅ ${m} mantiene BET (prob ${prob.toFixed(0)}% ≥ 85%)`);
+                    }
+                }
+                // CASO 3: Equipo Over 0.5 → BET solo si prob ≥85% (cuota ~1.20-1.40)
+                else if (m === 'home_over_0.5' || m === 'away_over_0.5') {
+                    if (prob < 85) {
+                        pick.decision = 'WATCH';
+                        pick.risk_notes.reasons.push(`${m} requiere prob ≥85% para ser BET (actual: ${prob.toFixed(0)}%)`);
+                        console.log(`[V2-VALUE] ⚠️ ${m} degradado a WATCH (prob ${prob.toFixed(0)}% < 85%)`);
+                    } else {
+                        console.log(`[V2-VALUE] ✅ ${m} mantiene BET (prob ${prob.toFixed(0)}% ≥ 85%)`);
+                    }
+                }
             }
         });
 

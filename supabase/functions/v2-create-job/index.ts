@@ -79,15 +79,17 @@ serve(async (req) => {
         // ═══════════════════════════════════════════════════════════════
         // STAGE 2: PARALLEL FETCHING (SIN predictions de API)
         // ═══════════════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════════════════════
+        // V2.1: CUOTAS ELIMINADAS - Sistema 100% basado en probabilidades
+        // ═══════════════════════════════════════════════════════════════
         const [
             last40_H, last40_A,
             h2h,
             standingsData,
             injuriesData,
-            // ❌ PROHIBIDO: predictionsData - NO se incluye
+            // ❌ PROHIBIDO: predictionsData y oddsData - NO se incluyen
             statsHome,
             statsAway,
-            oddsData,
             currentMatchLineups,
             refereeFixtures
         ] = await Promise.all([
@@ -96,10 +98,9 @@ serve(async (req) => {
             fetchFootball(`fixtures/headtohead?h2h=${homeTeam.id}-${awayTeam.id}&last=20`),
             fetchFootball(`standings?league=${leagueId}&season=${season}`),
             fetchFootball(`injuries?fixture=${fixture_id}`),
-            // ❌ NO: fetchFootball(`predictions?fixture=${fixture_id}`),
             fetchFootball(`teams/statistics?league=${leagueId}&season=${season}&team=${homeTeam.id}`),
             fetchFootball(`teams/statistics?league=${leagueId}&season=${season}&team=${awayTeam.id}`),
-            fetchFootball(`odds?fixture=${fixture_id}`),
+            // ❌ ELIMINADO: fetchFootball(`odds?fixture=${fixture_id}`),
             fetchFootball(`fixtures/lineups?fixture=${fixture_id}`),
             game.fixture.referee ? fetchFootball(`fixtures?referee=${encodeURIComponent(game.fixture.referee)}&last=20&status=FT`) : Promise.resolve([])
         ]);
@@ -213,11 +214,9 @@ serve(async (req) => {
                     home: statsHome,
                     away: statsAway
                 },
-                // ❌ PROHIBIDO: api_prediction NO SE INCLUYE
-                odds: {
-                    bookmaker: oddsData?.[0]?.bookmakers?.[0]?.name || null,
-                    markets: oddsData?.[0]?.bookmakers?.[0]?.bets || []
-                },
+                // ❌ PROHIBIDO: api_prediction y odds NO SE INCLUYEN
+                // V2.1: Sistema 100% basado en probabilidades calculadas
+                odds: null,
                 lineups: {
                     home: currentMatchLineups?.[0] || null,
                     away: currentMatchLineups?.[1] || null
@@ -249,7 +248,7 @@ serve(async (req) => {
         coverageDetails.injuries = true; // Always available (may be empty)
         coverageDetails.season_stats_home = !!statsHome;
         coverageDetails.season_stats_away = !!statsAway;
-        coverageDetails.odds = (oddsData?.[0]?.bookmakers?.[0]?.bets?.length || 0) > 0;
+        // ❌ ELIMINADO: coverageDetails.odds - ya no dependemos de cuotas
         coverageDetails.comparables_enriched = statsMap.size >= 10;
         coverageDetails.lineups = !!(currentMatchLineups?.[0] || currentMatchLineups?.[1]);
         coverageDetails.referee = !!game.fixture.referee;
