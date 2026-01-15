@@ -294,12 +294,21 @@ serve(async (req) => {
 
         // ═══════════════════════════════════════════════════════════════
         // REGLA: OVER 0.5 NUNCA SOLO (cuota muy baja, solo combinado)
+        // Aplica a TODAS las variantes: global, 1T, 2T, home, away
         // ═══════════════════════════════════════════════════════════════
+        const over05Variants = [
+            'over_0.5_goals',
+            '1t_over_0.5',
+            '2t_over_0.5',
+            'home_over_0.5',
+            'away_over_0.5'
+        ];
+
         allPicks.forEach(pick => {
-            if (pick.decision === 'BET' && pick.market === 'over_0.5_goals') {
+            if (pick.decision === 'BET' && over05Variants.includes(pick.market)) {
                 pick.decision = 'WATCH'; // Degradar a WATCH
-                pick.risk_notes.reasons.push('Over 0.5 solo tiene cuota muy baja - usar en combinado');
-                console.log(`[V2-VALUE] ⚠️ Over 0.5 degradado a WATCH (solo permitido en combinados)`);
+                pick.risk_notes.reasons.push('Over 0.5 solo tiene cuota muy baja - solo permitido en combinados');
+                console.log(`[V2-VALUE] ⚠️ ${pick.market} degradado a WATCH (solo en combinados)`);
             }
         });
 

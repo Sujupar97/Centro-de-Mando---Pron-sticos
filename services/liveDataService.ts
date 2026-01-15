@@ -331,7 +331,73 @@ export const fetchTopPicks = async (date: string) => {
                 const translateMarketWithTeams = (market: string, selection: string, homeTeam: string, awayTeam: string): { market: string, selection: string } => {
                     const m = market.toLowerCase();
 
+                    // ═══════════════════════════════════════════════════════════════
+                    // GOLES TOTALES (over_X.X_goals) - COMPLETO EN ESPAÑOL
+                    // ═══════════════════════════════════════════════════════════════
+                    if (m.includes('over_') && m.includes('_goals')) {
+                        const match = m.match(/over_(\d+\.?\d*)_goals/);
+                        if (match) {
+                            return {
+                                market: 'Goles Totales',
+                                selection: `Más de ${match[1]} Goles`
+                            };
+                        }
+                    }
+                    if (m.includes('under_') && m.includes('_goals')) {
+                        const match = m.match(/under_(\d+\.?\d*)_goals/);
+                        if (match) {
+                            return {
+                                market: 'Goles Totales',
+                                selection: `Menos de ${match[1]} Goles`
+                            };
+                        }
+                    }
+
+                    // ═══════════════════════════════════════════════════════════════
+                    // PRIMER TIEMPO (1T) - COMPLETO EN ESPAÑOL
+                    // ═══════════════════════════════════════════════════════════════
+                    if (m.includes('1t_over_')) {
+                        const match = m.match(/1t_over_(\d+\.?\d*)/);
+                        if (match) {
+                            return {
+                                market: 'Goles 1er Tiempo',
+                                selection: `Más de ${match[1]} Goles`
+                            };
+                        }
+                    }
+
+                    // ═══════════════════════════════════════════════════════════════
+                    // SEGUNDO TIEMPO (2T) - COMPLETO EN ESPAÑOL
+                    // ═══════════════════════════════════════════════════════════════
+                    if (m.includes('2t_over_')) {
+                        const match = m.match(/2t_over_(\d+\.?\d*)/);
+                        if (match) {
+                            return {
+                                market: 'Goles 2do Tiempo',
+                                selection: `Más de ${match[1]} Goles`
+                            };
+                        }
+                    }
+
+                    // ═══════════════════════════════════════════════════════════════
+                    // BTTS - AMBOS EQUIPOS ANOTAN
+                    // ═══════════════════════════════════════════════════════════════
+                    if (m === 'btts_yes' || m === 'btts yes') {
+                        return {
+                            market: 'Ambos Equipos Anotan',
+                            selection: 'Sí'
+                        };
+                    }
+                    if (m === 'btts_no' || m === 'btts no') {
+                        return {
+                            market: 'Ambos Equipos Anotan',
+                            selection: 'No'
+                        };
+                    }
+
+                    // ═══════════════════════════════════════════════════════════════
                     // 1X2 con nombres de equipos
+                    // ═══════════════════════════════════════════════════════════════
                     if (m === '1x2_home' || m === 'home_win') {
                         return {
                             market: 'Resultado Final',
@@ -351,7 +417,9 @@ export const fetchTopPicks = async (date: string) => {
                         };
                     }
 
+                    // ═══════════════════════════════════════════════════════════════
                     // Doble Oportunidad con nombres
+                    // ═══════════════════════════════════════════════════════════════
                     if (m === 'double_chance_1x') {
                         return {
                             market: 'Doble Oportunidad',
@@ -371,23 +439,31 @@ export const fetchTopPicks = async (date: string) => {
                         };
                     }
 
-                    // Goles por equipo
-                    if (m === 'home_over_0.5' || m === 'home_over_1.5') {
-                        const line = m.includes('0.5') ? '0.5' : '1.5';
-                        return {
-                            market: `Goles ${homeTeam}`,
-                            selection: `Más de ${line}`
-                        };
+                    // ═══════════════════════════════════════════════════════════════
+                    // Goles por equipo con nombres
+                    // ═══════════════════════════════════════════════════════════════
+                    if (m.startsWith('home_over_')) {
+                        const match = m.match(/home_over_(\d+\.?\d*)/);
+                        if (match) {
+                            return {
+                                market: `Goles ${homeTeam}`,
+                                selection: `Más de ${match[1]}`
+                            };
+                        }
                     }
-                    if (m === 'away_over_0.5' || m === 'away_over_1.5') {
-                        const line = m.includes('0.5') ? '0.5' : '1.5';
-                        return {
-                            market: `Goles ${awayTeam}`,
-                            selection: `Más de ${line}`
-                        };
+                    if (m.startsWith('away_over_')) {
+                        const match = m.match(/away_over_(\d+\.?\d*)/);
+                        if (match) {
+                            return {
+                                market: `Goles ${awayTeam}`,
+                                selection: `Más de ${match[1]}`
+                            };
+                        }
                     }
 
+                    // ═══════════════════════════════════════════════════════════════
                     // Handicaps con nombres
+                    // ═══════════════════════════════════════════════════════════════
                     if (m.includes('handicap_home')) {
                         const handicap = m.replace('handicap_home_', '');
                         return {
@@ -403,7 +479,35 @@ export const fetchTopPicks = async (date: string) => {
                         };
                     }
 
+                    // ═══════════════════════════════════════════════════════════════
+                    // Corners - EN ESPAÑOL
+                    // ═══════════════════════════════════════════════════════════════
+                    if (m.includes('corners_over_')) {
+                        const match = m.match(/corners_over_(\d+\.?\d*)/);
+                        if (match) {
+                            return {
+                                market: 'Corners',
+                                selection: `Más de ${match[1]}`
+                            };
+                        }
+                    }
+
+                    // ═══════════════════════════════════════════════════════════════
+                    // Tarjetas - EN ESPAÑOL
+                    // ═══════════════════════════════════════════════════════════════
+                    if (m.includes('cards_over_')) {
+                        const match = m.match(/cards_over_(\d+\.?\d*)/);
+                        if (match) {
+                            return {
+                                market: 'Tarjetas',
+                                selection: `Más de ${match[1]}`
+                            };
+                        }
+                    }
+
+                    // ═══════════════════════════════════════════════════════════════
                     // Mercados combinados (ya tienen formato legible)
+                    // ═══════════════════════════════════════════════════════════════
                     if (m.startsWith('combined_')) {
                         // El selection ya viene formateado como "Local o Empate + Más de 1.5 Goles"
                         // Reemplazar "Local" y "Visitante" con nombres reales
@@ -418,7 +522,9 @@ export const fetchTopPicks = async (date: string) => {
                         };
                     }
 
+                    // ═══════════════════════════════════════════════════════════════
                     // Default: usar traducción estándar
+                    // ═══════════════════════════════════════════════════════════════
                     return {
                         market: translateMarket(market),
                         selection: translateSelection(selection)
