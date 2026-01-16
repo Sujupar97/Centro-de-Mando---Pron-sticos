@@ -13,6 +13,26 @@ const PROMPT_VERSION = '2.0.0';
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
+  // CONSTANTES RAG & MODELO
+  const GEMINI_MODEL = 'gemini-3-pro-preview'; // Modelo solicitado explícitamente por usuario
+  const EMBEDDING_MODEL = 'models/text-embedding-004';
+
+  // Helper: Generar Embedding (Vector)
+  const generateEmbedding = async (text: string, apiKey: string): Promise<number[]> => {
+    const url = `https://generativelanguage.googleapis.com/v1beta/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: EMBEDDING_MODEL,
+        content: { parts: [{ text }] }
+      })
+    });
+    if (!res.ok) throw new Error(`Embedding Error: ${await res.text()}`);
+    const data = await res.json();
+    return data.embedding.values;
+  };
+
   const startTime = Date.now();
 
   try {
@@ -122,12 +142,50 @@ serve(async (req) => {
     const awayInjuries = formatInjuries(datasets.injuries?.away || []);
 
     // ═══════════════════════════════════════════════════════════════
+    // RAG: SEARCH BASE DE CONOCIMIENTO (Vectorial)
+    // ═══════════════════════════════════════════════════════════════
+    let knowledgeContext = "No knowledge base available.";
+
+    try {
+      const queryText = `Análisis táctico ${match.teams?.home?.name || 'Local'} vs ${match.teams?.away?.name || 'Visitante'} posiciones ${datasets.standings?.home_context?.position || 0} vs ${datasets.standings?.away_context?.position || 0}`;
+      console.log(`[V2-INTERPRET] Generating embedding for query: "${queryText}"`);
+
+      const queryVector = await generateEmbedding(queryText, geminiKey);
+
+      // Llamada RPC a Postgres (Vector Search)
+      const { data: chunks, error: rpcError } = await supabase.rpc('match_knowledge_base', {
+        query_embedding: queryVector,
+        match_threshold: 0.4, // Similitud coseno (generoso)
+        match_count: 8 // Top 8 fragmentos relevantes (~2500 tokens)
+      });
+
+      if (rpcError) throw rpcError;
+
+      if (chunks && chunks.length > 0) {
+        console.log(`[V2-INTERPRET] RAG found ${chunks.length} relevant context chunks.`);
+        knowledgeContext = chunks.map((c: any) => `📘 [${c.title}]: ${c.content}`).join('\n\n');
+      } else {
+        console.log(`[V2-INTERPRET] RAG found NO relevant chunks.`);
+      }
+    } catch (e: any) {
+      console.error(`[V2-INTERPRET] RAG Error: ${e.message}`);
+      knowledgeContext += ` (Error retrieval: ${e.message})`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // BUILD PROMPT PROFUNDO (Gemini SOLO interpreta, NO decide)
     // ═══════════════════════════════════════════════════════════════
     const prompt = `
-ERES UN ANALISTA TÁCTICO DE FÚTBOL DE ÉLITE con 25+ años analizando partidos profesionalmente.
-Tu análisis debe ser PROFUNDO, ESPECÍFICO y PROFESIONAL. No quiero generalidades.
-Idioma de salida: ESPAÑOL.
+ERES UN ANALISTA TÁCTICO DE FÚTBOL DE ÉLITE con 30+ años de experiencia.
+Tu análisis debe ser PROFUNDO, ESPECÍFICO y PROFESIONAL.
+Debes usar la información de la base de conocimiento (RAG) recuperada para dar contexto experto.
+Modelo: ${GEMINI_MODEL} (Superior Analysis).
+
+════════════════════════════════════════════════════════════════════════════════
+🧠 BASE DE CONOCIMIENTO TÁCTICA (CONTEXTO RECUPERADO)
+════════════════════════════════════════════════════════════════════════════════
+${knowledgeContext}
+
 
 ════════════════════════════════════════════════════════════════════════════════
 🎯 TU MISIÓN: ANALIZAR Y EXPLICAR (NO DECIDIR PICKS)
@@ -269,9 +327,9 @@ DEBES ANALIZAR:
 `;
 
     // ═══════════════════════════════════════════════════════════════
-    // CALL GEMINI
+    // CALL GEMINI (PRO MODEL)
     // ═══════════════════════════════════════════════════════════════
-    const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
+    const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`;
 
     const requestBody = {
       contents: [{ parts: [{ text: prompt }] }],

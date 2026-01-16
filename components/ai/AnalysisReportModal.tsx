@@ -59,7 +59,7 @@ const PostMatchSection: React.FC<{ analysis: PostMatchAnalysis | string; outcome
             doc.rect(0, 0, 210, 25, 'F');
             doc.setTextColor(colors.accent[0], colors.accent[1], colors.accent[2]);
             doc.setFontSize(10);
-            doc.text("BETCOMMAND INTELLIGENCE", 14, 16);
+            doc.text("DERBIX INTELLIGENCE", 14, 16);
             doc.setTextColor(colors.textSec[0], colors.textSec[1], colors.textSec[2]);
             doc.text(title, 200, 16, { align: 'right' });
         };
@@ -96,7 +96,7 @@ const PostMatchSection: React.FC<{ analysis: PostMatchAnalysis | string; outcome
 
         doc.setFontSize(10);
         doc.setTextColor(100, 100, 100);
-        doc.text("Generado por IA - BetCommand Engine v2.0", 105, 280, { align: 'center' });
+        doc.text("Generado por IA - Derbix Engine v2.0", 105, 280, { align: 'center' });
 
         // --- PAGE 2: ANALYSIS CONTENT ---
         doc.addPage();
@@ -213,7 +213,7 @@ const PostMatchSection: React.FC<{ analysis: PostMatchAnalysis | string; outcome
             });
         }
 
-        doc.save(`BetCommand_Report_${headerData.titulo.replace(/[^a-z0-9]/gi, '_').substring(0, 20)}.pdf`);
+        doc.save(`Derbix_Report_${headerData.titulo.replace(/[^a-z0-9]/gi, '_').substring(0, 20)}.pdf`);
     };
 
     const isStructured = typeof analysis !== 'string';
@@ -566,7 +566,7 @@ const VerdictSummary: React.FC<{
 
             {/* Header Mini */}
             <div className="mb-4 text-center relative z-10 opacity-80 hover:opacity-100 transition-opacity">
-                <span className="text-blue-400 text-xs font-bold uppercase tracking-widest mb-1 block">BetCommand Intelligence</span>
+                <span className="text-blue-400 text-xs font-bold uppercase tracking-widest mb-1 block">Derbix Intelligence</span>
                 <h2 className="text-lg md:text-xl font-bold text-gray-300 truncate">{headerData?.titulo}</h2>
                 <p className="text-gray-500 text-xs">{headerData?.subtitulo}</p>
             </div>

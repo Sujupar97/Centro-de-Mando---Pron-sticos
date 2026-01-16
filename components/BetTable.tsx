@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Bet, BetStatus, LegStatus } from '../types';
 import { formatCurrency } from '../utils/formatters';
 import { TrashIcon, ChevronDownIcon, ChevronUpIcon, CurrencyDollarIcon, ScaleIcon, TrophyIcon } from './icons/Icons';
+import SmartParlays from './ai/SmartParlays';
 
 interface BetTableProps {
     bets: Bet[];
@@ -115,38 +116,71 @@ const BetCard: React.FC<{ bet: Bet; onDelete: (id: number) => void }> = ({ bet, 
 
 
 export const BetTable: React.FC<BetTableProps> = ({ bets, onDeleteBet, onAddBetClick }) => {
+    const [activeTab, setActiveTab] = useState<'bets' | 'parlays'>('bets');
+
     return (
         <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
-                <h2 className="text-2xl md:text-3xl font-bold text-white mb-2 sm:mb-0">Mis Apuestas</h2>
-                <div className="flex items-center gap-4">
-                    <span className="text-base md:text-lg font-medium text-gray-400 bg-gray-800 px-3 py-1 rounded-md">{bets.length} Apuestas</span>
-                    <button
-                        onClick={onAddBetClick}
-                        className="bg-green-accent hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 flex items-center gap-2"
-                    >
-                        <span className="text-xl">+</span> Nueva Apuesta
-                    </button>
-                </div>
+            {/* Tabs */}
+            <div className="flex items-center gap-4 border-b border-gray-700 pb-4">
+                <button
+                    onClick={() => setActiveTab('bets')}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all ${activeTab === 'bets'
+                            ? 'bg-green-accent text-white'
+                            : 'bg-gray-800 text-gray-400 hover:text-white'
+                        }`}
+                >
+                    📊 Mis Apuestas
+                </button>
+                <button
+                    onClick={() => setActiveTab('parlays')}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all ${activeTab === 'parlays'
+                            ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white'
+                            : 'bg-gray-800 text-gray-400 hover:text-white'
+                        }`}
+                >
+                    🎯 Smart Parlays
+                </button>
             </div>
 
-            {bets.length > 0 ? (
-                <div className="space-y-4">
-                    {bets.map((bet) => (
-                        <BetCard key={bet.id} bet={bet} onDelete={onDeleteBet} />
-                    ))}
-                </div>
-            ) : (
-                <div className="text-center p-8 md:p-12 bg-gray-800 rounded-lg shadow-inner border border-dashed border-gray-700">
-                    <h3 className="text-xl font-semibold text-white">No hay apuestas registradas</h3>
-                    <p className="text-gray-400 mt-2 mb-4">Haz clic en "Añadir Apuesta" para empezar a registrar tus tickets.</p>
-                    <button
-                        onClick={onAddBetClick}
-                        className="bg-green-accent hover:bg-green-600 text-white font-bold py-2 px-6 rounded-md transition duration-300"
-                    >
-                        Añadir Primera Apuesta
-                    </button>
-                </div>
+            {/* Contenido según tab activo */}
+            {activeTab === 'bets' && (
+                <>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
+                        <h2 className="text-2xl md:text-3xl font-bold text-white mb-2 sm:mb-0">Mis Apuestas</h2>
+                        <div className="flex items-center gap-4">
+                            <span className="text-base md:text-lg font-medium text-gray-400 bg-gray-800 px-3 py-1 rounded-md">{bets.length} Apuestas</span>
+                            <button
+                                onClick={onAddBetClick}
+                                className="bg-green-accent hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 flex items-center gap-2"
+                            >
+                                <span className="text-xl">+</span> Nueva Apuesta
+                            </button>
+                        </div>
+                    </div>
+
+                    {bets.length > 0 ? (
+                        <div className="space-y-4">
+                            {bets.map((bet) => (
+                                <BetCard key={bet.id} bet={bet} onDelete={onDeleteBet} />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center p-8 md:p-12 bg-gray-800 rounded-lg shadow-inner border border-dashed border-gray-700">
+                            <h3 className="text-xl font-semibold text-white">No hay apuestas registradas</h3>
+                            <p className="text-gray-400 mt-2 mb-4">Haz clic en "Añadir Apuesta" para empezar a registrar tus tickets.</p>
+                            <button
+                                onClick={onAddBetClick}
+                                className="bg-green-accent hover:bg-green-600 text-white font-bold py-2 px-6 rounded-md transition duration-300"
+                            >
+                                Añadir Primera Apuesta
+                            </button>
+                        </div>
+                    )}
+                </>
+            )}
+
+            {activeTab === 'parlays' && (
+                <SmartParlays />
             )}
         </div>
     );

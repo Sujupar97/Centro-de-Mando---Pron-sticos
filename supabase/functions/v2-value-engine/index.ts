@@ -332,6 +332,58 @@ serve(async (req) => {
         });
 
         // ═══════════════════════════════════════════════════════════════
+        // V2.2: REPRESENTACIÓN INTELIGENTE DE MERCADO (SMART UPGRADE)
+        // Si prob > 92%, buscar mercado alternativo con prob 80-92% (mejor cuota)
+        // ═══════════════════════════════════════════════════════════════
+        const MARKET_UPGRADES: Record<string, string> = {
+            'over_1.5_goals': 'over_2.5_goals',
+            'over_2.5_goals': 'over_3.5_goals',
+            'home_over_0.5': 'home_over_1.5',
+            'away_over_0.5': 'away_over_1.5',
+            '1t_over_0.5': '1t_over_1.5',
+            '2t_over_0.5': '2t_over_1.5',
+            'btts_yes': 'over_2.5_goals',              // BTTS muy alto → buscar Over 2.5
+            'double_chance_1x': '1x2_home',            // DC muy alto → buscar resultado directo
+            'double_chance_x2': '1x2_away',
+        };
+
+        // Crear set de mercados que serán reemplazados (para marcarlos como WATCH)
+        const upgradedMarkets = new Set<string>();
+
+        allPicks.forEach(pick => {
+            if (pick.decision === 'BET' && pick.p_model > 0.92) {
+                const upgradeMarket = MARKET_UPGRADES[pick.market];
+                if (upgradeMarket) {
+                    // Buscar si existe el mercado alternativo
+                    const altPick = allPicks.find(p =>
+                        p.market === upgradeMarket &&
+                        p.p_model >= 0.80 &&
+                        p.p_model <= 0.92
+                    );
+
+                    if (altPick) {
+                        // UPGRADE: El mercado original se degrada, el alternativo se promociona
+                        upgradedMarkets.add(pick.market);
+                        pick.decision = 'WATCH';
+                        pick.risk_notes.reasons.push(`Upgrade: ${pick.market} → ${upgradeMarket} para mejor cuota implícita`);
+
+                        // Asegurar que el alternativo sea BET
+                        if (altPick.decision !== 'BET') {
+                            altPick.decision = 'BET';
+                            altPick.risk_notes.reasons.push(`Promocionado: alternativa a ${pick.market} con mejor cuota (${(altPick.p_model * 100).toFixed(0)}%)`);
+                        }
+
+                        console.log(`[V2-VALUE] 🔄 UPGRADE: ${pick.market} (${(pick.p_model * 100).toFixed(0)}%) → ${upgradeMarket} (${(altPick.p_model * 100).toFixed(0)}%)`);
+                    } else {
+                        // No hay alternativa viable, marcar con flag
+                        pick.risk_notes.reasons.push('Probabilidad muy alta, cuota implícita baja (~1.10)');
+                        console.log(`[V2-VALUE] ⚠️ ${pick.market} (${(pick.p_model * 100).toFixed(0)}%) sin alternativa viable`);
+                    }
+                }
+            }
+        });
+
+        // ═══════════════════════════════════════════════════════════════
         // RANK AND LIMIT BET PICKS (Max 5 - aumentado por combinados)
         // ═══════════════════════════════════════════════════════════════
         const betPicks = allPicks

@@ -69,8 +69,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
 
       {/* --- DESKTOP SIDEBAR --- */}
       <aside className="hidden md:flex flex-col w-64 h-full glass backdrop-blur-xl border-r border-white/5 fixed left-0 top-0 z-30 transition-transform duration-300">
-        <div className="p-6 flex items-center justify-center border-b border-white/5">
+        <div className="p-4 flex items-center justify-center border-b border-white/5 gap-3">
+          <img src="/derbix-logo.png" alt="Derbix" className="w-10 h-10 object-contain" />
           <h1 className="text-2xl font-display font-bold text-white tracking-tight">
+            Derbix
           </h1>
         </div>
 
@@ -126,9 +128,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
       <div className="flex-1 flex flex-col relative h-full overflow-hidden md:ml-64 transition-all duration-300">
         {/* Mobile Header */}
         <header className="md:hidden h-16 glass flex items-center justify-between px-6 sticky top-0 z-30 backdrop-blur-xl border-b border-white/5 shadow-lg">
-          <h1 className="text-lg font-display font-bold text-white">
-            <span className="text-brand">Bet</span>Command
-          </h1>
+          <div className="flex items-center gap-2">
+            <img src="/derbix-logo.png" alt="Derbix" className="w-8 h-8 object-contain" />
+            <h1 className="text-lg font-display font-bold text-white">Derbix</h1>
+          </div>
           <button onClick={signOut} className="text-slate-400 hover:text-white">
             <ArrowLeftOnRectangleIcon className="w-6 h-6" />
           </button>

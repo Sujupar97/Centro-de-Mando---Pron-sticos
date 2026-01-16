@@ -8,7 +8,7 @@ import { getCurrentDateInBogota } from '../utils/dateUtils';
 import { AnalysisInProgressModal } from './ai/AnalysisInProgressModal';
 import { AnalysisReportModal } from './ai/AnalysisReportModal';
 import { GameCard as DetailsGameCard } from './live/GameCard';
-import { TopPicks } from './ai/TopPicks';
+import SmartParlaysList from './ai/SmartParlaysList';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../services/supabaseService';
 import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
@@ -510,23 +510,7 @@ export const FixturesFeed: React.FC = () => {
 
                 {viewMode === 'top-picks' ? (
                     <div className="glass rounded-2xl p-6 min-h-[500px] animate-fade-in border border-white/5">
-                        <TopPicks
-                            date={selectedDate}
-                            onOpenReport={async (runId, fixtureId) => {
-                                // Enforce Limits
-                                const allowed = await verifyReportAccess();
-                                if (!allowed) return;
-
-                                let result = null;
-                                if (runId) {
-                                    result = await getAnalysisResultByRunId(runId);
-                                }
-                                if (!result && fixtureId) {
-                                    result = await getAnalysisResultByFixtureId(fixtureId);
-                                }
-                                if (result) setViewingResult(result);
-                            }}
-                        />
+                        <SmartParlaysList date={selectedDate} />
                     </div>
                 ) : (
                     <>

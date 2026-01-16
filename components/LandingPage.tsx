@@ -283,14 +283,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
                 <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex items-center gap-2 grayscale opacity-50">
                         <ChartBarIcon className="w-5 h-5" />
-                        <span className="font-bold">BetCommand</span>
+                        <span className="font-bold">Derbix</span>
                     </div>
                     <div className="flex gap-8">
                         <a href="#" className="hover:text-white transition-colors">Términos</a>
                         <a href="#" className="hover:text-white transition-colors">Privacidad</a>
                         <a href="#" className="hover:text-white transition-colors">Soporte</a>
                     </div>
-                    <p>&copy; {new Date().getFullYear()} BetCommand Inc.</p>
+                    <p>&copy; {new Date().getFullYear()} Derbix Inc.</p>
                 </div>
             </footer>
         </div>

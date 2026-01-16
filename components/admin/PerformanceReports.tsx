@@ -79,7 +79,7 @@ export const PerformanceReports: React.FC = () => {
         doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(32);
-        doc.text("BetCommand", 30, 40);
+        doc.text("Derbix", 30, 40);
 
         doc.setTextColor(34, 197, 94);
         doc.setFontSize(32);
@@ -133,7 +133,7 @@ export const PerformanceReports: React.FC = () => {
         doc.setFontSize(16);
         doc.setTextColor(15, 23, 42);
         doc.setFont('helvetica', 'bold');
-        doc.text("BetCommand Analytics", 14, 20);
+        doc.text("Derbix Analytics", 14, 20);
 
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
@@ -319,11 +319,11 @@ export const PerformanceReports: React.FC = () => {
             doc.setPage(i);
             doc.setFontSize(8);
             doc.setTextColor(150, 150, 150);
-            doc.text('Generado por BetCommand AI Analytics - Reporte Confidencial', 14, doc.internal.pageSize.getHeight() - 10);
+            doc.text('Generado por Derbix AI Analytics - Reporte Confidencial', 14, doc.internal.pageSize.getHeight() - 10);
             doc.text(`Página ${i} de ${pageCount}`, pageWidth - 20, doc.internal.pageSize.getHeight() - 10);
         }
 
-        doc.save(`BetCommand_Analisis_${confidenceFilter}_${startDate}_${endDate}.pdf`);
+        doc.save(`Derbix_Analisis_${confidenceFilter}_${startDate}_${endDate}.pdf`);
     };
 
     return (
