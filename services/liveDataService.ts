@@ -64,8 +64,31 @@ export const fetchFixturesByDate = async (date: string): Promise<DashboardData> 
     // Delegamos la petición al proxy
     try {
         const data = await callProxy<Game[]>('fixtures', { date });
-        console.log(`[DEBUG] Proxy returned ${data?.length} fixtures for ${date}`, data);
-        const processed = processFixturesResponse(data);
+        console.log(`[DEBUG] Proxy returned ${data?.length} fixtures for ${date}`);
+
+        // ═══════════════════════════════════════════════════════════════
+        // FIX: Filtrar por fecha LOCAL de Bogotá (API devuelve en UTC)
+        // Esto resuelve el bug donde partidos del día anterior aparecen
+        // cuando la diferencia horaria hace que UTC difiera del día local
+        // ═══════════════════════════════════════════════════════════════
+        const filtered = (data || []).filter(game => {
+            if (!game?.fixture?.timestamp) return false;
+
+            // Convertir timestamp del partido a fecha local de Bogotá
+            const gameDate = new Date(game.fixture.timestamp * 1000);
+            const formatter = new Intl.DateTimeFormat('en-CA', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                timeZone: 'America/Bogota'
+            });
+            const localDate = formatter.format(gameDate);
+
+            return localDate === date;
+        });
+
+        console.log(`[DEBUG] Filtered to ${filtered.length} fixtures for local date ${date}`);
+        const processed = processFixturesResponse(filtered);
         console.log(`[DEBUG] Processed data:`, processed);
         return processed;
     } catch (e) {
