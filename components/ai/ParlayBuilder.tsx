@@ -119,9 +119,9 @@ export const ParlayBuilder: React.FC = () => {
             setAnalyzing(true);
             setStatusMessage(`Analizando ${matches.length} partidos con Super IA... Buscando la combinada perfecta.`);
 
-            // Call Edge Function instead of direct Gemini to avoid browser API Key issues
+            // Call Premium Parlay Engine v2 (Advanced Analysis)
             const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://nokejmhlpsaoerhddcyc.supabase.co';
-            const edgeFunctionUrl = `${supabaseUrl}/functions/v1/manual-parlay-generator`;
+            const edgeFunctionUrl = `${supabaseUrl}/functions/v1/v2-premium-parlay-engine`;
             console.log('[ParlayBuilder] Calling Edge Function:', edgeFunctionUrl);
             console.log('[ParlayBuilder] Selected date:', selectedDate);
 
