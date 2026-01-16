@@ -97,29 +97,14 @@ export const ParlayBuilder: React.FC = () => {
         }
 
         setLoading(true);
-        setStatusMessage('Buscando análisis completados del día...');
+        setStatusMessage('Conectando con el motor Premium de Parlays...');
         setParlays([]);
 
         try {
-            // 1. Fetch analyzed matches for the date
-            const matches = await getAnalysesByDate(selectedDate);
-            setMatchCount(matches.length);
-
-            if (matches.length === 0) {
-                // FORCE UI FEEDBACK for 0 matches
-                alert(`No se encontraron análisis para el ${selectedDate}. \n\nPor favor ve al Dashboard y analiza algunos partidos antes de generar un Parlay.`);
-                setStatusMessage('No hay análisis completados. Ve al Dashboard y analiza partidos primero.');
-                setLoading(false);
-                return;
-            }
-
-            if (matches.length < 2) {
-                setStatusMessage(`Advertencia: Solo hay ${matches.length} partido analizado.`);
-            }
-
-            // 2. Call Super Prompt via Edge Function (server-side)
+            // Llamar directamente a Edge Function v2-premium-parlay-engine
+            // La verificación de análisis se hace en el servidor (consulta todas las tablas V2)
             setAnalyzing(true);
-            setStatusMessage(`Analizando ${matches.length} partidos con Super IA... Buscando la combinada perfecta.`);
+            setStatusMessage('Analizando partidos con IA Premium... Buscando mercados alternativos.');
 
             // Call Premium Parlay Engine v2 (Advanced Analysis)
             const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://nokejmhlpsaoerhddcyc.supabase.co';
