@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getCurrentDateInBogota } from '../../utils/dateUtils';
 import { getAnalysesByDate } from '../../services/analysisService';
 import { getParlaysByDate, saveParlays, verifyParlays, deleteParlaysForDate, ParlayDB } from '../../services/parlayService';
 import { ParlayAnalysisResult } from '../../types';
@@ -18,7 +19,8 @@ export const ParlayBuilder: React.FC = () => {
     const { user } = useAuth();
     const { subscription, checkParlayAccess, parlaysRemaining, recommendedUpgrade } = useSubscriptionLimits();
 
-    const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    // Usar la misma función de fecha que Jornadas para sincronización
+    const [selectedDate, setSelectedDate] = useState<string>(getCurrentDateInBogota());
     const [loading, setLoading] = useState(false);
     const [analyzing, setAnalyzing] = useState(false);
     const [parlays, setParlays] = useState<ParlayAnalysisResult[]>([]);
