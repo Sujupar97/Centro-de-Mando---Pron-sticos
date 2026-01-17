@@ -237,6 +237,23 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
             .eq('id', jobId)
             .single();
 
+        // ═══════════════════════════════════════════════════════════════
+        // MEGA-UPGRADE: Obtener TODOS los mercados calculados para mostrar ranking
+        // ═══════════════════════════════════════════════════════════════
+        let allCalculatedMarkets: any[] = [];
+        if (v2Job?.fixture_id) {
+            const { data: marketProbs } = await supabase
+                .from('market_probs_v2')
+                .select('*')
+                .eq('fixture_id', v2Job.fixture_id)
+                .order('p_model', { ascending: false });
+
+            if (marketProbs && marketProbs.length > 0) {
+                console.log(`[V2-MEGA] Mercados calculados encontrados: ${marketProbs.length}`);
+                allCalculatedMarkets = marketProbs;
+            }
+        }
+
         // Transformar V2 al formato esperado por la UI
         const report = v2Report.report_packet;
         const betPicks = v2Picks || [];
@@ -355,7 +372,212 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                 advertencias: {
                     titulo: 'Factores de Riesgo',
                     riesgos: report.factores_riesgo?.riesgos || []
-                }
+                },
+                // ═══════════════════════════════════════════════════════════════
+                // MEGA-UPGRADE V2: Probabilidades típicas REALES + ordenamiento por VALUE
+                // ═══════════════════════════════════════════════════════════════
+                analisis_mercados_calculados: (() => {
+                    if (allCalculatedMarkets.length === 0) return null;
+
+                    // Probabilidades típicas REALES del mercado (basadas en estadísticas históricas)
+                    const TYPICAL_PROBABILITIES: Record<string, number> = {
+                        // Goles - muy predecibles
+                        'over_0.5_goals': 0.88,
+                        'over_1.5_goals': 0.72,
+                        'over_2.5_goals': 0.52,
+                        'over_3.5_goals': 0.30,
+                        'over_4.5_goals': 0.15,
+                        'over_5.5_goals': 0.07,
+                        'under_2.5_goals': 0.48,
+                        // BTTS
+                        'btts_yes': 0.50,
+                        'btts_no': 0.50,
+                        // Team Goals
+                        'home_over_0.5': 0.75,
+                        'home_over_1.5': 0.45,
+                        'away_over_0.5': 0.65,
+                        'away_over_1.5': 0.35,
+                        // Half Goals
+                        '1h_over_0.5': 0.60,
+                        '2h_over_0.5': 0.70,
+                        'fh_over_05': 0.60,
+                        'sh_over_05': 0.70,
+                        // Corners - más difíciles de predecir
+                        'corners_over_8.5': 0.55,
+                        'corners_over_9.5': 0.45,
+                        'corners_over_10.5': 0.35,
+                        'corners_over_11.5': 0.25,
+                        // Tarjetas
+                        'cards_over_3.5': 0.50,
+                        'cards_over_4.5': 0.35,
+                        'cards_over_5.5': 0.22,
+                        // Resultados
+                        '1x2_home': 0.45,
+                        '1x2_draw': 0.25,
+                        '1x2_away': 0.30,
+                        'double_chance_1x': 0.70,
+                        'double_chance_x2': 0.55,
+                        'double_chance_12': 0.75,
+                    };
+
+                    // Función para obtener probabilidad típica
+                    const getTypicalProb = (market: string): number => {
+                        // Buscar coincidencia exacta
+                        if (TYPICAL_PROBABILITIES[market]) return TYPICAL_PROBABILITIES[market];
+                        // Buscar por partes del nombre
+                        for (const [key, value] of Object.entries(TYPICAL_PROBABILITIES)) {
+                            if (market.includes(key) || key.includes(market)) return value;
+                        }
+                        return 0.50; // Default
+                    };
+
+                    // Calcular VALUE SCORE real para cada mercado
+                    const marketsWithValue = allCalculatedMarkets.map((m: any) => {
+                        const typicalProb = getTypicalProb(m.market);
+                        const valueScore = Math.round((m.p_model - typicalProb) * 100);
+                        return {
+                            ...m,
+                            typical_prob: typicalProb,
+                            value_score: valueScore
+                        };
+                    });
+
+                    // Ordenar por VALUE SCORE (no por probabilidad bruta)
+                    const sortedByValue = marketsWithValue
+                        .filter((m: any) => m.value_score > 5) // Solo mercados con >5% de value
+                        .sort((a: any, b: any) => b.value_score - a.value_score);
+
+                    // Buscar corners y tarjetas para el resumen
+                    const cornersMarket = allCalculatedMarkets.find((m: any) => m.market.includes('corner'));
+                    const cardsMarket = allCalculatedMarkets.find((m: any) => m.market.includes('card'));
+
+                    return {
+                        descripcion: "Análisis de mercados ordenado por VALUE REAL (no probabilidad)",
+                        mercados_evaluados: allCalculatedMarkets.length,
+                        mercados_con_valor: sortedByValue.length,
+                        resumen: {
+                            goles_esperados: allCalculatedMarkets.find((m: any) => m.market === 'over_2.5_goals')?.model_inputs?.lambda_total ||
+                                (allCalculatedMarkets.find((m: any) => m.market === 'over_2.5_goals')?.p_model ?
+                                    Math.round(allCalculatedMarkets.find((m: any) => m.market === 'over_2.5_goals').p_model * 5 * 10) / 10 : null),
+                            corners_esperados: cornersMarket?.model_inputs?.expected_corners ||
+                                (cornersMarket ? (cornersMarket.market.includes('9.5') ? 9.5 :
+                                    cornersMarket.market.includes('10.5') ? 10.5 :
+                                        cornersMarket.market.includes('8.5') ? 8.5 : null) : null),
+                            tarjetas_esperadas: cardsMarket?.model_inputs?.expected_cards ||
+                                (cardsMarket ? (cardsMarket.market.includes('4.5') ? 4.5 :
+                                    cardsMarket.market.includes('3.5') ? 3.5 : null) : null),
+                            btts_probabilidad: Math.round((allCalculatedMarkets.find((m: any) => m.market === 'btts_yes')?.p_model || 0) * 100),
+                        },
+                        top_oportunidades: sortedByValue
+                            .slice(0, 10)
+                            .map((m: any) => {
+                                // ═══════════════════════════════════════════════════════════════
+                                // TRADUCTOR: Mercados técnicos → Español para apostadores
+                                // ═══════════════════════════════════════════════════════════════
+                                const translateMarket = (market: string, selection: string): string => {
+                                    const TRANSLATIONS: Record<string, string> = {
+                                        // BTTS
+                                        'btts_yes': 'Ambos Anotan - Sí',
+                                        'btts_no': 'Ambos Anotan - No',
+                                        // Resultado 1X2
+                                        '1x2_home': 'Victoria Local',
+                                        '1x2_draw': 'Empate',
+                                        '1x2_away': 'Victoria Visitante',
+                                        // Doble Oportunidad
+                                        'double_chance_1x': 'Local o Empate (1X)',
+                                        'double_chance_x2': 'Empate o Visitante (X2)',
+                                        'double_chance_12': 'Local o Visitante (12)',
+                                        // Goles Over/Under
+                                        'over_0.5_goals': 'Más de 0.5 Goles',
+                                        'over_1.5_goals': 'Más de 1.5 Goles',
+                                        'over_2.5_goals': 'Más de 2.5 Goles',
+                                        'over_3.5_goals': 'Más de 3.5 Goles',
+                                        'over_4.5_goals': 'Más de 4.5 Goles',
+                                        'under_2.5_goals': 'Menos de 2.5 Goles',
+                                        // Goles por equipo
+                                        'home_over_0.5': 'Local Anota (+0.5)',
+                                        'home_over_1.5': 'Local Anota 2+ Goles',
+                                        'away_over_0.5': 'Visitante Anota (+0.5)',
+                                        'away_over_1.5': 'Visitante Anota 2+ Goles',
+                                        // Tiempos
+                                        '1t_over_0.5': 'Gol en 1er Tiempo',
+                                        '1t_over_1.5': '2+ Goles en 1er Tiempo',
+                                        '2t_over_0.5': 'Gol en 2do Tiempo',
+                                        '2t_over_1.5': '2+ Goles en 2do Tiempo',
+                                        'fh_over_05': 'Gol en 1er Tiempo',
+                                        'sh_over_05': 'Gol en 2do Tiempo',
+                                        '1h_over_0.5': 'Gol en 1er Tiempo',
+                                        '2h_over_0.5': 'Gol en 2do Tiempo',
+                                        // Corners
+                                        'corners_over_8.5': 'Más de 8.5 Corners',
+                                        'corners_over_9.5': 'Más de 9.5 Corners',
+                                        'corners_over_10.5': 'Más de 10.5 Corners',
+                                        'corners_over_11.5': 'Más de 11.5 Corners',
+                                        'corners_over_12.5': 'Más de 12.5 Corners',
+                                        // Tarjetas
+                                        'cards_over_3.5': 'Más de 3.5 Tarjetas',
+                                        'cards_over_4.5': 'Más de 4.5 Tarjetas',
+                                        'cards_over_5.5': 'Más de 5.5 Tarjetas',
+                                        // Hándicap
+                                        'handicap_home_-0.5': 'Local Gana (Hándicap -0.5)',
+                                        'handicap_home_-1.5': 'Local Gana por 2+ (Hándicap -1.5)',
+                                        'handicap_away_+0.5': 'Visitante No Pierde (+0.5)',
+                                    };
+
+                                    // 1. Buscar traducción exacta
+                                    if (TRANSLATIONS[market]) return TRANSLATIONS[market];
+
+                                    // 2. Traducir selecciones genéricas
+                                    if (selection === 'Yes' || selection === 'Sí') return 'Ambos Anotan - Sí';
+                                    if (selection === 'No') return 'Ambos Anotan - No';
+                                    if (selection === '1') return 'Victoria Local';
+                                    if (selection === '2') return 'Victoria Visitante';
+                                    if (selection === 'X') return 'Empate';
+                                    if (selection === '1X') return 'Local o Empate';
+                                    if (selection === 'X2') return 'Empate o Visitante';
+                                    if (selection === '12') return 'Local o Visitante';
+
+                                    // 3. Patterns para traducciones dinámicas
+                                    if (market.includes('1t_over') || market.includes('1h_over') || market.includes('fh_over')) {
+                                        const goals = market.match(/(\d+\.?\d*)/)?.[1] || '0.5';
+                                        return `+${goals} Goles 1er Tiempo`;
+                                    }
+                                    if (market.includes('2t_over') || market.includes('2h_over') || market.includes('sh_over')) {
+                                        const goals = market.match(/(\d+\.?\d*)/)?.[1] || '0.5';
+                                        return `+${goals} Goles 2do Tiempo`;
+                                    }
+                                    if (market.includes('corner')) {
+                                        const num = market.match(/(\d+\.?\d*)/)?.[1];
+                                        return num ? `+${num} Corners` : 'Corners Over';
+                                    }
+                                    if (market.includes('card')) {
+                                        const num = market.match(/(\d+\.?\d*)/)?.[1];
+                                        return num ? `+${num} Tarjetas` : 'Tarjetas Over';
+                                    }
+
+                                    // 4. Fallback: limpiar el texto técnico
+                                    return selection
+                                        .replace(/over/gi, 'Más de')
+                                        .replace(/under/gi, 'Menos de')
+                                        .replace(/_/g, ' ')
+                                        .replace(/\./g, ',');
+                                };
+
+                                return {
+                                    mercado: translateMarket(m.market, m.selection || ''),
+                                    categoria: m.market.includes('corner') ? 'Corners' :
+                                        m.market.includes('card') ? 'Tarjetas' :
+                                            m.market.includes('goal') || m.market.includes('btts') ? 'Goles' :
+                                                m.market.includes('1x2') || m.market.includes('double') ? 'Resultado' : 'Otro',
+                                    probabilidad_calculada: Math.round(m.p_model * 100),
+                                    probabilidad_tipica: Math.round(m.typical_prob * 100),
+                                    value_score: m.value_score,
+                                    confianza: m.value_score > 15 ? 'ALTA' : m.value_score > 8 ? 'MEDIA' : 'BAJA',
+                                    recomendacion: m.rationale || ''
+                                };
+                            })
+                    };
+                })()
             } as unknown as DashboardAnalysisJSON,
             analysisRun: {
                 id: jobId,

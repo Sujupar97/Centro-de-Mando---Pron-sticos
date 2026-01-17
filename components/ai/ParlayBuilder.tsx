@@ -104,12 +104,12 @@ export const ParlayBuilder: React.FC = () => {
             // Llamar directamente a Edge Function v2-premium-parlay-engine
             // La verificación de análisis se hace en el servidor (consulta todas las tablas V2)
             setAnalyzing(true);
-            setStatusMessage('Analizando partidos con IA Premium... Buscando mercados alternativos.');
+            setStatusMessage('Motor V3: Análisis independiente con 60+ mercados...');
 
-            // Call Premium Parlay Engine v2 (Advanced Analysis)
+            // Call Premium Parlay Engine V3 (Independent Analysis + 60+ Markets)
             const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://nokejmhlpsaoerhddcyc.supabase.co';
-            const edgeFunctionUrl = `${supabaseUrl}/functions/v1/v2-premium-parlay-engine`;
-            console.log('[ParlayBuilder] Calling Edge Function:', edgeFunctionUrl);
+            const edgeFunctionUrl = `${supabaseUrl}/functions/v1/v3-premium-parlay-engine`;
+            console.log('[ParlayBuilder] Calling V3 Engine:', edgeFunctionUrl);
             console.log('[ParlayBuilder] Selected date:', selectedDate);
 
             const response = await fetch(edgeFunctionUrl, {
@@ -132,7 +132,30 @@ export const ParlayBuilder: React.FC = () => {
             const responseData = await response.json();
             console.log('[ParlayBuilder] Response data:', responseData);
 
-            const { parlays: results } = responseData;
+            const { parlays: rawParlays } = responseData;
+
+            // Mapear formato V3 a ParlayAnalysisResult (compatible con guardado y UI)
+            const results: ParlayAnalysisResult[] = (rawParlays || []).map((p: any) => ({
+                parlayTitle: p.name || p.parlayTitle || 'Premium Parlay',
+                legs: (p.picks || p.legs || []).map((pick: any) => {
+                    const homeTeam = pick.home_team || pick.home || 'Local';
+                    const awayTeam = pick.away_team || pick.away || 'Visitante';
+                    return {
+                        fixtureId: pick.fixture_id || pick.fixtureId,
+                        game: `${homeTeam} vs ${awayTeam}`,  // Campo que usa la UI
+                        home: homeTeam,
+                        away: awayTeam,
+                        market: pick.market || 'over_1.5',
+                        prediction: pick.selection || pick.prediction || pick.market,
+                        odds: pick.odds || 1.5,
+                        probability: pick.probability || 0.6,
+                        reasoning: pick.reasoning || ''
+                    };
+                }),
+                finalOdds: p.combined_odds || p.finalOdds || 1.0,
+                overallStrategy: p.strategy || p.overallStrategy || '',
+                winProbability: p.combined_probability || p.winProbability || 0.3
+            }));
 
             if (results && results.length > 0) {
                 // MOSTRAR PARLAYS INMEDIATAMENTE (antes del enriquecimiento de odds)
@@ -437,15 +460,10 @@ export const ParlayBuilder: React.FC = () => {
                                             <p className="text-xs text-gray-400 italic font-medium w-full max-w-md">"{parlay.overallStrategy}"</p>
                                         </div>
                                         <div className="flex flex-col items-end relative z-10 gap-2">
-                                            <div className="text-right">
-                                                <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Cuota Total</div>
-                                                <div className="text-4xl font-black text-brand tracking-tighter loading-none">
-                                                    {parlay.finalOdds.toFixed(2)}
-                                                </div>
-                                            </div>
+                                            {/* Cuota total ocultada - se mantiene para cálculos internos */}
                                             {parlay.winProbability !== undefined && (
                                                 <div className="text-right bg-black/30 px-2 py-1 rounded">
-                                                    <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Probabilidad</div>
+                                                    <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Prob. Promedio</div>
                                                     <div className={`text-sm font-bold ${parlay.winProbability > 70 ? 'text-green-400' : 'text-yellow-400'}`}>
                                                         {parlay.winProbability}%
                                                     </div>
@@ -472,9 +490,7 @@ export const ParlayBuilder: React.FC = () => {
                                                 <div className="flex-grow">
                                                     <div className="flex justify-between items-start mb-1">
                                                         <h5 className="font-bold text-white text-sm">{leg.game}</h5>
-                                                        <span className="bg-slate-800 text-brand px-2 py-0.5 rounded text-xs font-bold border border-white/5">
-                                                            @{leg.odds}
-                                                        </span>
+                                                        {/* Cuota individual ocultada - se mantiene para cálculos internos */}
                                                     </div>
                                                     <div className="flex items-center gap-2 mb-2">
                                                         <span className="text-xs font-bold text-blue-400 bg-blue-900/20 px-1.5 py-0.5 rounded border border-blue-500/20">

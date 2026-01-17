@@ -900,6 +900,74 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                     </div>
                                 )}
 
+                                {/* 4.5 NUEVO: Análisis de Mercados Calculados (60+) */}
+                                {(data as any).analisis_mercados_calculados && (
+                                    <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 p-6 rounded-xl border border-purple-500/30">
+                                        <h3 className="text-2xl font-bold text-white mb-4 flex items-center">
+                                            <ChartBarIcon className="w-8 h-8 text-purple-400 mr-3" />
+                                            Análisis de 60+ Mercados
+                                            <span className="ml-3 bg-purple-500/20 text-purple-300 px-3 py-1 rounded-full text-xs font-bold">
+                                                {(data as any).analisis_mercados_calculados.mercados_con_valor} oportunidades detectadas
+                                            </span>
+                                        </h3>
+
+                                        {/* Resumen General */}
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                            <div className="bg-slate-800 p-4 rounded-lg text-center">
+                                                <span className="text-3xl font-black text-white">{(data as any).analisis_mercados_calculados.resumen?.goles_esperados?.toFixed(1) || '-'}</span>
+                                                <span className="block text-xs text-gray-400 uppercase mt-1">Goles Esperados</span>
+                                            </div>
+                                            <div className="bg-slate-800 p-4 rounded-lg text-center">
+                                                <span className="text-3xl font-black text-white">{(data as any).analisis_mercados_calculados.resumen?.corners_esperados?.toFixed(1) || '-'}</span>
+                                                <span className="block text-xs text-gray-400 uppercase mt-1">Corners Esperados</span>
+                                            </div>
+                                            <div className="bg-slate-800 p-4 rounded-lg text-center">
+                                                <span className="text-3xl font-black text-white">{(data as any).analisis_mercados_calculados.resumen?.tarjetas_esperadas?.toFixed(1) || '-'}</span>
+                                                <span className="block text-xs text-gray-400 uppercase mt-1">Amarillas Esperadas</span>
+                                            </div>
+                                            <div className="bg-slate-800 p-4 rounded-lg text-center">
+                                                <span className="text-3xl font-black text-white">{(data as any).analisis_mercados_calculados.resumen?.btts_probabilidad || '-'}%</span>
+                                                <span className="block text-xs text-gray-400 uppercase mt-1">BTTS Prob.</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Ranking de Oportunidades */}
+                                        <h4 className="text-lg font-bold text-purple-300 mb-3">🔥 Top Oportunidades por Value</h4>
+                                        <div className="space-y-3">
+                                            {((data as any).analisis_mercados_calculados.top_oportunidades || []).slice(0, 5).map((opp: any, idx: number) => (
+                                                <div key={idx} className={`flex items-center justify-between p-4 rounded-lg border-l-4 ${opp.confianza === 'ALTA' ? 'border-green-500 bg-green-900/20' :
+                                                        opp.confianza === 'MEDIA' ? 'border-yellow-500 bg-yellow-900/20' :
+                                                            'border-gray-500 bg-gray-800/50'
+                                                    }`}>
+                                                    <div className="flex items-center gap-4">
+                                                        <span className="text-2xl font-black text-white">#{idx + 1}</span>
+                                                        <div>
+                                                            <span className="font-bold text-white block">{opp.mercado}</span>
+                                                            <span className="text-xs text-gray-400">{opp.categoria}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="text-center">
+                                                            <span className="text-xl font-bold text-green-400">{opp.probabilidad_calculada}%</span>
+                                                            <span className="block text-[10px] text-gray-500">Calculada</span>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <span className="text-xl font-bold text-gray-400">{opp.probabilidad_tipica}%</span>
+                                                            <span className="block text-[10px] text-gray-500">Típica</span>
+                                                        </div>
+                                                        <div className={`px-3 py-1 rounded-full font-bold text-sm ${opp.value_score > 10 ? 'bg-green-500 text-white' :
+                                                                opp.value_score > 5 ? 'bg-yellow-500 text-black' :
+                                                                    'bg-gray-600 text-white'
+                                                            }`}>
+                                                            +{opp.value_score}%
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* 5. Advertencias */}
                                 {data.advertencias && data.advertencias.bullets && data.advertencias.bullets.length > 0 && (
                                     <div className="bg-yellow-900/20 border border-yellow-700/50 p-4 rounded-lg flex items-start">

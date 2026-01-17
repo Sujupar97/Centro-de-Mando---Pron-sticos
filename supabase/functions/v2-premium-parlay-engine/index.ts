@@ -53,33 +53,64 @@ serve(async (req) => {
         console.log('[V2-PremiumParlay] FASE 1: Extracción profunda de datos')
 
         // 1.1 Obtener analysis_jobs_v2 con toda la data
+        // NOTA: Usar created_at en rango (igual que v2-generate-parlays) porque match_date puede no estar poblado
         const { data: analysisJobs, error: jobsError } = await supabase
             .from('analysis_jobs_v2')
             .select('*')
-            .eq('match_date', targetDate)
-            .eq('status', 'completed')
+            .gte('created_at', `${targetDate}T00:00:00`)
+            .lt('created_at', `${targetDate}T23:59:59`)
+            .eq('status', 'done')  // 'done' no 'completed'
 
         if (jobsError) {
             console.error('[V2-PremiumParlay] Error fetching analysis_jobs_v2:', jobsError)
         }
 
-        // 1.2 Obtener value_picks_v2 (las oportunidades identificadas)
-        const { data: valuePicks, error: picksError } = await supabase
-            .from('value_picks_v2')
-            .select('*')
-            .eq('match_date', targetDate)
-            .eq('decision', 'BET')
-            .gte('p_model', 0.60)  // Solo picks con >= 60% probabilidad
+        // Obtener job IDs para buscar picks
+        const jobIds = (analysisJobs || []).map(j => j.id)
+        console.log(`[V2-PremiumParlay] Found ${jobIds.length} analysis jobs`)
 
-        if (picksError) {
-            console.error('[V2-PremiumParlay] Error fetching value_picks_v2:', picksError)
+        // DEBUG: Ver estructura real de data_football
+        if (analysisJobs && analysisJobs.length > 0) {
+            const sampleJob = analysisJobs[0]
+            const df = sampleJob.data_football || {}
+            console.log('[V2-PremiumParlay] DEBUG data_football keys:', Object.keys(df))
+            console.log('[V2-PremiumParlay] DEBUG match exists:', !!df.match)
+            console.log('[V2-PremiumParlay] DEBUG match.teams:', df.match?.teams)
+            console.log('[V2-PremiumParlay] DEBUG teams:', df.teams)
+
+            // Intentar encontrar nombres de equipos en diferentes rutas
+            const possibleHomeNames = [
+                df.match?.teams?.home?.name,
+                df.teams?.home?.name,
+                df.fixture?.teams?.home?.name,
+                df.game?.home?.name,
+                sampleJob.home_team  // directo del job
+            ].filter(Boolean)
+            console.log('[V2-PremiumParlay] DEBUG possible home names:', possibleHomeNames)
         }
 
-        // 1.3 Obtener analysis_runs tradicionales (respaldo)
+        // 1.2 Obtener value_picks_v2 usando job_id (más confiable que match_date)
+        let valuePicks: any[] = []
+        if (jobIds.length > 0) {
+            const { data: picks, error: picksError } = await supabase
+                .from('value_picks_v2')
+                .select('*')
+                .in('job_id', jobIds)
+                .eq('decision', 'BET')
+                .gte('p_model', 0.60)
+
+            if (picksError) {
+                console.error('[V2-PremiumParlay] Error fetching value_picks_v2:', picksError)
+            }
+            valuePicks = picks || []
+        }
+
+        // 1.3 Obtener analysis_runs tradicionales (respaldo) - también por created_at
         const { data: analysisRuns, error: runsError } = await supabase
             .from('analysis_runs')
             .select('*, predictions(*)')
-            .eq('match_date', targetDate)
+            .gte('created_at', `${targetDate}T00:00:00`)
+            .lt('created_at', `${targetDate}T23:59:59`)
 
         if (runsError) {
             console.error('[V2-PremiumParlay] Error fetching analysis_runs:', runsError)
@@ -92,7 +123,8 @@ serve(async (req) => {
 
         console.log(`[V2-PremiumParlay] Datos encontrados: ${jobsCount} jobs V2, ${picksCount} picks, ${runsCount} runs`)
 
-        if (jobsCount === 0 && runsCount === 0) {
+        // Si no hay NINGUNA fuente de datos, retornar error
+        if (jobsCount === 0 && runsCount === 0 && picksCount === 0) {
             return new Response(JSON.stringify({
                 success: false,
                 error: `No hay análisis completados para ${targetDate}. Analiza partidos primero.`
@@ -100,6 +132,32 @@ serve(async (req) => {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 400
             })
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // FASE 1.5: OBTENER NOMBRES DE EQUIPOS DESDE daily_matches
+        // (igual que v2-generate-parlays que SÍ funciona)
+        // ═══════════════════════════════════════════════════════════════
+        console.log('[V2-PremiumParlay] FASE 1.5: Obteniendo nombres de equipos desde daily_matches')
+
+        // Obtener todos los fixture_ids de los jobs
+        const fixtureIds = (analysisJobs || []).map(j => j.fixture_id).filter(Boolean)
+        console.log(`[V2-PremiumParlay] Fixture IDs a buscar: ${fixtureIds.join(', ')}`)
+
+        // Consultar daily_matches para obtener nombres reales
+        let matchDataMap = new Map<number, any>()
+        if (fixtureIds.length > 0) {
+            const { data: dailyMatches, error: matchesError } = await supabase
+                .from('daily_matches')
+                .select('api_fixture_id, home_team, away_team, league_name')
+                .in('api_fixture_id', fixtureIds)
+
+            if (matchesError) {
+                console.error('[V2-PremiumParlay] Error fetching daily_matches:', matchesError)
+            } else {
+                (dailyMatches || []).forEach(m => matchDataMap.set(m.api_fixture_id, m))
+                console.log(`[V2-PremiumParlay] ✅ Encontrados ${matchDataMap.size} partidos en daily_matches`)
+            }
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -123,12 +181,29 @@ serve(async (req) => {
             const fixtureId = job.fixture_id
             const dataFootball = job.data_football || {}
 
+            // FUENTE PRINCIPAL: daily_matches (tiene los nombres correctos)
+            const matchInfo = matchDataMap.get(fixtureId)
+
+            // Extraer nombres de equipos - Priorizar daily_matches, luego data_football, luego fallback
+            const homeTeam = matchInfo?.home_team ||
+                dataFootball.match?.teams?.home?.name ||
+                dataFootball.teams?.home?.name ||
+                'Local'
+            const awayTeam = matchInfo?.away_team ||
+                dataFootball.match?.teams?.away?.name ||
+                dataFootball.teams?.away?.name ||
+                'Visitante'
+            const leagueName = matchInfo?.league_name ||
+                dataFootball.match?.competition?.name ||
+                dataFootball.league?.name ||
+                'Liga'
+
             enrichedMatches.push({
                 fixture_id: fixtureId,
-                home_team: job.home_team,
-                away_team: job.away_team,
-                league: job.league,
-                match_date: job.match_date,
+                home_team: homeTeam,
+                away_team: awayTeam,
+                league: leagueName,
+                match_date: job.match_date || targetDate,
                 statistics: dataFootball.statistics || null,
                 h2h: dataFootball.h2h || [],
                 teamStats: dataFootball.teamStats || { home: null, away: null },
@@ -155,6 +230,27 @@ serve(async (req) => {
                     teamStats: { home: null, away: null },
                     valuePicks: picksByFixture.get(run.fixture_id) || [],
                     predictions: run.predictions || []
+                })
+            }
+        }
+
+        // NUEVO: Si solo tenemos value_picks_v2, construir partidos desde ahí
+        // Esto cubre el caso donde el Motor V2 generó picks pero no hay jobs ni runs
+        for (const [fixtureId, picks] of picksByFixture.entries()) {
+            if (!enrichedMatches.find(m => m.fixture_id === fixtureId)) {
+                // Tomar info del primer pick
+                const firstPick = picks[0]
+                enrichedMatches.push({
+                    fixture_id: fixtureId,
+                    home_team: firstPick?.home_team || 'Local',
+                    away_team: firstPick?.away_team || 'Visitante',
+                    league: firstPick?.league || 'Liga',
+                    match_date: targetDate,
+                    statistics: null,
+                    h2h: [],
+                    teamStats: { home: null, away: null },
+                    valuePicks: picks,
+                    predictions: []
                 })
             }
         }

@@ -183,13 +183,15 @@ serve(async (req) => {
         console.log(`[SMART-PARLAYS] Generated ${combos2.length} potential 2-pick parlays`);
 
         for (const combo of combos2) {
-            const combinedProb = combo.reduce((acc, p) => acc * p.p_model, 1);
-            const impliedOdds = 1 / combinedProb;
-            // Filtrar por probabilidad mínima Y cuota mínima interna
-            if (combinedProb >= CONFIG.MIN_COMBINED_PROB && impliedOdds >= CONFIG.MIN_IMPLIED_ODDS) {
+            const jointProb = combo.reduce((acc, p) => acc * p.p_model, 1);
+            const avgProb = combo.reduce((acc, p) => acc + p.p_model, 0) / combo.length;
+            const impliedOdds = 1 / jointProb;
+
+            // Filtrar usando probabilidad CONJUNTA (matemática) para validity check
+            if (jointProb >= CONFIG.MIN_COMBINED_PROB && impliedOdds >= CONFIG.MIN_IMPLIED_ODDS) {
                 allParlays.push({
                     picks: combo,
-                    combined_probability: combinedProb,
+                    combined_probability: avgProb, // USER REQUEST: Mostrar promedio, no prob conjunta
                     implied_odds: impliedOdds
                 });
             }
@@ -200,13 +202,15 @@ serve(async (req) => {
         console.log(`[SMART-PARLAYS] Generated ${combos3.length} potential 3-pick parlays`);
 
         for (const combo of combos3) {
-            const combinedProb = combo.reduce((acc, p) => acc * p.p_model, 1);
-            const impliedOdds = 1 / combinedProb;
-            // Filtrar por probabilidad mínima Y cuota mínima interna
-            if (combinedProb >= CONFIG.MIN_COMBINED_PROB && impliedOdds >= CONFIG.MIN_IMPLIED_ODDS) {
+            const jointProb = combo.reduce((acc, p) => acc * p.p_model, 1);
+            const avgProb = combo.reduce((acc, p) => acc + p.p_model, 0) / combo.length;
+            const impliedOdds = 1 / jointProb;
+
+            // Filtrar usando probabilidad CONJUNTA (matemática) para validity check
+            if (jointProb >= CONFIG.MIN_COMBINED_PROB && impliedOdds >= CONFIG.MIN_IMPLIED_ODDS) {
                 allParlays.push({
                     picks: combo,
-                    combined_probability: combinedProb,
+                    combined_probability: avgProb, // USER REQUEST: Mostrar promedio, no prob conjunta
                     implied_odds: impliedOdds
                 });
             }

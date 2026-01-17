@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import JSON5 from "https://esm.sh/json5@2.2.3"
 import { corsHeaders } from '../_shared/cors.ts'
+import { calculateAllMarkets, PreCalculatedMarkets } from '../_shared/marketCalculator.ts'
 
 // ... existing code ...
 
@@ -342,6 +343,86 @@ serve(async (req) => {
       }
     };
 
+    // ═══════════════════════════════════════════════════════════════
+    // MEGA-UPGRADE: CALCULAR 60+ MERCADOS AUTOMÁTICAMENTE
+    // ═══════════════════════════════════════════════════════════════
+    console.log('[V2-MEGA] Calculando 60+ mercados automáticamente...');
+
+    let preCalculatedMarkets: PreCalculatedMarkets | null = null;
+    try {
+      preCalculatedMarkets = calculateAllMarkets({
+        homeStats: statsHome || {},
+        awayStats: statsAway || {},
+        h2h: h2h || [],
+        refereeStats: refereeStats,
+        homeAsHome: homeAsHome10 || [],
+        awayAsAway: awayAsAway10 || [],
+        homeTeamId: homeTeam.id,
+        awayTeamId: awayTeam.id
+      });
+
+      console.log(`[V2-MEGA] Mercados evaluados: ${preCalculatedMarkets.markets_evaluated}`);
+      console.log(`[V2-MEGA] Mercados con valor: ${preCalculatedMarkets.markets_with_value}`);
+      console.log('[V2-MEGA] Top 3 oportunidades:', preCalculatedMarkets.market_opportunities.slice(0, 3).map(o => `${o.market_name}: ${o.value_score}%`));
+
+      // Agregar los cálculos al inputPayload
+      (inputPayload as any).pre_calculated_markets = {
+        summary: {
+          total_goals_expected: preCalculatedMarkets.total_goals_expected,
+          total_corners_expected: preCalculatedMarkets.total_corners_expected,
+          total_yellows_expected: preCalculatedMarkets.total_yellows_expected,
+          btts_prob: preCalculatedMarkets.btts_prob,
+          home_win_prob: preCalculatedMarkets.home_win_prob,
+          draw_prob: preCalculatedMarkets.draw_prob,
+          away_win_prob: preCalculatedMarkets.away_win_prob
+        },
+        goals_markets: {
+          over_15_prob: preCalculatedMarkets.over_15_prob,
+          over_25_prob: preCalculatedMarkets.over_25_prob,
+          over_35_prob: preCalculatedMarkets.over_35_prob
+        },
+        corners_markets: {
+          over_85_prob: preCalculatedMarkets.over_85_corners_prob,
+          over_95_prob: preCalculatedMarkets.over_95_corners_prob,
+          over_105_prob: preCalculatedMarkets.over_105_corners_prob
+        },
+        cards_markets: {
+          over_25_prob: preCalculatedMarkets.over_25_yellows_prob,
+          over_35_prob: preCalculatedMarkets.over_35_yellows_prob,
+          over_45_prob: preCalculatedMarkets.over_45_yellows_prob
+        },
+        time_markets: {
+          fh_over_05_prob: preCalculatedMarkets.fh_over_05_prob,
+          sh_over_05_prob: preCalculatedMarkets.sh_over_05_prob
+        },
+        top_opportunities: preCalculatedMarkets.market_opportunities.slice(0, 10)
+      };
+    } catch (calcError) {
+      console.error('[V2-MEGA] Error calculando mercados:', calcError);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NUEVO: CARGAR CATÁLOGO DE MERCADOS DE LA BASE DE DATOS
+    // ═══════════════════════════════════════════════════════════════
+    let marketsCatalog: any[] = [];
+    try {
+      const { data: marketsData } = await supabase
+        .from('betting_markets_catalog')
+        .select('category, market_key, market_name_es, description, typical_odds_min, typical_odds_max, analysis_trigger')
+        .eq('is_active', true)
+        .order('category');
+
+      marketsCatalog = marketsData || [];
+      console.log(`[ETL] Loaded ${marketsCatalog.length} betting markets from catalog`);
+    } catch (e) {
+      console.error('[ETL] Failed to load markets catalog:', e);
+    }
+
+    // Formatear catálogo para el prompt
+    const marketsCatalogStr = marketsCatalog.length > 0
+      ? marketsCatalog.map(m => `- ${m.market_name_es} (${m.market_key}): ${m.description || ''} [Cuota típica: ${m.typical_odds_min}-${m.typical_odds_max}]`).join('\n')
+      : '// Catálogo no disponible, usar mercados estándar';
+
     const prompt = `
 YOU ARE AN ELITE FOOTBALL TACTICAL ANALYST with 20+ years of professional experience.
 Output language: CONSTANTLY, STRICTLY, ONLY SPANISH (ESPAÑOL).
@@ -383,6 +464,27 @@ TACTICAL ANALYSIS METHODOLOGY:
 4. OPPORTUNITY IDENTIFICATION (ALL MARKETS):
    - Corners, Cards, Goals, BTTS, Player Props.
    - Justify everything with TACTICS + DATA.
+
+5. MERCADO RECOMENDADO (CRÍTICO - NUEVO):
+   Debes evaluar TODOS estos mercados disponibles y elegir EL MEJOR:
+   
+${marketsCatalogStr}
+
+   IMPORTANTE: El sistema ya ha PRE-CALCULADO probabilidades para 60+ mercados usando datos reales.
+   Estas probabilidades están en "pre_calculated_markets" del JSON de entrada.
+   
+   Tu trabajo es:
+   A) VALIDAR estos cálculos con tu análisis táctico
+   B) Identificar cuáles mercados tienen VALOR REAL (diferencia entre probabilidad calculada vs implícita)
+   C) Agregar CONTEXTO TÁCTICO a cada oportunidad detectada
+   D) Generar un RANKING de las mejores oportunidades
+   
+   MERCADOS PRE-CALCULADOS DISPONIBLES:
+   - Goles: Over 1.5, 2.5, 3.5, BTTS
+   - Corners: Over 8.5, 9.5, 10.5
+   - Tarjetas: Over 2.5, 3.5, 4.5 amarillas
+   - Tiempos: 1T Over 0.5, 2T Over 0.5
+   - Resultado: 1X2, Clean Sheet
 
 ==========================================
 OUTPUT FORMAT (STRICT JSON):
@@ -496,6 +598,65 @@ OUTPUT FORMAT (STRICT JSON):
       }
     ]
   },
+  "mercado_recomendado": {
+    "descripcion": "EL MEJOR mercado identificado después de evaluar TODOS los mercados disponibles",
+    "market_key": "over_2.5",
+    "market_name": "Más de 2.5 Goles",
+    "probabilidad_estimada": 72,
+    "valor_detectado": "ALTO",
+    "razonamiento": "Análisis completo de por qué este es el mercado con mejor relación riesgo/beneficio basado en los datos del partido",
+    "mercados_evaluados": ["over_2.5", "btts_yes", "home_win", "1x", "over_1.5"]
+  },
+  "analisis_mercados_completo": {
+    "descripcion": "Análisis de TODOS los 60+ mercados con cálculos pre-hechos y validación táctica",
+    "mercados_evaluados": 60,
+    "mercados_con_valor": 8,
+    "ranking_oportunidades": [
+      {
+        "posicion": 1,
+        "market_key": "over_95_corners",
+        "market_name": "Más de 9.5 Corners",
+        "categoria": "Corners",
+        "probabilidad_calculada": 72,
+        "probabilidad_tipica": 48,
+        "value_score": 24,
+        "confianza": "ALTA",
+        "justificacion_tactica": "Explica POR QUÉ tácticamente tiene sentido este mercado basándote en formaciones, estilos de juego, presión alta, etc."
+      },
+      {
+        "posicion": 2,
+        "market_key": "over_35_yellows",
+        "market_name": "Más de 3.5 Amarillas",
+        "categoria": "Tarjetas",
+        "probabilidad_calculada": 68,
+        "probabilidad_tipica": 50,
+        "value_score": 18,
+        "confianza": "MEDIA",
+        "justificacion_tactica": "Árbitro estricto + equipos físicos = más tarjetas"
+      }
+    ],
+    "resumen_por_categoria": {
+      "goles": {
+        "total_esperado": 2.8,
+        "mejor_mercado": "Over 2.5",
+        "probabilidad": 65
+      },
+      "corners": {
+        "total_esperado": 9.5,
+        "mejor_mercado": "Over 9.5",
+        "probabilidad": 72
+      },
+      "tarjetas": {
+        "total_esperado": 4.2,
+        "mejor_mercado": "Over 3.5 Amarillas",
+        "probabilidad": 68
+      },
+      "resultado": {
+        "favorito": "Local",
+        "probabilidad": 55
+      }
+    }
+  },
   "advertencias": {
     "titulo": "Factores de Riesgo",
     "bullets": ["Riesgo 1", "Riesgo 2"]
@@ -598,6 +759,42 @@ CRITICAL REMINDERS:
           }
         };
       }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MEGA-UPGRADE: INYECTAR PRE_CALCULATED_MARKETS EN AIDATA
+    // Esto garantiza que los cálculos de 60+ mercados siempre aparezcan
+    // independientemente de lo que devuelva Gemini
+    // ═══════════════════════════════════════════════════════════════
+    if (preCalculatedMarkets) {
+      console.log('[V2-MEGA] Inyectando pre_calculated_markets en aiData...');
+
+      // Agregar sección de mercados calculados
+      aiData.analisis_mercados_calculados = {
+        descripcion: "Análisis automático de 60+ mercados basado en datos reales",
+        mercados_evaluados: preCalculatedMarkets.markets_evaluated,
+        mercados_con_valor: preCalculatedMarkets.markets_with_value,
+        resumen: {
+          goles_esperados: preCalculatedMarkets.total_goals_expected,
+          corners_esperados: preCalculatedMarkets.total_corners_expected,
+          tarjetas_esperadas: preCalculatedMarkets.total_yellows_expected,
+          btts_probabilidad: preCalculatedMarkets.btts_prob,
+          victoria_local: preCalculatedMarkets.home_win_prob,
+          empate: preCalculatedMarkets.draw_prob,
+          victoria_visitante: preCalculatedMarkets.away_win_prob
+        },
+        top_oportunidades: preCalculatedMarkets.market_opportunities.slice(0, 10).map(o => ({
+          mercado: o.market_name,
+          categoria: o.category,
+          probabilidad_calculada: o.calculated_probability,
+          probabilidad_tipica: o.typical_implied_prob,
+          value_score: o.value_score,
+          confianza: o.confidence,
+          recomendacion: o.recommendation
+        }))
+      };
+
+      console.log('[V2-MEGA] Pre-calculated markets inyectados correctamente');
     }
 
     // --- STAGE 6: SAVE ---
