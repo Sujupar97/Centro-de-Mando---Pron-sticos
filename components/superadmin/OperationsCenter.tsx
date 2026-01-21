@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { verifyPendingPredictions, fetchPendingVerificationRuns, resetStuckJobs, runPostMatchAnalysis, fetchMissingPostMatchRuns } from '../../services/analysisService';
+import { verifyPendingPredictions, fetchPendingVerificationRuns, resetStuckJobs, runPostMatchAnalysis, fetchMissingPostMatchRuns, runV2Verification } from '../../services/analysisService';
 import { supabase } from '../../services/supabaseService';
-import { CheckCircleIcon, SparklesIcon, CalendarDaysIcon as CalendarIcon, PlayIcon, ArrowPathIcon, TrashIcon, Cog6ToothIcon, ComputerDesktopIcon, BoltIcon, AcademicCapIcon } from '../icons/Icons';
+import { CheckCircleIcon, SparklesIcon, CalendarDaysIcon as CalendarIcon, PlayIcon, ArrowPathIcon, TrashIcon, Cog6ToothIcon, ComputerDesktopIcon, BoltIcon, AcademicCapIcon, ShieldCheckIcon } from '../icons/Icons';
 
 export const OperationsCenter: React.FC = () => {
     // --- SYSTEM SETTINGS STATE ---
     const [settings, setSettings] = useState<{ [key: string]: boolean }>({
         auto_analysis_enabled: true,
         auto_parlay_enabled: true,
-        auto_learning_enabled: false
+        auto_learning_enabled: false,
+        verification_v2_enabled: true // New setting
     });
     const [loadingSettings, setLoadingSettings] = useState(true);
+
+    // --- V2 VERIFICATION STATE ---
+    const [v2TargetDate, setV2TargetDate] = useState(new Date().toISOString().split('T')[0]);
+    const [isV2Running, setIsV2Running] = useState(false);
+    const [v2Log, setV2Log] = useState<string[]>([]);
 
     // --- BATCH VERIFICATION STATE ---
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
@@ -227,108 +233,94 @@ export const OperationsCenter: React.FC = () => {
 
             <div className="glass p-6 rounded-xl border border-white/5 shadow-2xl">
                 <h2 className="text-xl font-display font-bold text-white mb-6 flex items-center gap-3">
-                    <CheckCircleIcon className="w-6 h-6 text-purple-400" />
-                    Validación Automática de Resultados
+                    <ShieldCheckIcon className="w-6 h-6 text-emerald-400" />
+                    Juez Deportivo IA (Verificación V2)
                 </h2>
 
-                <div className="flex justify-end mb-4">
-                    <button
-                        onClick={handleCleanupStuckJobs}
-                        disabled={verifying}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded-lg text-sm font-bold border border-red-600/50 transition-colors"
-                    >
-                        <TrashIcon className="w-4 h-4" /> Resetear Procesos Trabados
-                    </button>
-                </div>
-
                 <div className="bg-slate-900/30 p-6 rounded-lg border border-white/5">
-                    <h4 className="font-bold text-gray-200 mb-2">Verificación de Pronósticos por Lotes</h4>
-                    <p className="text-sm text-gray-400 mb-6">
-                        Escanea y verifica masivamente los resultados de los partidos en un rango de fechas.
-                    </p>
-
-                    <div className="flex flex-col md:flex-row gap-4 items-end mb-6">
-                        <div className="w-full md:w-auto">
-                            <label className="block text-xs text-gray-400 mb-1 ml-1">Fecha Inicio</label>
-                            <div className="relative">
-                                <CalendarIcon className="absolute left-3 top-2.5 w-4 h-4 text-gray-500" />
-                                <input
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                    disabled={isScanning || isProcessing}
-                                    className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm w-full focus:ring-green-400 focus:border-green-400 disabled:opacity-50"
-                                />
-                            </div>
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h4 className="font-bold text-gray-200 mb-2">Motor de Verificación por Interpretación</h4>
+                            <p className="text-sm text-gray-400 max-w-2xl">
+                                Este nuevo sistema utiliza IA (Gemini) para interpretar resultados complejos (ej. "Ganador 1ra Mitad", "Corners") leyendo estadísticas reales del partido. Reemplaza al sistema antiguo de reglas estrictas.
+                            </p>
                         </div>
+                        <div className="flex flex-col items-end">
+                            <label className="relative inline-flex items-center cursor-pointer mb-2">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={settings.verification_v2_enabled}
+                                    onChange={() => toggleSetting('verification_v2_enabled')}
+                                />
+                                <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                                <span className="ml-3 text-sm font-medium text-gray-300">Auto-Ejecución (11:30 PM)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row gap-4 items-end mb-6 bg-slate-800/40 p-4 rounded-lg">
                         <div className="w-full md:w-auto">
-                            <label className="block text-xs text-gray-400 mb-1 ml-1">Fecha Fin</label>
+                            <label className="block text-xs text-gray-400 mb-1 ml-1">Fecha a Verificar</label>
                             <div className="relative">
                                 <CalendarIcon className="absolute left-3 top-2.5 w-4 h-4 text-gray-500" />
                                 <input
                                     type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    disabled={isScanning || isProcessing}
-                                    className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm w-full focus:ring-green-400 focus:border-green-400 disabled:opacity-50"
+                                    value={v2TargetDate}
+                                    onChange={(e) => setV2TargetDate(e.target.value)}
+                                    disabled={isV2Running}
+                                    className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm w-full focus:ring-emerald-400 focus:border-emerald-400 disabled:opacity-50"
                                 />
                             </div>
                         </div>
                         <button
-                            onClick={handleScanPending}
-                            disabled={isScanning || isProcessing}
-                            className="h-[38px] px-6 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-md transition duration-300 disabled:bg-gray-600 flex items-center gap-2"
+                            onClick={async () => {
+                                setIsV2Running(true);
+                                setV2Log(prev => [`🚀 Iniciando Juez IA para: ${v2TargetDate}...`, ...prev]);
+                                try {
+                                    const res = await runV2Verification(v2TargetDate, undefined, true);
+                                    if (res.success) {
+                                        const stats = res.stats || {};
+                                        // Merge trace logs if present
+                                        const serverTrace = res.trace || [];
+
+                                        setV2Log(prev => [
+                                            `✅ Completado.`,
+                                            `   - Procesados: ${stats.processed || 0}`,
+                                            `   - Parlays Act: ${stats.updated_parlays || 0}`,
+                                            `   - Picks Act: ${stats.updated_picks || 0}`,
+                                            `   - Errores: ${stats.errors || 0}`,
+                                            ...serverTrace.map((t: string) => `   🔍 ${t}`), // Add prefix to distinguish
+                                            ...prev
+                                        ]);
+                                    } else {
+                                        setV2Log(prev => [`❌ Error: ${JSON.stringify(res)}`, ...prev]);
+                                    }
+                                } catch (e: any) {
+                                    setV2Log(prev => [`❌ Excepción: ${e.message}`, ...prev]);
+                                } finally {
+                                    setIsV2Running(false);
+                                }
+                            }}
+                            disabled={isV2Running}
+                            className="h-[38px] px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-md transition duration-300 disabled:bg-gray-600 flex items-center gap-2 shadow-lg shadow-emerald-900/20"
                         >
-                            {isScanning ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <ArrowPathIcon className="w-4 h-4" />}
-                            {isScanning ? 'Escaneando...' : 'Escanear'}
+                            {isV2Running ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <PlayIcon className="w-4 h-4" />}
+                            {isV2Running ? 'Verificando...' : 'Ejecutar Verificación V2'}
                         </button>
                     </div>
 
-                    {(batchStatus === 'ready' || batchStatus === 'processing' || batchStatus === 'complete' || scanResults.length > 0) && (
-                        <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                            <div className="flex justify-between items-center mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-3 h-3 rounded-full ${batchStatus === 'complete' ? 'bg-green-500' : batchStatus === 'processing' ? 'bg-yellow-400 animate-pulse' : 'bg-blue-500'}`}></div>
-                                    <span className="text-gray-300 font-medium">
-                                        {batchStatus === 'complete' ? 'Proceso Finalizado' :
-                                            batchStatus === 'processing' ? `Procesando... (${processedCount}/${scanResults.length})` :
-                                                `Listo: ${scanResults.length} partidos`}
-                                    </span>
+                    <div className="bg-black/40 rounded p-3 h-48 overflow-y-auto font-mono text-xs border border-gray-700/50">
+                        {v2Log.length === 0 ? (
+                            <span className="text-gray-600 italic">Esperando ejecución...</span>
+                        ) : (
+                            v2Log.map((log, i) => (
+                                <div key={i} className="text-gray-400 mb-1 border-b border-gray-800/50 pb-0.5 last:border-0">
+                                    {log}
                                 </div>
-                                {batchStatus === 'ready' && (
-                                    <button
-                                        onClick={handleProcessQueue}
-                                        className="px-4 py-1.5 bg-green-500 hover:bg-green-600 text-white font-bold text-sm rounded-md transition flex items-center gap-2 shadow-lg shadow-green-900/20"
-                                    >
-                                        <PlayIcon className="w-4 h-4" /> Iniciar
-                                    </button>
-                                )}
-                            </div>
-
-                            {(batchStatus === 'processing' || batchStatus === 'complete') && (
-                                <div className="w-full bg-gray-900 rounded-full h-4 mb-4 overflow-hidden border border-gray-700 relative">
-                                    <div
-                                        className="bg-gradient-to-r from-green-600 to-green-400 h-full transition-all duration-500 ease-out flex items-center justify-center"
-                                        style={{ width: `${progress}%` }}
-                                    >
-                                    </div>
-                                    <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white shadow-sm drop-shadow-md">{progress}%</span>
-                                </div>
-                            )}
-
-                            <div className="bg-black/40 rounded p-3 h-32 overflow-y-auto font-mono text-xs border border-gray-700/50">
-                                {batchLog.length === 0 ? (
-                                    <span className="text-gray-600 italic">Esperando inicio...</span>
-                                ) : (
-                                    batchLog.map((log, i) => (
-                                        <div key={i} className="text-gray-400 mb-1 border-b border-gray-800/50 pb-0.5 last:border-0">
-                                            {log}
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    )}
+                            ))
+                        )}
+                    </div>
                 </div>
             </div>
 

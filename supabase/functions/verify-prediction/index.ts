@@ -152,11 +152,18 @@ serve(async (req) => {
 
             log(`[PROCESS] Match ${apiFixtureId} Finished: ${scoreStr}. Verifying with AI...`);
 
-            // 2.1 Fetch Technical Statistics
+            // 2.1 Fetch Technical Statistics & Events
             const stats = await fetchFootball(`fixtures/statistics?fixture=${apiFixtureId}`);
+            const events = await fetchFootball(`fixtures/events?fixture=${apiFixtureId}`); // Added Events
+
             let statsText = "Stats not available.";
             if (stats && stats.length > 0) {
                 statsText = JSON.stringify(stats);
+            }
+
+            let eventsText = "Events not available.";
+            if (events && events.length > 0) {
+                eventsText = JSON.stringify(events);
             }
 
             // 3. AI Verification (Deep Post-Mortem)
@@ -176,6 +183,7 @@ serve(async (req) => {
         FINAL SCORE: ${score.home} - ${score.away}
         WINNER: ${winner}
         MATCH STATISTICS: ${statsText}
+        KEY EVENTS: ${eventsText}
         
         PREDICTIONS MADE:
         ${JSON.stringify(run.predictions.map((p: any) => ({
@@ -194,8 +202,13 @@ serve(async (req) => {
         ALL OUTPUT MUST BE IN SPANISH (ESPAÑOL).
         The tactical analysis, statistical breakdown, and reviews MUST be written in professional Spanish suitable for a sports report.
         
-        TASK 1: VERIFY RESULTS
+        TASK 1: VERIFY RESULTS (BE STRICT)
         - Determine if each prediction WON, LOST, or PUSHED.
+        - Rules:
+          - Over/Under: Compare goals/corners/cards vs line.
+          - BTTS: Did both score?
+          - 1X2: Did selection win?
+          - Asian Handicaps: Apply handicap math.
         
         TASK 2: DEEP ANALYSIS (The Core)
         - CRITICAL: Analyze the result of the MAIN PREDICTION (Highest Probability/Confidence). Why did it Win/Lose?
@@ -209,7 +222,7 @@ serve(async (req) => {
         OUTPUT JSON:
         {
             "prediction_results": [
-                { "id": "uuid", "is_won": boolean, "outcome_note": "Short explaining result" }
+                { "id": "uuid", "is_won": true|false, "outcome_note": "Short explaining result" }
             ],
             "post_match_analysis": {
                 "tactical_analysis": "Detailed paragraphs on tactical adaptation...",
@@ -223,11 +236,10 @@ serve(async (req) => {
         `;
 
             const requestBody = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.1 } };
-            log(`[AI] Preparing to call Gemini model: gemini-3-pro-preview`);
+            // MODEL UPGRADE: gemini-3-flash (2026 Standard)
+            const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${geminiKey}`;
 
-            const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${geminiKey}`;
-
-            log(`[AI] Sending request to ${genUrl}`);
+            log(`[AI] Sending request to Gemini 3 Flash...`);
             const start = Date.now();
             let genRes;
             try {
@@ -279,10 +291,16 @@ serve(async (req) => {
                 }).eq('id', res.id);
             }
 
-            // Update Run
+            // Update Run with FULL DATA
             await supabase.from('analysis_runs').update({
                 post_match_analysis: analysisResult.post_match_analysis,
-                actual_outcome: { score: fixture.score, status: statusShort, winner }
+                actual_outcome: {
+                    score: fixture.score,
+                    status: statusShort,
+                    winner,
+                    statistics: stats,  // Saving RAW STATS
+                    events: events      // Saving RAW EVENTS
+                }
             }).eq('id', run.id);
 
             results.push({

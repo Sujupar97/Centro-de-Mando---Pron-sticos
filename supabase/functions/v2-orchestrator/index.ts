@@ -23,48 +23,6 @@ serve(async (req) => {
         const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabase = createClient(sbUrl, sbKey);
 
-        // ═══════════════════════════════════════════════════════════════
-        // LIMPIEZA: Eliminar análisis anteriores para este fixture
-        // ═══════════════════════════════════════════════════════════════
-        console.log(`[V2-ORCHESTRATOR] 🧹 Cleaning previous analysis for fixture: ${fixture_id}`);
-
-        // 1. Obtener jobs anteriores para este fixture
-        const { data: previousJobs } = await supabase
-            .from('analysis_jobs_v2')
-            .select('id')
-            .eq('fixture_id', fixture_id);
-
-        if (previousJobs && previousJobs.length > 0) {
-            const previousJobIds = previousJobs.map((j: any) => j.id);
-            console.log(`[V2-ORCHESTRATOR] Found ${previousJobIds.length} previous jobs to clean`);
-
-            // 2. Eliminar picks anteriores
-            await supabase
-                .from('value_picks_v2')
-                .delete()
-                .in('job_id', previousJobIds);
-
-            // 3. Eliminar probabilidades anteriores
-            await supabase
-                .from('market_probs_v2')
-                .delete()
-                .in('job_id', previousJobIds);
-
-            // 4. Eliminar reportes anteriores
-            await supabase
-                .from('analysis_reports_v2')
-                .delete()
-                .in('job_id', previousJobIds);
-
-            // 5. Eliminar jobs anteriores
-            await supabase
-                .from('analysis_jobs_v2')
-                .delete()
-                .eq('fixture_id', fixture_id);
-
-            console.log(`[V2-ORCHESTRATOR] ✅ Cleaned ${previousJobIds.length} previous analyses`);
-        }
-
         const baseUrl = sbUrl.replace('.supabase.co', '.supabase.co/functions/v1');
         const authHeader = `Bearer ${sbKey}`;
 

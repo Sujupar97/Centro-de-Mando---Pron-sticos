@@ -759,6 +759,25 @@ export const verifyPendingPredictions = async (fixtureId?: string | number[]): P
 };
 
 /**
+ * Invoca el Motor de Verificación V2 (IA Judge).
+ * @param date YYYY-MM-DD (por defecto: ayer)
+ * @param manualFixtureId (opcional) Para forzar un partido específico
+ */
+export const runV2Verification = async (date?: string, manualFixtureId?: number, force: boolean = false): Promise<{ success: boolean, stats?: any, trace?: string[] }> => {
+    try {
+        const { data, error } = await supabase.functions.invoke('v2-verify-results', {
+            body: { date, manual_fixture_id: manualFixtureId, force_run: force }
+        });
+
+        if (error) throw error;
+        return data;
+    } catch (err: any) {
+        console.error("Error en V2 Verification:", err);
+        return { success: false, trace: [`Clte Error: ${err.message}`] };
+    }
+};
+
+/**
  * Obtiene estadísticas de rendimiento agregadas para un rango de fechas.
  */
 export const fetchPerformanceStats = async (start: Date, end: Date): Promise<PerformanceStats> => {
