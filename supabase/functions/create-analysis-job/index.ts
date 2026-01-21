@@ -1,8 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai"
 import JSON5 from "https://esm.sh/json5@2.2.3"
 import { corsHeaders } from '../_shared/cors.ts'
-import { calculateAllMarkets, PreCalculatedMarkets } from '../_shared/marketCalculator.ts'
+// import { calculateAllMarkets, PreCalculatedMarkets } from '../_shared/marketCalculator.ts'
 
 // ... existing code ...
 
@@ -344,458 +345,202 @@ serve(async (req) => {
     };
 
     // ═══════════════════════════════════════════════════════════════
-    // MEGA-UPGRADE: CALCULAR 60+ MERCADOS AUTOMÁTICAMENTE
+    // FASE 3: CONSULTA RAG (BASE DE CONOCIMIENTO TÁCTICO)
     // ═══════════════════════════════════════════════════════════════
-    console.log('[V2-MEGA] Calculando 60+ mercados automáticamente...');
+    console.log('[V2-SUPER-PROMPT] Consultando RAG para contexto avanzado...');
 
-    let preCalculatedMarkets: PreCalculatedMarkets | null = null;
+    // Calcular formaciones más usadas para el query
+    const getMostUsed = (stats: any) => Object.entries(stats).sort((a: any, b: any) => b[1].count - a[1].count)[0]?.[0] || "Unknown";
+    const homeMostUsed = getMostUsed(homeFormations.formationStats);
+    const awayMostUsed = getMostUsed(awayFormations.formationStats);
+
+    // Generar embedding del contexto del partido
+    // Usamos Gemini para generar vector del contexto
+    let knowledgeContext = "No specific tactical documents found.";
     try {
-      preCalculatedMarkets = calculateAllMarkets({
-        homeStats: statsHome || {},
-        awayStats: statsAway || {},
-        h2h: h2h || [],
-        refereeStats: refereeStats,
-        homeAsHome: homeAsHome10 || [],
-        awayAsAway: awayAsAway10 || [],
-        homeTeamId: homeTeam.id,
-        awayTeamId: awayTeam.id
+      const ai = new GoogleGenerativeAI(geminiKey);
+      const embedModel = ai.getGenerativeModel({ model: "text-embedding-004" });
+
+      const embeddingQuery = `Analysis for ${homeTeam.name} vs ${awayTeam.name}. League: ${game.league.name}. Formations: ${homeMostUsed} vs ${awayMostUsed}`;
+
+      const result = await embedModel.embedContent(embeddingQuery);
+      const vector = result.embedding.values;
+
+      // Consultar DB
+      const { data: ragDocs, error: ragError } = await supabase.rpc('match_knowledge_base', {
+        query_embedding: vector,
+        match_threshold: 0.5, // Umbral de relevancia
+        match_count: 3
       });
 
-      console.log(`[V2-MEGA] Mercados evaluados: ${preCalculatedMarkets.markets_evaluated}`);
-      console.log(`[V2-MEGA] Mercados con valor: ${preCalculatedMarkets.markets_with_value}`);
-      console.log('[V2-MEGA] Top 3 oportunidades:', preCalculatedMarkets.market_opportunities.slice(0, 3).map(o => `${o.market_name}: ${o.value_score}%`));
-
-      // Agregar los cálculos al inputPayload
-      (inputPayload as any).pre_calculated_markets = {
-        summary: {
-          total_goals_expected: preCalculatedMarkets.total_goals_expected,
-          total_corners_expected: preCalculatedMarkets.total_corners_expected,
-          total_yellows_expected: preCalculatedMarkets.total_yellows_expected,
-          btts_prob: preCalculatedMarkets.btts_prob,
-          home_win_prob: preCalculatedMarkets.home_win_prob,
-          draw_prob: preCalculatedMarkets.draw_prob,
-          away_win_prob: preCalculatedMarkets.away_win_prob
-        },
-        goals_markets: {
-          over_15_prob: preCalculatedMarkets.over_15_prob,
-          over_25_prob: preCalculatedMarkets.over_25_prob,
-          over_35_prob: preCalculatedMarkets.over_35_prob
-        },
-        corners_markets: {
-          over_85_prob: preCalculatedMarkets.over_85_corners_prob,
-          over_95_prob: preCalculatedMarkets.over_95_corners_prob,
-          over_105_prob: preCalculatedMarkets.over_105_corners_prob
-        },
-        cards_markets: {
-          over_25_prob: preCalculatedMarkets.over_25_yellows_prob,
-          over_35_prob: preCalculatedMarkets.over_35_yellows_prob,
-          over_45_prob: preCalculatedMarkets.over_45_yellows_prob
-        },
-        time_markets: {
-          fh_over_05_prob: preCalculatedMarkets.fh_over_05_prob,
-          sh_over_05_prob: preCalculatedMarkets.sh_over_05_prob
-        },
-        top_opportunities: preCalculatedMarkets.market_opportunities.slice(0, 10)
-      };
-    } catch (calcError) {
-      console.error('[V2-MEGA] Error calculando mercados:', calcError);
+      if (ragDocs && ragDocs.length > 0) {
+        knowledgeContext = ragDocs.map((d: any) => `[DOCUMENTO: ${d.title}]\n${d.content}`).join('\n\n');
+        console.log(`[V2-SUPER-PROMPT] RAG encontró ${ragDocs.length} documentos relevantes.`);
+      } else {
+        console.log(`[V2-SUPER-PROMPT] RAG no encontró documentos específicos con umbral 0.5.`);
+      }
+    } catch (e) {
+      console.error('[V2-SUPER-PROMPT] Error en RAG (continuando sin contexto extra):', e);
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // NUEVO: CARGAR CATÁLOGO DE MERCADOS DE LA BASE DE DATOS
+    // FASE 4: EL SUPER PROMPT (CADENA DE PENSAMIENTO)
     // ═══════════════════════════════════════════════════════════════
+
+    // Preparamos el catálogo de mercados para que la IA elija
     let marketsCatalog: any[] = [];
     try {
       const { data: marketsData } = await supabase
         .from('betting_markets_catalog')
-        .select('category, market_key, market_name_es, description, typical_odds_min, typical_odds_max, analysis_trigger')
+        .select('category, market_key, market_name_es, description, typical_odds_min, typical_odds_max')
         .eq('is_active', true)
         .order('category');
-
       marketsCatalog = marketsData || [];
-      console.log(`[ETL] Loaded ${marketsCatalog.length} betting markets from catalog`);
-    } catch (e) {
-      console.error('[ETL] Failed to load markets catalog:', e);
-    }
+    } catch (e) { console.error('Error fetching catalog:', e); }
 
-    // Formatear catálogo para el prompt
-    const marketsCatalogStr = marketsCatalog.length > 0
-      ? marketsCatalog.map(m => `- ${m.market_name_es} (${m.market_key}): ${m.description || ''} [Cuota típica: ${m.typical_odds_min}-${m.typical_odds_max}]`).join('\n')
-      : '// Catálogo no disponible, usar mercados estándar';
+    const marketsList = marketsCatalog.map(m => `- ${m.market_name_es} (${m.market_key})`).join('\n');
 
     const prompt = `
-YOU ARE AN ELITE FOOTBALL TACTICAL ANALYST with 20+ years of professional experience.
-Output language: CONSTANTLY, STRICTLY, ONLY SPANISH (ESPAÑOL).
+ERES EL ANALISTA DEPORTIVO PRINCIPAL DE "DERBIX".
+TU OBJETIVO: INTERPRETAR LA REALIDAD, NO CALCULARLA.
 
-Your expertise includes:
-- Tactical formations analysis (4-4-2, 4-3-3, 3-5-2, 5-3-2, etc.)
-- Player positioning, movement patterns, and roles within systems
-- Set-piece strategies (corners, free kicks) and execution
-- In-game adjustments and substitution impact
-- Referee tendencies and their impact on game flow and betting markets
-- Weather/pitch condition effects on tactics and outcomes
+Tienes acceso a datos profundos, contexto táctico y una base de conocimiento histórica.
+Tu trabajo es encontrar la "VERDAD DEL PARTIDO" y traducirla en oportunidades de inversión (picks).
 
-CRITICAL MINDSET:
-You combine STATISTICAL ANALYSIS with TACTICAL INTELLIGENCE. Don't just report numbers—INTERPRET them through a tactical lens. Identify opportunities in ANY market: goals, corners, cards, players, BTTS, handicaps, etc.
-
-==========================================
-STRICT DATA SOURCE (JSON):
-==========================================
+==================================================
+CONTEXTO DEL PARTIDO (JSON DATOS CRUDOS):
+==================================================
 ${JSON.stringify(inputPayload)}
 
-==========================================
-TACTICAL ANALYSIS METHODOLOGY:
-==========================================
+==================================================
+CONOCIMIENTO TÁCTICO RELEVANTE (RAG):
+==================================================
+${knowledgeContext}
 
-1. FORMATION ANALYSIS (CRITICAL):
-   For each team, analyze their tactical_analysis section:
-   A. FORMATION PATTERNS: Frequency, success rate, flexibility.
-   B. FORMATION MATCHUP: How Team A's shape plays against Team B's.
-   C. KEY PLAYERS: Starters, injuries impact.
+==================================================
+CATÁLOGO DE MERCADOS DISPONIBLES:
+==================================================
+${marketsList}
 
-2. REFEREE IMPACT ANALYSIS:
-   - Analyze card stats if available.
-   - Correlate referee style with team tactics (e.g., Physical defense + Strict ref = Cards).
+==================================================
+TU MISIÓN (CADENA DE PENSAMIENTO):
+==================================================
 
-3. SCENARIO ANALYSIS (NEW):
-   - PROBABLE SCENARIO: The most logical game script (60-70% chance).
-   - UNEXPECTED SCENARIO: A "Black Swan" event or alternative outcome (e.g., early red card, underdog scores first). How does this change the live betting strategy?
+PASO 1: ANÁLISIS DE LA NARRATIVA (INTERPRETACIÓN)
+- ¿Quién necesita ganar? (Descenso, Título, Champions, Honor)
+- ¿Quién tiene la presión? ¿Quién juega relajado?
+- ¿Cómo llegan mentalmente? (Racha ganadora vs Crisis)
 
-4. OPPORTUNITY IDENTIFICATION (ALL MARKETS):
-   - Corners, Cards, Goals, BTTS, Player Props.
-   - Justify everything with TACTICS + DATA.
+PASO 2: DUELO TÁCTICO (FORMACIONES)
+- Mira las formaciones probables en el JSON.
+- ¿Cómo interactúa el esquema del Local con el del Visitante? (Ej: 4-3-3 vs 5-4-1 bloque bajo).
+- ¿Dónde están los espacios? ¿Bandas? ¿Pasillos interiores?
 
-5. MERCADO RECOMENDADO (CRÍTICO - NUEVO):
-   Debes evaluar TODOS estos mercados disponibles y elegir EL MEJOR:
-   
-${marketsCatalogStr}
+PASO 3: IDENTIFICACIÓN DE PATRONES (DATA)
+- Ignora promedios vacíos. Busca TENDENCIAS.
+- ¿El Local siempre encaja gol en el 2T? 
+- ¿El Árbitro saca amarilla fácil a los centrales lentos?
 
-   IMPORTANTE: El sistema ya ha PRE-CALCULADO probabilidades para 60+ mercados usando datos reales.
-   Estas probabilidades están en "pre_calculated_markets" del JSON de entrada.
-   
-   Tu trabajo es:
-   A) VALIDAR estos cálculos con tu análisis táctico
-   B) Identificar cuáles mercados tienen VALOR REAL (diferencia entre probabilidad calculada vs implícita)
-   C) Agregar CONTEXTO TÁCTICO a cada oportunidad detectada
-   D) Generar un RANKING de las mejores oportunidades
-   
-   MERCADOS PRE-CALCULADOS DISPONIBLES:
-   - Goles: Over 1.5, 2.5, 3.5, BTTS
-   - Corners: Over 8.5, 9.5, 10.5
-   - Tarjetas: Over 2.5, 3.5, 4.5 amarillas
-   - Tiempos: 1T Over 0.5, 2T Over 0.5
-   - Resultado: 1X2, Clean Sheet
+PASO 4: VEREDICTO FINAL Y SELECCIÓN DE OPORTUNIDADES
+- Seleccionas las mejores oportunidades del catálogo.
+- NO TE LIMITES POR CUOTAS PRE-CALCULADAS. Usa tu intuición experta.
+- Determina el riesgo real.
 
-==========================================
-OUTPUT FORMAT (STRICT JSON):
-==========================================
+==================================================
+FORMATO DE SALIDA (JSON STRICTO):
+==================================================
 {
   "veredicto_analista": {
-    "decision": "APOSTAR", // VALUES: "APOSTAR" | "OBSERVAR" | "EVITAR"
-    "titulo_accion": "OPORTUNIDAD CLARA DETECTADA" or "NO HAY VALOR / ALTO RIESGO",
-    "seleccion_clave": "Ej: Más de 2.5 Goles", // NULL if decision is EVITAR/OBSERVAR
-    "probabilidad": 85, // INTEGER 0-100. Estimate based on stats dominance.
-    "nivel_confianza": "ALTA", // VALUES: "ALTA" | "MEDIA" | "BAJA"
-    "razon_principal": "Argumento más fuerte en una frase.",
-    "riesgo_principal": "El mayor peligro de esta predicción."
+    "decision": "APOSTAR" | "OBSERVAR" | "EVITAR",
+    "titulo_accion": "Título corto e impactante (Ej: 'Guerra de Trincheras')",
+    "probabilidad": 85, // Tu estimación experta (0-100)
+    "nivel_confianza": "ALTA" | "MEDIA" | "BAJA",
+    "razon_principal": "Tu argumento #1",
+    "riesgo_principal": "El mayor peligro"
   },
   "header_partido": {
-    "titulo": "Local vs Visitante: [Gancho Táctico]",
-    "subtitulo": "Competición - Estadio",
-    "bullets_clave": ["Insight Táctico 1", "Insight Táctico 2", "Insight Táctico 3"]
+    "titulo": "Local vs Visitante: [Frase Táctica]",
+    "subtitulo": "Estadio - Torneo",
+    "bullets_clave": ["Dato 1", "Dato 2", "Dato 3"]
   },
   "resumen_ejecutivo": {
-    "frase_principal": "Una frase poderosa resumiendo el duelo táctico.",
-    "puntos_clave": [
-      "Análisis de formaciones",
-      "Impacto del Árbitro",
-      "Oportunidad clave detectada",
-      "Riesgo principal"
-    ]
+    "frase_principal": "Narrativa completa del partido en 2 líneas.",
+    "puntos_clave": ["Clave 1", "Clave 2", "Clave 3", "Clave 4"]
   },
-  "tablas_comparativas": {
-    "forma_reciente": {
-      "titulo": "Forma Reciente (Últimos 10)",
-      "columnas": ["Equipo", "PJ", "W", "D", "L", "GF", "GC"],
-      "filas": [
-        ["Local", 10, 6, 2, 2, 18, 8],
-        ["Visitante", 10, 4, 3, 3, 12, 11]
-      ]
-    },
-    "formaciones_tacticas": {
-      "titulo": "Análisis de Formaciones",
-      "columnas": ["Equipo", "Formación Principal", "Veces Usada", "W-D-L", "GF/GC"],
-      "filas": [
-        ["Local", "4-3-3", "8/10", "6-1-1", "15-6"],
-        ["Visitante", "5-4-1", "7/10", "3-3-1", "8-5"]
-      ]
-    },
-    "promedio_goles": {
-      "titulo": "Promedio de Goles",
-      "columnas": ["Equipo", "GF/P", "GC/P", "Total/P"],
-      "filas": [
-        ["Local", 1.8, 0.8, 2.6],
-        ["Visitante", 1.2, 1.1, 2.3]
-      ]
-    }
-  },
-  "graficos_sugeridos": [
-    {
-      "titulo": "Corners por Formación",
-      "descripcion": "Promedio de corners cuando juegan con su formación principal",
-      "series": [
-        {"nombre": "Local (4-3-3)", "valores": {"Corners a favor": 5.2, "Corners en contra": 3.1}},
-        {"nombre": "Visitante (5-4-1)", "valores": {"Corners a favor": 2.8, "Corners en contra": 4.5}}
-      ]
-    }
-  ],
   "analisis_detallado": {
-    "contexto_competitivo": {
-      "titulo": "Contexto Competitivo",
-      "bullets": ["Texto en ESPAÑOL"]
-    },
-    "analisis_tactico_formaciones": {
-      "titulo": "Análisis Táctico de Formaciones",
-      "bullets": ["Texto en ESPAÑOL"]
-    },
-    "impacto_arbitro": {
-      "titulo": "Impacto del Árbitro",
-      "bullets": ["Texto en ESPAÑOL"]
-    },
-    "alineaciones_y_bajas": {
-      "titulo": "Alineaciones y Bajas Críticas",
-      "bullets": ["Texto en ESPAÑOL"]
-    },
+    "contexto_competitivo": { "titulo": "La Narrativa", "bullets": ["Análisis de motivación y estado de forma"] },
+    "analisis_tactico_formaciones": { "titulo": "La Batalla Táctica", "bullets": ["Análisis de formaciones y espacios"] },
+    "impacto_arbitro": { "titulo": "El Juez", "bullets": ["Análisis del árbitro"] },
+    "alineaciones_y_bajas": { "titulo": "Novedades", "bullets": ["Bajas clave y regresos"] },
     "analisis_escenarios": {
-      "titulo": "Proyección de Escenarios",
+      "titulo": "Guion del Partido",
       "escenarios": [
-        {
-          "nombre": "ESCENARIO PROBABLE (60-70%)",
-          "probabilidad_aproximada": "65%",
-          "descripcion": "Descripción detallada de cómo se desarrollará el partido bajo condiciones normales. Quién domina, quién contragolpea, ritmo esperado.",
-          "implicacion_apuestas": "Apuntar a Over de córners y victoria local ajustada."
-        },
-        {
-          "nombre": "ESCENARIO INESPERADO / ALTERNATIVO (20-30%)",
-          "probabilidad_aproximada": "25%",
-          "descripcion": "Qué pasa si el visitante anota primero o el local sufre una expulsión. Plan de juego alternativo.",
-          "implicacion_apuestas": "Si visitante anota primero, buscar 'Both Teams to Score' o Local empata."
-        }
+        { "nombre": "ESCENARIO A (Más Probable)", "probabilidad_aproximada": "60%", "descripcion": "...", "implicacion_apuestas": "..." },
+        { "nombre": "ESCENARIO B (Alternativo)", "probabilidad_aproximada": "40%", "descripcion": "...", "implicacion_apuestas": "..." }
       ]
     }
   },
   "predicciones_finales": {
     "detalle": [
       {
-        "mercado": "Total Corners",
-        "seleccion": "Over 9.5",
+        "mercado": "Nombre Mercado (Ej: Over 2.5 Goals)",
+        "seleccion": "Selección (Ej: Over 2.5)",
         "probabilidad_estimado_porcentaje": 75,
         "justificacion_detallada": {
-          "base_estadistica": ["Datos"],
-          "contexto_competitivo": ["Contexto"],
-          "conclusion": "Conclusión en ESPAÑOL."
+          "base_estadistica": ["Dato A", "Dato B"],
+          "contexto_competitivo": ["Argumento Contextual"],
+          "conclusion": "Por qué es una buena apuesta."
         }
       }
     ]
   },
   "mercado_recomendado": {
-    "descripcion": "EL MEJOR mercado identificado después de evaluar TODOS los mercados disponibles",
-    "market_key": "over_2.5",
-    "market_name": "Más de 2.5 Goles",
-    "probabilidad_estimada": 72,
+    "descripcion": "La MEJOR oportunidad del partido (Pick Principal)",
+    "market_key": "clave_mercado", 
+    "market_name": "Nombre Mercado",
+    "probabilidad_estimada": 80,
     "valor_detectado": "ALTO",
-    "razonamiento": "Análisis completo de por qué este es el mercado con mejor relación riesgo/beneficio basado en los datos del partido",
-    "mercados_evaluados": ["over_2.5", "btts_yes", "home_win", "1x", "over_1.5"]
+    "razonamiento": "Argumento final contundente."
   },
   "analisis_mercados_completo": {
-    "descripcion": "Análisis de TODOS los 60+ mercados con cálculos pre-hechos y validación táctica",
-    "mercados_evaluados": 60,
-    "mercados_con_valor": 8,
+    "descripcion": "Análisis de valor en otros mercados",
     "ranking_oportunidades": [
-      {
-        "posicion": 1,
-        "market_key": "over_95_corners",
-        "market_name": "Más de 9.5 Corners",
-        "categoria": "Corners",
-        "probabilidad_calculada": 72,
-        "probabilidad_tipica": 48,
-        "value_score": 24,
-        "confianza": "ALTA",
-        "justificacion_tactica": "Explica POR QUÉ tácticamente tiene sentido este mercado basándote en formaciones, estilos de juego, presión alta, etc."
-      },
-      {
-        "posicion": 2,
-        "market_key": "over_35_yellows",
-        "market_name": "Más de 3.5 Amarillas",
-        "categoria": "Tarjetas",
-        "probabilidad_calculada": 68,
-        "probabilidad_tipica": 50,
-        "value_score": 18,
-        "confianza": "MEDIA",
-        "justificacion_tactica": "Árbitro estricto + equipos físicos = más tarjetas"
-      }
-    ],
-    "resumen_por_categoria": {
-      "goles": {
-        "total_esperado": 2.8,
-        "mejor_mercado": "Over 2.5",
-        "probabilidad": 65
-      },
-      "corners": {
-        "total_esperado": 9.5,
-        "mejor_mercado": "Over 9.5",
-        "probabilidad": 72
-      },
-      "tarjetas": {
-        "total_esperado": 4.2,
-        "mejor_mercado": "Over 3.5 Amarillas",
-        "probabilidad": 68
-      },
-      "resultado": {
-        "favorito": "Local",
-        "probabilidad": 55
-      }
-    }
-  },
-  "advertencias": {
-    "titulo": "Factores de Riesgo",
-    "bullets": ["Riesgo 1", "Riesgo 2"]
+       { "posicion": 1, "market_name": "Mercado 2", "confianza": "ALTA", "justificacion_tactica": "..." },
+       { "posicion": 2, "market_name": "Mercado 3", "confianza": "MEDIA", "justificacion_tactica": "..." }
+    ]
   }
 }
 
-CRITICAL REMINDERS:
-1. OUTPUT MUST BE 100% IN SPANISH. NO ENGLISH IN VALUES.
-2. NEVER, NEVER INVENT ODDS/PRICES (NO "1.85"). IT IS STRICTLY FORBIDDEN.
-3. BE A STRICT FILTER. If the match is 50/50 or risky, set 'decision' to "EVITAR".
-4. ONLY set 'decision' to "APOSTAR" if you have >70% confidence.
-5. In 'veredicto_analista', use simple, direct language. Tell the user exactly what to do (Bet or Avoid).
-6. KEEP THE SCENARIO ANALYSIS. It is useful.
-7. **ANTI-HALLUCINATION RULE (PLAYER INTEGRITY):**
-   - YOU MUST ONLY mention players explicitly listed in the 'tactical_analysis' (current/recent lineups) or 'availability' (injuries) sections of the JSON.
-   - **DO NOT** use your internal training data to assume where a player plays. Players move. If the JSON says Player X is in Team A, he is. If he is not in the JSON, DO NOT MENTION HIM.
-   - If 'lineups' are empty, do not invent a starting XI. State that lineups are not yet available.
-   - If 'injuries' is empty, do NOT assume famous players are injured based on outdated memory.
+REGLAS DE ORO:
+1. IDIOMA: SIEMPRE ESPAÑOL.
+2. SÉ CRÍTICO: Si el partido apesta, dilo ("EVITAR").
+3. NO INVENTES JUGADORES: Solo usa los del JSON.
 `;
 
+    // ═══════════════════════════════════════════════════════════════
+    // FASE 5: EJECUCIÓN (GEMINI PRO)
+    // ═══════════════════════════════════════════════════════════════
+    const genAI = new GoogleGenerativeAI(geminiKey);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash-exp",
+      generationConfig: { responseMimeType: "application/json", temperature: 0.4 }
+    });
 
-    // --- STAGE 5: EXECUTION ---
-
-    // Using Gemini 3 Pro Preview (Explicitly requested by User)
-    const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${geminiKey}`;
-
-    const requestBody = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.3,
-        responseMimeType: 'application/json' // FORCE JSON MODE
-      }
-    };
-
-    const genRes = await fetch(genUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) });
-
-    if (!genRes.ok) throw new Error(`Gemini Error: ${await genRes.text()}`);
-    const genJson = await genRes.json();
-    let aiResponseText = genJson.candidates[0].content?.parts?.[0]?.text || "{}";
-
-    // ROBUST CLEANUP:
-    // 1. Remove markdown
-    aiResponseText = aiResponseText.replace(/```json/g, '').replace(/```/g, '').trim();
-
-    // 2. Remove any text before the first { and after the last }
-    const startIndex = aiResponseText.indexOf('{');
-    const endIndex = aiResponseText.lastIndexOf('}');
-    if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
-      aiResponseText = aiResponseText.substring(startIndex, endIndex + 1);
-    }
-
-    // 3. AGGRESSIVE CLEANUP for common AI errors:
-    // - Remove trailing commas before } or ]
-    aiResponseText = aiResponseText.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
-    // - Remove any control characters
-    aiResponseText = aiResponseText.replace(/[\x00-\x1F\x7F]/g, ' ');
-    // - Fix unescaped newlines in strings (common AI error)
-    aiResponseText = aiResponseText.replace(/:\s*"([^"]*)\n([^"]*)"/g, ': "$1 $2"');
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
 
     let aiData;
     try {
-      // JSON5 is the "Root Solution": It handles comments, trailing commas, single quotes, 
-      // and unquoted keys - effectively parsing any "JSON-like" JS object structure 
-      // without using dangerous eval().
-      aiData = JSON5.parse(aiResponseText);
+      aiData = JSON5.parse(responseText);
     } catch (e) {
-      console.error("[JSON5] First parse failed, attempting aggressive fix...");
-      console.error("[JSON5] Raw text preview:", aiResponseText.substring(0, 500));
-
-      // Try more aggressive fixes
-      try {
-        // Remove any non-printable characters and normalize whitespace
-        let cleanedText = aiResponseText
-          .replace(/[^\x20-\x7E\xA0-\xFF{}[\]:,"'\s]/g, '')
-          .replace(/\s+/g, ' ')
-          .replace(/,\s*([}\]])/g, '$1'); // Remove trailing commas
-
-        aiData = JSON5.parse(cleanedText);
-        console.log("[JSON5] Aggressive cleanup succeeded!");
-      } catch (e2) {
-        console.error("[JSON5] Aggressive cleanup also failed:", e2.message);
-        console.error("[JSON5] Full raw text:", aiResponseText);
-
-        // LAST RESORT: Return a minimal valid structure so the analysis doesn't completely fail
-        console.warn("[JSON5] Using fallback minimal structure");
-        aiData = {
-          resumen_ejecutivo: {
-            frase_principal: "Error en el análisis - respuesta de IA malformada",
-            parrafo_detalle: "Por favor intenta ejecutar el análisis nuevamente."
-          },
-          predicciones_finales: {
-            decision: "EVITAR",
-            motivo: "Error técnico en procesamiento",
-            detalle: []
-          },
-          veredicto_analista: {
-            titulo: "Error Técnico",
-            parrafo: "No se pudo procesar la respuesta de la IA. Reintenta el análisis.",
-            icono: "⚠️"
-          }
-        };
-      }
+      // Fallback limpieza básica
+      const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+      aiData = JSON5.parse(cleaned);
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // MEGA-UPGRADE: INYECTAR PRE_CALCULATED_MARKETS EN AIDATA
-    // Esto garantiza que los cálculos de 60+ mercados siempre aparezcan
-    // independientemente de lo que devuelva Gemini
-    // ═══════════════════════════════════════════════════════════════
-    if (preCalculatedMarkets) {
-      console.log('[V2-MEGA] Inyectando pre_calculated_markets en aiData...');
+    // Si no hay datos pre-calculados (porque los borramos), la IA es la única fuente.
+    // No inyectamos nada artificial.
 
-      // Agregar sección de mercados calculados
-      aiData.analisis_mercados_calculados = {
-        descripcion: "Análisis automático de 60+ mercados basado en datos reales",
-        mercados_evaluados: preCalculatedMarkets.markets_evaluated,
-        mercados_con_valor: preCalculatedMarkets.markets_with_value,
-        resumen: {
-          goles_esperados: preCalculatedMarkets.total_goals_expected,
-          corners_esperados: preCalculatedMarkets.total_corners_expected,
-          tarjetas_esperadas: preCalculatedMarkets.total_yellows_expected,
-          btts_probabilidad: preCalculatedMarkets.btts_prob,
-          victoria_local: preCalculatedMarkets.home_win_prob,
-          empate: preCalculatedMarkets.draw_prob,
-          victoria_visitante: preCalculatedMarkets.away_win_prob
-        },
-        top_oportunidades: preCalculatedMarkets.market_opportunities.slice(0, 10).map(o => ({
-          mercado: o.market_name,
-          categoria: o.category,
-          probabilidad_calculada: o.calculated_probability,
-          probabilidad_tipica: o.typical_implied_prob,
-          value_score: o.value_score,
-          confianza: o.confidence,
-          recomendacion: o.recommendation
-        }))
-      };
-
-      console.log('[V2-MEGA] Pre-calculated markets inyectados correctamente');
-    }
 
     // --- STAGE 6: SAVE ---
     // Save enriched evidence

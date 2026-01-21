@@ -11,6 +11,7 @@ import {
     getConfidenceLabel
 } from '../../services/smartParlayService';
 import { getCurrentDateInBogota } from '../../utils/dateUtils';
+import { ArrowDownTrayIcon } from '../icons/Icons';
 
 interface SmartParlaysProps {
     date?: string;
@@ -67,6 +68,14 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
     };
 
     const formatProbability = (prob: number) => `${Math.round(prob * 100)}%`;
+
+    const handleDownloadPDF = (parlay: SmartParlay, index: number) => {
+        import('../../services/pdf/pdfGenerator').then(({ generateParlayPDF }) => {
+            generateParlayPDF(parlay, {
+                fileName: `Derbix_SmartParlay_${selectedDate}_${index + 1}.pdf`
+            });
+        });
+    };
 
     return (
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-700/50 p-6">
@@ -172,11 +181,20 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                             Parlay {parlay.pick_count} Picks #{index + 1}
                                         </h3>
                                     </div>
-                                    <div className="text-right">
-                                        <div className="text-white/80 text-sm">Probabilidad Combinada</div>
-                                        <div className="text-white font-bold text-2xl">
-                                            {formatProbability(parlay.combined_probability)}
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-right">
+                                            <div className="text-white/80 text-sm">Probabilidad Combinada</div>
+                                            <div className="text-white font-bold text-2xl">
+                                                {formatProbability(parlay.combined_probability)}
+                                            </div>
                                         </div>
+                                        <button
+                                            onClick={() => handleDownloadPDF(parlay, index)}
+                                            className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
+                                            title="Descargar Reporte PDF"
+                                        >
+                                            <ArrowDownTrayIcon className="w-5 h-5" />
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -220,7 +238,7 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                     ))}
                 </div>
             )}
-        </div>
+        </div >
     );
 };
 

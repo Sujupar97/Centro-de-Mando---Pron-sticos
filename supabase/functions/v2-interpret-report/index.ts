@@ -409,6 +409,53 @@ DEBES ANALIZAR:
         prompt_version: PROMPT_VERSION
       });
 
+    // ═══════════════════════════════════════════════════════════════
+    // SYNC TO 'analisis' TABLE (Compatibilidad con v3-parlay-engine)
+    // ═══════════════════════════════════════════════════════════════
+    // v3-parlay-engine busca en 'analisis' con estructura dashboardData
+    // Mapeamos el reportData V2 al formato esperado
+    const dashboardData = {
+      veredicto_analista: {
+        decision: betPicks.length > 0 ? 'APOSTAR' : 'OBSERVAR',
+        nivel_confianza: betPicks.length > 0 ? (betPicks[0]?.confidence || 70) : 50,
+        probabilidad: betPicks.length > 0 ? Math.round((betPicks[0]?.p_model || 0.6) * 100) : 50,
+        razon_principal: reportData.resumen_ejecutivo?.titular || 'Análisis V2',
+        riesgo_principal: reportData.factores_riesgo?.riesgos?.[0] || 'Sin riesgos identificados',
+        seleccion_clave: betPicks[0]?.selection || picks[0]?.selection || 'N/A'
+      },
+      mercado_recomendado: betPicks.length > 0 ? {
+        market_name: betPicks[0]?.market || 'N/A',
+        market_key: betPicks[0]?.selection || 'N/A',
+        razonamiento: betPicks[0]?.risk_notes?.reasons?.join('. ') || ''
+      } : null,
+      analisis_mercados_completo: {
+        ranking_oportunidades: picks.slice(0, 5).map((p: any) => ({
+          mercado: p.market,
+          seleccion: p.selection,
+          cuota: p.odds,
+          probabilidad: Math.round((p.p_model || 0.5) * 100),
+          edge: Math.round((p.edge || 0) * 100)
+        }))
+      },
+      // Metadatos adicionales para debugging
+      v2_source: true,
+      job_id: job_id,
+      generated_at: new Date().toISOString()
+    };
+
+    // Delete existing, then insert (analisis table doesn't have unique constraint)
+    await supabase
+      .from('analisis')
+      .delete()
+      .eq('partido_id', fixture_id);
+
+    await supabase
+      .from('analisis')
+      .insert({
+        partido_id: fixture_id,
+        resultado_analisis: { dashboardData }
+      });
+
     // Update job to done
     await supabase
       .from('analysis_jobs_v2')

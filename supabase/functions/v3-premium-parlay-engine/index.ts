@@ -280,327 +280,212 @@ serve(async (req) => {
         })
 
         // ═══════════════════════════════════════════════════════════════
-        // FASE 1: CARGAR DATOS CRUDOS DE PARTIDOS
+        // FASE 1: CARGAR REPORTES DE ANALISTAS (META-ANALYSIS)
         // ═══════════════════════════════════════════════════════════════
-        console.log('[V3-PremiumParlay] FASE 1: Cargando datos crudos...')
+        console.log('[V3-MetaAnalyst] FASE 1: Recopilando inteligencia de campo...');
 
-        // Obtener analysis_jobs_v2 con data_football completo
-        const { data: analysisJobs, error: jobsError } = await supabase
-            .from('analysis_jobs_v2')
-            .select('*')
-            .gte('created_at', `${targetDate}T00:00:00`)
-            .lt('created_at', `${targetDate}T23:59:59`)
-            .eq('status', 'done')
+        // 1. Obtener partidos del día
+        const { data: dailyMatches, error: matchError } = await supabase
+            .from('daily_matches')
+            .select('api_fixture_id, home_team, away_team, league_name')
+            .eq('match_date', targetDate);
 
-        if (jobsError) {
-            console.error('[V3-PremiumParlay] Error fetching jobs:', jobsError)
+        if (matchError || !dailyMatches || dailyMatches.length < 3) {
+            return new Response(JSON.stringify({
+                success: false,
+                error: `Insuficientes partidos rastreados. Encontrados: ${dailyMatches?.length || 0}`
+            }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
-        // Obtener nombres de equipos desde daily_matches
-        const fixtureIds = (analysisJobs || []).map(j => j.fixture_id).filter(Boolean)
+        // 2. Obtener los reportes detallados (analisis table)
+        const fixtureIds = dailyMatches.map(m => m.api_fixture_id);
+        const { data: reports, error: reportsError } = await supabase
+            .from('analisis')
+            .select('partido_id, resultado_analisis')
+            .in('partido_id', fixtureIds);
 
-        let matchDataMap = new Map<number, any>()
-        if (fixtureIds.length > 0) {
-            const { data: dailyMatches } = await supabase
-                .from('daily_matches')
-                .select('api_fixture_id, home_team, away_team, league_name')
-                .in('api_fixture_id', fixtureIds)
+        if (reportsError || !reports) {
+            console.error('Error fetching analysis reports:', reportsError);
+            throw new Error('Failed to fetch analysis reports');
+        }
 
-            if (dailyMatches) {
-                dailyMatches.forEach(m => matchDataMap.set(m.api_fixture_id, m))
+        // 3. Cruzar datos
+        const portfolio = [];
+        for (const match of dailyMatches) {
+            const reportReq = reports.find(r => r.partido_id === match.api_fixture_id);
+            if (reportReq?.resultado_analisis?.dashboardData) {
+                const data = reportReq.resultado_analisis.dashboardData;
+                const verdict = data.veredicto_analista || {};
+                const topPick = data.mercado_recomendado || {};
+
+                // SOLO INCLUIR SI EL ANALISTA DIJO "APOSTAR"
+                if (verdict.decision === 'APOSTAR' || (verdict.decision === 'OBSERVAR' && verdict.probabilidad > 70)) {
+                    portfolio.push({
+                        id: match.api_fixture_id,
+                        match: `${match.home_team} vs ${match.away_team}`,
+                        league: match.league_name,
+                        analyst_verdict: {
+                            decision: verdict.decision,
+                            confidence: verdict.nivel_confianza,
+                            probability: verdict.probabilidad,
+                            reason: verdict.razon_principal,
+                            risk: verdict.riesgo_principal
+                        },
+                        top_pick: {
+                            market: topPick.market_name || verdict.seleccion_clave,
+                            selection: topPick.market_key || "N/A", // We need the key logic
+                            explanation: topPick.razonamiento
+                        },
+                        // Inyectamos oportunidades top del ranking
+                        opportunities: data.analisis_mercados_completo?.ranking_oportunidades?.slice(0, 3) || []
+                    });
+                }
             }
         }
 
-        console.log(`[V3-PremiumParlay] Encontrados: ${analysisJobs?.length || 0} partidos con análisis`)
+        console.log(`[V3-MetaAnalyst] Cartera de candidatos: ${portfolio.length} partidos aprobados por analistas.`);
 
-        if (!analysisJobs || analysisJobs.length < 3) {
+        if (portfolio.length < 3) {
             return new Response(JSON.stringify({
                 success: false,
-                error: `Se necesitan mínimo 3 partidos analizados. Encontrados: ${analysisJobs?.length || 0}`
-            }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                status: 400
-            })
+                error: `Pocos candidatos de alta calidad (${portfolio.length}). Se requieren al menos 3 partidos con veredicto APOSTAR.`
+            }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // FASE 2: PREPARAR CONTEXTO ESTADÍSTICO
-        // ═══════════════════════════════════════════════════════════════
-        console.log('[V3-PremiumParlay] FASE 2: Preparando contexto estadístico...')
-
-        const matchContexts = []
-        for (const job of analysisJobs.slice(0, 20)) { // Max 20 partidos
-            const df = job.data_football || {}
-            const matchInfo = matchDataMap.get(job.fixture_id)
-
-            // Extraer estadísticas crudas
-            const homeTeam = matchInfo?.home_team || df.match?.teams?.home?.name || 'Local'
-            const awayTeam = matchInfo?.away_team || df.match?.teams?.away?.name || 'Visitante'
-            const league = matchInfo?.league_name || df.match?.competition?.name || 'Liga'
-
-            // Calcular métricas desde datos crudos
-            const datasets = df.datasets || {}
-            const homeLast10 = datasets.home_team_last40?.all?.slice(0, 10) || []
-            const awayLast10 = datasets.away_team_last40?.all?.slice(0, 10) || []
-            const h2h = datasets.h2h?.slice(0, 5) || []
-
-            // Métricas calculadas
-            const homeGoalsScored = homeLast10.reduce((sum: number, m: any) =>
-                sum + (m.goals?.scored || 0), 0) / Math.max(homeLast10.length, 1)
-            const homeGoalsConceded = homeLast10.reduce((sum: number, m: any) =>
-                sum + (m.goals?.conceded || 0), 0) / Math.max(homeLast10.length, 1)
-            const awayGoalsScored = awayLast10.reduce((sum: number, m: any) =>
-                sum + (m.goals?.scored || 0), 0) / Math.max(awayLast10.length, 1)
-            const awayGoalsConceded = awayLast10.reduce((sum: number, m: any) =>
-                sum + (m.goals?.conceded || 0), 0) / Math.max(awayLast10.length, 1)
-
-            // BTTS rate
-            const homeBttsRate = homeLast10.filter((m: any) =>
-                (m.goals?.scored || 0) > 0 && (m.goals?.conceded || 0) > 0
-            ).length / Math.max(homeLast10.length, 1)
-            const awayBttsRate = awayLast10.filter((m: any) =>
-                (m.goals?.scored || 0) > 0 && (m.goals?.conceded || 0) > 0
-            ).length / Math.max(awayLast10.length, 1)
-
-            // Over 2.5 rate
-            const homeOver25Rate = homeLast10.filter((m: any) =>
-                ((m.goals?.scored || 0) + (m.goals?.conceded || 0)) > 2.5
-            ).length / Math.max(homeLast10.length, 1)
-            const awayOver25Rate = awayLast10.filter((m: any) =>
-                ((m.goals?.scored || 0) + (m.goals?.conceded || 0)) > 2.5
-            ).length / Math.max(awayLast10.length, 1)
-
-            matchContexts.push({
-                fixture_id: job.fixture_id,
-                home_team: homeTeam,
-                away_team: awayTeam,
-                league: league,
-                stats: {
-                    home_avg_scored: homeGoalsScored.toFixed(2),
-                    home_avg_conceded: homeGoalsConceded.toFixed(2),
-                    away_avg_scored: awayGoalsScored.toFixed(2),
-                    away_avg_conceded: awayGoalsConceded.toFixed(2),
-                    home_btts_rate: (homeBttsRate * 100).toFixed(0) + '%',
-                    away_btts_rate: (awayBttsRate * 100).toFixed(0) + '%',
-                    home_over25_rate: (homeOver25Rate * 100).toFixed(0) + '%',
-                    away_over25_rate: (awayOver25Rate * 100).toFixed(0) + '%',
-                    h2h_last_5: h2h.length
-                },
-                h2h_summary: h2h.slice(0, 3).map((m: any) => `${m.home_score}-${m.away_score}`).join(', ')
-            })
-        }
-
-        console.log(`[V3-PremiumParlay] Contextos preparados: ${matchContexts.length}`)
 
         // ═══════════════════════════════════════════════════════════════
-        // FASE 3: PROMPT DE ANÁLISIS INDEPENDIENTE A GEMINI
+        // FASE 2: PROMPT DEL GESTOR DE PORTFOLIO
         // ═══════════════════════════════════════════════════════════════
-        console.log('[V3-PremiumParlay] FASE 3: Generando parlays con IA...')
+        console.log('[V3-MetaAnalyst] FASE 2: Generando estrategia de inversión...');
 
-        const marketsList = Object.entries(FULL_MARKET_CATALOG)
-            .map(([key, val]) => `${val.category}: ${val.markets.join(', ')}`)
-            .join('\n')
+        const prompt = `
+YOU ARE THE "META-ANALYST" (PORTFOLIO MANAGER) for a premium sports betting fund.
+Your field analysts have sent you detailed reports on ${portfolio.length} matches.
+Your job is to synthetic these reports and build 3 STRATEGIC PARLAYS.
 
-        const prompt = `Eres un EXPERTO ANALISTA de apuestas deportivas con 20 años de experiencia.
+TRADING RULES:
+1. MAX 3 PARLAYS TO GENERATE.
+2. EACH PARLAY MUST HAVE EXACTLY 3 LEGS (PICKS).
+3. ⚠️ REGLA INQUEBRANTABLE - DIVERSIFICACIÓN TOTAL ⚠️:
+   - NUNCA repitas el mismo pronóstico (fixture_id + market) en múltiples parlays.
+   - Si usaste "Partido A Over 2.5" en Parlay 1, NO PUEDE aparecer en Parlay 2 o 3.
+   - Cada parlay debe tener pronósticos COMPLETAMENTE ÚNICOS.
+   - Esto es OBLIGATORIO - la violación invalidará el parlay.
+4. TRUST YOUR ANALYSTS: Use the "analyst_verdict" and "confidence" to weigh your decisions.
 
-Tu tarea: Analizar los siguientes partidos y generar ${CONFIG.PARLAYS_TO_GENERATE} PARLAYS de ALTO VALOR.
+INPUT DATA (FIELD REPORTS):
+${JSON.stringify(portfolio)}
 
-═══════════════════════════════════════════════════════════════
-REGLAS CRÍTICAS - SEGUIR AL PIE DE LA LETRA:
-═══════════════════════════════════════════════════════════════
+YOUR MISSION:
+Build these 3 specific parlays:
 
-1. CUOTAS INDIVIDUALES: Entre ${CONFIG.MIN_INDIVIDUAL_ODDS} y ${CONFIG.MAX_INDIVIDUAL_ODDS}
-   - NO uses mercados con cuota < ${CONFIG.MIN_INDIVIDUAL_ODDS} (muy seguros, poco valor)
-   - NO uses mercados con cuota > ${CONFIG.MAX_INDIVIDUAL_ODDS} (muy arriesgados)
+1. "EL BANQUERO" (SAFE & SOLID)
+   - Composition: The 3 highest confidence picks from the entire list.
+   - Goal: High hit rate, steady bankroll growth.
+   - Strategy: Low risk, clear favorites or safe overs.
 
-2. CUOTA COMBINADA: El producto de las 3 cuotas debe estar entre ${CONFIG.MIN_COMBINED_ODDS} y ${CONFIG.MAX_COMBINED_ODDS}
-   - Ejemplo: 1.65 × 1.85 × 1.90 = 5.80 ✅
+2. "EL TÁCTICO" (SMART VALUE)
+   - Composition: Picks based on specific tactical advantages (e.g., "Team A plays wide vs Team B narrow").
+   - Goal: Value exploits.
+   - Strategy: Use the "reason" and "opportunities" logic.
 
+3. "EL CAZADOR" (HIGH REWARD)
+   - Composition: Slightly riskier picks (draws, BTTS, higher odds) with solid reasoning.
+   - Goal: Big payout.
 
-3. CADA PARLAY DEBE TENER EXACTAMENTE 3 PICKS de 3 PARTIDOS DIFERENTES
-
-4. ⚠️ PROCESO DE ANÁLISIS OBLIGATORIO PARA CADA PARTIDO:
-   Para CADA partido, debes:
-   a) EVALUAR TODOS estos mercados:
-      - 1X2 (Local, Empate, Visitante)
-      - Doble Oportunidad (1X, X2, 12)
-      - Over/Under 1.5, 2.5, 3.5
-      - BTTS Sí/No
-      - Goles del Local Over/Under
-      - Goles del Visitante Over/Under
-      - Primera mitad Over/Under
-      - Segunda mitad Over/Under
-      - Handicap
-      - Clean Sheet
-      - Win to Nil
-   b) CALCULAR la probabilidad y valor de CADA mercado
-   c) ELEGIR el mercado con MEJOR VALOR (cuota alta + probabilidad razonable)
-   
-   Si el mejor mercado coincide entre partidos, está bien - pero debe ser resultado de un análisis profundo, NO pereza.
-
-5. CUOTAS MÍNIMAS: 
-   - NUNCA uses cuotas menores a ${CONFIG.MIN_INDIVIDUAL_ODDS}
-   - Busca mercados con cuotas entre 1.85 y 2.30 para máximo valor
-   - EVITA mercados "seguros" como Over 0.5 o Under 4.5
-
-6. MERCADOS DISPONIBLES (TODOS debes evaluarlos):
-${marketsList}
-
-═══════════════════════════════════════════════════════════════
-PARTIDOS A ANALIZAR:
-═══════════════════════════════════════════════════════════════
-
-${matchContexts.map((m, i) => `
-PARTIDO ${i + 1}: ${m.home_team} vs ${m.away_team}
-Liga: ${m.league}
-fixture_id: ${m.fixture_id}
-Estadísticas:
-  - ${m.home_team}: Anota ${m.stats.home_avg_scored} goles/partido, Recibe ${m.stats.home_avg_conceded}
-  - ${m.away_team}: Anota ${m.stats.away_avg_scored} goles/partido, Recibe ${m.stats.away_avg_conceded}
-  - BTTS: ${m.home_team} ${m.stats.home_btts_rate}, ${m.away_team} ${m.stats.away_btts_rate}
-  - Over 2.5: ${m.home_team} ${m.stats.home_over25_rate}, ${m.away_team} ${m.stats.away_over25_rate}
-  - H2H reciente: ${m.h2h_summary || 'Sin datos'}
-`).join('\n')}
-
-═══════════════════════════════════════════════════════════════
-RESPUESTA REQUERIDA (JSON):
-═══════════════════════════════════════════════════════════════
-
+OUTPUT FORMAT (STRICT JSON):
 {
   "parlays": [
     {
-      "name": "Nombre del Parlay",
-      "confidence_tier": "balanced", 
-      "strategy": "Breve descripción de la estrategia del parlay",
+      "name": "EL BANQUERO", // or "EL TÁCTICO", etc.
+      "strategy": "Explanation of why these 3 fit the strategy.",
       "picks": [
         {
-          "fixture_id": 123456,
-          "home_team": "Equipo Local",
-          "away_team": "Equipo Visitante",
-          "market": "over_2.5",
-          "selection": "Over 2.5 Goles",
-          "odds": 1.85,
-          "probability": 0.55,
-          "reasoning": "Análisis específico de por qué este mercado tiene valor"
+          "fixture_id": 12345,
+          "home_team": "Team A",
+          "away_team": "Team B",
+          "market": "over_2.5", // MUST be a valid market key
+          "selection": "Over 2.5 Goals",
+          "probability": 0.85,
+          "reasoning": "Synthesized reasoning from report."
         }
       ],
-      "combined_odds": 5.80,
-      "combined_probability": 0.16
+      "combined_probability": 0.75
     }
   ]
 }
 
-⚠️ REGLAS CRÍTICAS ADICIONALES:
-- NUNCA uses el mismo fixture_id + market en más de un parlay
-- Ejemplo PROHIBIDO: "Partido 123 Over 1.5" en Parlay 1 Y en Parlay 2
-- Cada pronóstico (fixture + mercado) debe aparecer en UN SOLO parlay
-- Si un pronóstico falla, solo debe afectar a UN parlay, no a varios
+CRITICAL:
+- OUTPUT IN SPANISH (Razonamientos y Nombres).
+- DO NOT INVENT MATCHES. Only use the input portfolio.
+- DO NOT INVENT ODDS.
+`;
 
-IMPORTANTE:
-- Usa CUALQUIER mercado de la lista, no solo los básicos
-- Busca VALUE: mercados donde crees que la probabilidad real es mayor que la implícita
-- Sé CREATIVO: usa mercados de primer tiempo, segundo tiempo, handicaps, etc.`
-
-        const result = await model.generateContent(prompt)
-        const responseText = result.response.text()
-
-        console.log('[V3-PremiumParlay] Respuesta recibida de Gemini')
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
 
         // ═══════════════════════════════════════════════════════════════
-        // FASE 4: PARSEAR Y VALIDAR RESPUESTA
+        // FASE 3: PARSE & VALIDATE
         // ═══════════════════════════════════════════════════════════════
-        console.log('[V3-PremiumParlay] FASE 4: Validando respuesta...')
-
-        let parsed
+        let parsed;
         try {
-            parsed = JSON.parse(responseText)
+            const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+            parsed = JSON.parse(cleaned);
         } catch (e) {
-            // Intentar extraer JSON del texto
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-            if (jsonMatch) {
-                parsed = JSON.parse(jsonMatch[0])
-            } else {
-                throw new Error('No se pudo parsear respuesta de Gemini')
-            }
+            console.error("Meta-Analyst JSON Error:", e);
+            throw new Error("Failed to parse Meta-Analyst response");
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // VALIDACIÓN DE PARLAYS INDIVIDUALES
+        // FASE 4: REGLA INQUEBRANTABLE - NO DUPLICAR PICKS ENTRE PARLAYS
         // ═══════════════════════════════════════════════════════════════
-        const validParlays = (parsed.parlays || []).filter((p: any) => {
-            // Validar 3 picks
-            if (!p.picks || p.picks.length !== 3) return false
+        console.log('[V3-MetaAnalyst] FASE 4: Aplicando regla anti-duplicación...');
 
-            // Validar partidos diferentes
-            const fixtureIds = p.picks.map((pk: any) => pk.fixture_id)
-            if (new Set(fixtureIds).size !== 3) return false
+        const usedPicks = new Set<string>();
+        const validatedParlays: any[] = [];
 
-            // Validar cuotas individuales
-            for (const pick of p.picks) {
-                if (!pick.odds || pick.odds < CONFIG.MIN_INDIVIDUAL_ODDS || pick.odds > CONFIG.MAX_INDIVIDUAL_ODDS) {
-                    return false
-                }
+        for (const parlay of (parsed.parlays || [])) {
+            if (!parlay.picks || parlay.picks.length === 0) {
+                console.log(`[ANTI-DUP] Rechazado parlay "${parlay.name}": sin picks`);
+                continue;
             }
 
-            // Calcular cuota combinada real
-            const combinedOdds = p.picks.reduce((acc: number, pk: any) => acc * pk.odds, 1)
-            if (combinedOdds < CONFIG.MIN_COMBINED_ODDS || combinedOdds > CONFIG.MAX_COMBINED_ODDS) {
-                return false
-            }
-
-            // Actualizar cuota combinada
-            p.combined_odds = parseFloat(combinedOdds.toFixed(2))
-
-            // Calcular probabilidad como PROMEDIO (según solicitud del usuario)
-            // En vez de multiplicar (que da valores muy bajos), promediamos
-            const avgProbability = p.picks.reduce((sum: number, pk: any) => sum + (pk.probability || 0.5), 0) / p.picks.length
-            p.combined_probability = parseFloat((avgProbability * 100).toFixed(1))
-
-            return true
-        })
-
-        // ═══════════════════════════════════════════════════════════════
-        // VALIDACIÓN GLOBAL: NO DUPLICAR PRONÓSTICOS ENTRE PARLAYS
-        // ═══════════════════════════════════════════════════════════════
-        const usedPicks = new Set<string>()
-        const uniqueParlays = validParlays.filter((p: any) => {
-            // Verificar que ningún pick de este parlay ya esté usado
-            for (const pick of p.picks) {
-                const pickKey = `${pick.fixture_id}_${pick.market}`
+            // Verificar si ALGÚN pick de este parlay ya fue usado
+            let hasDuplicate = false;
+            for (const pick of parlay.picks) {
+                const pickKey = `${pick.fixture_id}_${pick.market}`;
                 if (usedPicks.has(pickKey)) {
-                    console.log(`[V3-PremiumParlay] ⚠️ Rechazando parlay: pick duplicado ${pickKey}`)
-                    return false // Rechazar este parlay, tiene un pick duplicado
+                    console.log(`[ANTI-DUP] ⚠️ Rechazado parlay "${parlay.name}": pick duplicado ${pickKey}`);
+                    hasDuplicate = true;
+                    break;
                 }
             }
-            // Marcar todos los picks de este parlay como usados
-            for (const pick of p.picks) {
-                const pickKey = `${pick.fixture_id}_${pick.market}`
-                usedPicks.add(pickKey)
+
+            if (hasDuplicate) continue;
+
+            // Este parlay es válido - marcar todos sus picks como usados
+            for (const pick of parlay.picks) {
+                const pickKey = `${pick.fixture_id}_${pick.market}`;
+                usedPicks.add(pickKey);
             }
-            return true
-        })
 
-        console.log(`[V3-PremiumParlay] Parlays válidos: ${validParlays.length}, Únicos: ${uniqueParlays.length}`)
+            validatedParlays.push(parlay);
+            console.log(`[ANTI-DUP] ✅ Parlay "${parlay.name}" validado con ${parlay.picks.length} picks únicos`);
+        }
 
-        // ═══════════════════════════════════════════════════════════════
-        // FASE 5: RESPUESTA FINAL
-        // ═══════════════════════════════════════════════════════════════
-        const duration = Date.now() - startTime
+        console.log(`[V3-MetaAnalyst] Parlays finales: ${validatedParlays.length} (de ${parsed.parlays?.length || 0} generados)`);
 
         return new Response(JSON.stringify({
             success: true,
-            parlays: uniqueParlays,  // Usar uniqueParlays para evitar duplicados
+            parlays: validatedParlays, // USAR SOLO PARLAYS VALIDADOS
             stats: {
-                matches_analyzed: matchContexts.length,
-                parlays_generated: uniqueParlays.length,
-                parlays_with_duplicates_removed: validParlays.length - uniqueParlays.length,
-                markets_available: ALL_MARKETS_LIST.length,
-                duration_ms: duration
-            },
-            source: 'v3-independent-analysis'
-        }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        })
+                matches_analyzed: dailyMatches.length,
+                candidates_approved: portfolio.length,
+                parlays_generated: validatedParlays.length,
+                parlays_rejected_duplicates: (parsed.parlays?.length || 0) - validatedParlays.length
+            }
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
 
     } catch (error) {
         console.error('[V3-PremiumParlay] Error:', error)

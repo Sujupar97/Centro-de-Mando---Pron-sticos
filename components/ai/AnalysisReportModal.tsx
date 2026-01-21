@@ -37,183 +37,49 @@ const PostMatchSection: React.FC<{ analysis: PostMatchAnalysis | string; outcome
     if (!analysis) return null;
 
     const handleDownloadFinalPDF = () => {
-        const doc = new jsPDF();
+        if (!analysis || typeof analysis === 'string') return;
 
-        // --- CONSTANTS & HELPERS ---
-        const colors = {
-            bg: [15, 23, 42], // Slate 900
-            cardBg: [30, 41, 59], // Slate 800
-            textMain: [255, 255, 255],
-            textSec: [148, 163, 184], // Slate 400
-            accent: [74, 222, 128], // Green
-            accentBlue: [96, 165, 250], // Blue
-        };
-
-        const drawPageBackground = () => {
-            doc.setFillColor(colors.bg[0], colors.bg[1], colors.bg[2]);
-            doc.rect(0, 0, 210, 297, 'F');
-        };
-
-        const drawHeader = (title: string) => {
-            doc.setFillColor(20, 30, 50);
-            doc.rect(0, 0, 210, 25, 'F');
-            doc.setTextColor(colors.accent[0], colors.accent[1], colors.accent[2]);
-            doc.setFontSize(10);
-            doc.text("DERBIX INTELLIGENCE", 14, 16);
-            doc.setTextColor(colors.textSec[0], colors.textSec[1], colors.textSec[2]);
-            doc.text(title, 200, 16, { align: 'right' });
-        };
-
-        // --- PAGE 1: COVER ---
-        drawPageBackground();
-
-        // Logo / Branding Placeholder
-        doc.setDrawColor(colors.accent[0], colors.accent[1], colors.accent[2]);
-        doc.setLineWidth(1);
-        doc.line(70, 90, 140, 90);
-
-        doc.setFontSize(28);
-        doc.setTextColor(colors.textMain[0], colors.textMain[1], colors.textMain[2]);
-        doc.text("INFORME FINAL", 105, 80, { align: 'center' });
-        doc.text("DE PARTIDO", 105, 105, { align: 'center' });
-
-        doc.setFontSize(16);
-        doc.setTextColor(colors.accentBlue[0], colors.accentBlue[1], colors.accentBlue[2]);
-        doc.text(headerData.titulo, 105, 130, { align: 'center' });
-
-        if (outcome) {
-            doc.setFillColor(colors.cardBg[0], colors.cardBg[1], colors.cardBg[2]);
-            doc.roundedRect(65, 145, 80, 25, 3, 3, 'F');
-
-            doc.setFontSize(22);
-            doc.setTextColor(255, 255, 255);
-            doc.text(`${outcome.score?.home ?? 0}  -  ${outcome.score?.away ?? 0}`, 105, 162, { align: 'center' });
-
-            doc.setFontSize(10);
-            doc.setTextColor(colors.textSec[0], colors.textSec[1], colors.textSec[2]);
-            doc.text(`Ganador: ${outcome.winner}`, 105, 185, { align: 'center' });
-        }
-
-        doc.setFontSize(10);
-        doc.setTextColor(100, 100, 100);
-        doc.text("Generado por IA - Derbix Engine v2.0", 105, 280, { align: 'center' });
-
-        // --- PAGE 2: ANALYSIS CONTENT ---
-        doc.addPage();
-        drawPageBackground();
-        drawHeader("Análisis 360°");
-
-        let y = 40;
-        const leftMargin = 14;
-        const cardWidth = 182;
-        const contentWidth = 172;
-
-        const drawSection = (title: string, text: string, color: number[]) => {
-            // Check Page Break
-            const splitText = doc.splitTextToSize(text || 'N/A', contentWidth);
-            const textHeight = splitText.length * 5; // 5 units per line approx
-            const boxHeight = textHeight + 25;
-
-            if (y + boxHeight > 280) {
-                doc.addPage();
-                drawPageBackground();
-                drawHeader("Análisis 360° (Cont.)");
-                y = 40;
-            }
-
-            // Card Background
-            doc.setFillColor(colors.cardBg[0], colors.cardBg[1], colors.cardBg[2]);
-            doc.setDrawColor(color[0], color[1], color[2]);
-            doc.roundedRect(leftMargin, y, cardWidth, boxHeight, 2, 2, 'FD');
-
-            // Title
-            doc.setFontSize(12);
-            doc.setTextColor(color[0], color[1], color[2]);
-            doc.text(title.toUpperCase(), leftMargin + 5, y + 10);
-
-            // Content
-            doc.setFontSize(10);
-            doc.setTextColor(200, 200, 200);
-            doc.text(splitText, leftMargin + 5, y + 20);
-
-            y += boxHeight + 10;
-        };
-
-        if (typeof analysis === 'string') {
-            drawSection("Análisis General", analysis, colors.accentBlue);
-        } else {
-            drawSection("Análisis Táctico", analysis.tactical_analysis, colors.accent); // Green
-            drawSection("Desglose Estadístico", analysis.statistical_breakdown, colors.accentBlue); // Blue
-            drawSection("Momentos Clave", analysis.key_moments, [168, 85, 247]); // Purple
-            drawSection("Feedback del Sistema", analysis.learning_feedback, [234, 179, 8]); // Yellow
-        }
-
-        // --- SECTION: PREDICTION RESULTS (NEW) ---
-        // Force new page if low on space
-        if (y > 220) {
-            doc.addPage();
-            drawPageBackground();
-            drawHeader("Evaluación de Pronósticos");
-            y = 40;
-        } else {
-            y += 10;
-        }
-
-        const predictions = analysis.analysisRun?.predictions || [];
-        if (predictions.length > 0) {
-            doc.setFontSize(14);
-            doc.setTextColor(colors.textMain[0], colors.textMain[1], colors.textMain[2]);
-            doc.text("RESULTADOS DE PRONÓSTICOS", 14, y);
-            y += 15;
-
-            predictions.forEach(pred => {
-                // Check Page Break
-                if (y > 270) {
-                    doc.addPage();
-                    drawPageBackground();
-                    drawHeader("Evaluación de Pronósticos (Cont.)");
-                    y = 40;
+        // Usar el servicio centralizado Premium
+        import('../../services/pdf/pdfGenerator').then(({ generateMatchAnalysisPDF }) => {
+            const pdfData = {
+                report_pre_jsonb: {
+                    // Simulamos la estructura que espera el generador basada en lo que tenemos visualmente
+                    header_partido: headerData,
+                    // @ts-ignore
+                    resumen_ejecutivo: analysis.resumen_ejecutivo || { frase_principal: "Análisis Post-Partido" },
+                    // @ts-ignore
+                    analisis_mercados_calculados: analysis.analisis_mercados_calculados || {
+                        // Si analysis es PostMatchAnalysis puro, quizás no tenga mercados calculados aquí si venía de DB
+                        // Pero intentamos pasarlo si existe.
+                    },
+                    // Pasamos el análisis de texto estructurado también
+                    analisis_tactico: (analysis as PostMatchAnalysis).tactical_analysis,
+                    contexto_competitivo: {
+                        situacion_local: headerData.titulo
+                    }
                 }
+            };
 
-                // Determine Status Color & Text
-                let statusText = "PENDIENTE";
-                let statusColor = [100, 116, 139]; // Gray
+            // En realidad, PostMatchSection suele recibir el objeto PostMatchAnalysis YA procesado.
+            // Para el generador de PDF, lo ideal es pasarle TODO el dashboardData.
+            // Pero aquí solo tenemos un fragmento.
+            // HACK: Reconstruimos un objeto "fake" analysisRun suficiente para que el PDF renderice algo util.
 
-                if (pred.is_won === true) {
-                    statusText = "ACERTADA";
-                    statusColor = colors.accent; // Green
-                } else if (pred.is_won === false) {
-                    statusText = "FALLADA";
-                    statusColor = [239, 68, 68]; // Red
+            // Mejor opción: headerData viene de arriba, outcome viene de arriba.
+
+            generateMatchAnalysisPDF({
+                report_pre_jsonb: {
+                    header_partido: headerData,
+                    resumen_ejecutivo: { titular: headerData.titulo },
+                    // @ts-ignore
+                    analisis_tactico: analysis, // Pasamos el objeto entero par que el generador extraiga lo que pueda
+                    // @ts-ignore
+                    contexto_competitivo: { situacion_local: headerData.titulo }
                 }
-
-                // Draw Row Box
-                doc.setFillColor(colors.cardBg[0], colors.cardBg[1], colors.cardBg[2]);
-                doc.setDrawColor(statusColor[0], statusColor[1], statusColor[2]);
-                doc.roundedRect(14, y, 182, 20, 2, 2, 'FD');
-
-                // Prediction Text
-                doc.setFontSize(11);
-                doc.setTextColor(255, 255, 255);
-                doc.text(`${pred.market_code} - ${pred.selection}`, 20, y + 13);
-
-                // Probability
-                doc.setFontSize(9);
-                doc.setTextColor(colors.textSec[0], colors.textSec[1], colors.textSec[2]);
-                doc.text(`Prob: ${pred.probability}%`, 130, y + 13);
-
-                // Status Badge
-                doc.setFillColor(statusColor[0], statusColor[1], statusColor[2]);
-                doc.roundedRect(160, y + 5, 30, 10, 2, 2, 'F');
-                doc.setTextColor(20, 30, 50); // Dark text for contrast
-                doc.setFontSize(8);
-                doc.text(statusText, 175, y + 11, { align: 'center', baseline: 'middle' });
-
-                y += 25;
+            }, {
+                fileName: `Derbix_PostMatch_${headerData.titulo.replace(/[^a-z0-9]/gi, '_')}.pdf`
             });
-        }
-
-        doc.save(`Derbix_Report_${headerData.titulo.replace(/[^a-z0-9]/gi, '_').substring(0, 20)}.pdf`);
+        });
     };
 
     const isStructured = typeof analysis !== 'string';
@@ -793,6 +659,24 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
     const hasVerdict = !!data.veredicto_analista;
     const showVerdictView = isStructured && hasVerdict && !showFullReport;
 
+    // Nueva lógica de descarga para el reporte completo
+    const handleDownloadReport = () => {
+        import('../../services/pdf/pdfGenerator').then(({ generateMatchAnalysisPDF }) => {
+            // Preparamos los datos completos para el generador
+            const pdfData = {
+                report_pre_jsonb: {
+                    ...data,
+                    // Aseguramos que header_partido esté presente (es clave para el título)
+                    header_partido: data.header_partido || { titulo: "Informe de Análisis", subtitulo: new Date().toLocaleDateString() }
+                }
+            };
+
+            generateMatchAnalysisPDF(pdfData, {
+                fileName: `Derbix_Analisis_${(data.header_partido?.titulo || 'Reporte').replace(/[^a-z0-9]/gi, '_')}.pdf`
+            });
+        });
+    };
+
     return createPortal(
         <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-0 md:p-6 animate-fade-in backdrop-blur-md" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="bg-slate-900 w-full h-full md:h-[90vh] md:max-w-6xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-white/10" onClick={(e) => e.stopPropagation()}>
@@ -812,9 +696,44 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                     </div>
                 ) : (
                     <>
-                        <div className="flex-grow overflow-y-auto custom-scrollbar">
+                        {/* Persistent Toolbar Header */}
+                        <div className="flex items-center justify-between px-6 py-4 bg-slate-800 border-b border-white/5 z-20 shadow-md">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-brand/10 p-2 rounded-lg">
+                                    <ChartBarIcon className="w-5 h-5 text-brand" />
+                                </div>
+                                <div>
+                                    <h2 className="text-white font-bold text-sm md:text-base leading-tight">
+                                        {data.header_partido?.titulo || "Informe de Análisis"}
+                                    </h2>
+                                    <p className="text-slate-400 text-xs hidden md:block">
+                                        {data.header_partido?.subtitulo || "Inteligencia Artificial aplicada"}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={handleDownloadReport}
+                                    className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all group border border-white/10 hover:border-brand/50"
+                                    title="Descargar PDF Premium"
+                                >
+                                    <ArrowDownTrayIcon className="w-4 h-4 text-slate-400 group-hover:text-brand transition-colors" />
+                                    <span className="hidden md:inline">Descargar PDF</span>
+                                </button>
+                                <div className="h-6 w-px bg-white/10 mx-1"></div>
+                                <button
+                                    onClick={onClose}
+                                    className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                                    title="Cerrar"
+                                >
+                                    <XMarkIcon className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
 
-                            {/* Header */}
+                        <div className="flex-grow overflow-y-auto custom-scrollbar relative">
+
+                            {/* Header Section (Banner) */}
                             {data.header_partido && <HeaderSection data={data.header_partido} />}
 
                             <div className="p-4 md:p-8 space-y-8">
@@ -936,8 +855,8 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                         <div className="space-y-3">
                                             {((data as any).analisis_mercados_calculados.top_oportunidades || []).slice(0, 5).map((opp: any, idx: number) => (
                                                 <div key={idx} className={`flex items-center justify-between p-4 rounded-lg border-l-4 ${opp.confianza === 'ALTA' ? 'border-green-500 bg-green-900/20' :
-                                                        opp.confianza === 'MEDIA' ? 'border-yellow-500 bg-yellow-900/20' :
-                                                            'border-gray-500 bg-gray-800/50'
+                                                    opp.confianza === 'MEDIA' ? 'border-yellow-500 bg-yellow-900/20' :
+                                                        'border-gray-500 bg-gray-800/50'
                                                     }`}>
                                                     <div className="flex items-center gap-4">
                                                         <span className="text-2xl font-black text-white">#{idx + 1}</span>
@@ -956,8 +875,8 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                                             <span className="block text-[10px] text-gray-500">Típica</span>
                                                         </div>
                                                         <div className={`px-3 py-1 rounded-full font-bold text-sm ${opp.value_score > 10 ? 'bg-green-500 text-white' :
-                                                                opp.value_score > 5 ? 'bg-yellow-500 text-black' :
-                                                                    'bg-gray-600 text-white'
+                                                            opp.value_score > 5 ? 'bg-yellow-500 text-black' :
+                                                                'bg-gray-600 text-white'
                                                             }`}>
                                                             +{opp.value_score}%
                                                         </div>

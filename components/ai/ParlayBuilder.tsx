@@ -132,6 +132,15 @@ export const ParlayBuilder: React.FC = () => {
             const responseData = await response.json();
             console.log('[ParlayBuilder] Response data:', responseData);
 
+            // Verificar si el backend devolvió un error (como pocos candidatos)
+            if (responseData.success === false || responseData.error) {
+                const errorMessage = responseData.error || 'No se pudieron generar parlays';
+                console.warn('[ParlayBuilder] Backend error:', errorMessage);
+                setStatusMessage(`⚠️ ${errorMessage}`);
+                setLoading(false);
+                return; // Salir sin lanzar excepción - es un resultado esperado, no un error
+            }
+
             const { parlays: rawParlays } = responseData;
 
             // Mapear formato V3 a ParlayAnalysisResult (compatible con guardado y UI)
@@ -263,84 +272,37 @@ export const ParlayBuilder: React.FC = () => {
     };
 
     const generatePDF = (parlay: ParlayAnalysisResult) => {
-        const doc = new jsPDF();
+        import('../../services/pdf/pdfGenerator').then(({ generateParlayPDF }) => {
+            // Mapear ParlayAnalysisResult a SmartParlay (formato esperado por el generador)
+            // Necesitamos extraer home/away de "Home vs Away" si no están explícitos
+            // Pero en loadSavedParlays (línea 140 aprox) ya tenemos home/away en los legs aunque la interface diga 'game'.
+            // Vamos a intentar usarlos.
 
-        // Colors
-        const brandColor = [0, 255, 128]; // Brand Green (approx)
-        const darkBg = [20, 25, 40];
+            const mappedParlay: any = {
+                id: 'manual-parlay',
+                combined_probability: parlay.winProbability / 100, // De 0-100 a 0-1
+                parlay_type: `${parlay.legs.length} Picks`,
+                confidence_tier: parlay.winProbability > 70 ? 'HIGH' : parlay.winProbability > 50 ? 'MEDIUM' : 'LOW',
+                picks: parlay.legs.map(leg => {
+                    const [home, away] = leg.game.split(' vs ');
+                    return {
+                        home_team: (leg as any).home || home || 'Home',
+                        away_team: (leg as any).away || away || 'Away',
+                        league: 'General', // No lo tenemos a mano siempre
+                        market: leg.market,
+                        selection: leg.prediction,
+                        p_model: (leg as any).probability || 0,
+                        argument: leg.reasoning
+                    };
+                }),
+                is_manual: true // Flag opcional por si queremos diferenciar
+            };
 
-        // Header
-        doc.setFillColor(darkBg[0], darkBg[1], darkBg[2]);
-        doc.rect(0, 0, 210, 40, 'F');
-
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(22);
-        doc.text("Reporte de Parlay - Derbix IA", 14, 25);
-
-        doc.setFontSize(10);
-        doc.text(`Fecha: ${selectedDate}`, 170, 25);
-
-        // Parlay Details
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(16);
-        doc.text(parlay.parlayTitle, 14, 55);
-
-        doc.setFontSize(12);
-        doc.setTextColor(100);
-        const splitStrategy = doc.splitTextToSize(`Estrategia: ${parlay.overallStrategy}`, 180);
-        doc.text(splitStrategy, 14, 65);
-
-        let currentY = 65 + (splitStrategy.length * 5) + 10;
-
-        // Stats Box
-        doc.setDrawColor(200);
-        doc.setFillColor(250, 250, 250);
-        doc.roundedRect(14, currentY, 180, 25, 3, 3, 'FD');
-
-        doc.setFontSize(14);
-        doc.setTextColor(50);
-        doc.text(`Cuota Total: ${parlay.finalOdds.toFixed(2)}`, 24, currentY + 17);
-        doc.text(`Probabilidad de Acierto: ${parlay.winProbability}%`, 100, currentY + 17);
-
-        currentY += 40;
-
-        // Legs Table
-        const tableData = parlay.legs.map((leg, index) => [
-            `Leg #${index + 1}`,
-            leg.game,
-            leg.market,
-            leg.prediction,
-            `@${leg.odds}`,
-            leg.reasoning
-        ]);
-
-        autoTable(doc, {
-            startY: currentY,
-            head: [['#', 'Partido', 'Mercado', 'Predicción', 'Cuota', 'Análisis']],
-            body: tableData,
-            theme: 'grid',
-            headStyles: { fillColor: [40, 40, 50], textColor: 255, fontStyle: 'bold' },
-            columnStyles: {
-                0: { cellWidth: 15, fontStyle: 'bold' }, // #
-                1: { cellWidth: 35 }, // Game
-                2: { cellWidth: 30 }, // Market
-                3: { cellWidth: 25, fontStyle: 'bold' }, // Prediction
-                4: { cellWidth: 15 }, // Odds
-                5: { cellWidth: 'auto' } // Analysis
-            },
-            styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' },
+            generateParlayPDF(mappedParlay, {
+                fileName: `Derbix_Parlay_${selectedDate}.pdf`,
+                titleOverride: parlay.parlayTitle || "Parlay Personalizado"
+            });
         });
-
-        // Footer
-        const pageCount = doc.getNumberOfPages();
-        for (let i = 1; i <= pageCount; i++) {
-            doc.setPage(i);
-            doc.setFontSize(8);
-            doc.setTextColor(150);
-            doc.text(`Generado por Derbix IA - Página ${i} de ${pageCount}`, 105, 290, { align: 'center' });
-        }
-
-        doc.save(`Parlay_Report_${selectedDate}.pdf`);
     };
 
     return (

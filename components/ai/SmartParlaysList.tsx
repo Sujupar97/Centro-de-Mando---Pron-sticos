@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { getSmartParlays, generateSmartParlays, SmartParlay, translateMarket, getConfidenceColor, getConfidenceLabel } from '../../services/smartParlayService';
-import { TrophyIcon, SparklesIcon } from '../icons/Icons';
+import { TrophyIcon, SparklesIcon, DocumentArrowDownIcon } from '../icons/Icons';
 
 interface SmartParlaysListProps {
     date: string;
@@ -50,6 +50,15 @@ const SmartParlaysList: React.FC<SmartParlaysListProps> = ({ date }) => {
         }
     };
 
+    const handleDownloadPDF = (parlay: SmartParlay, index: number) => {
+        import('../../services/pdf/pdfGenerator').then(({ generateParlayPDF }) => {
+            generateParlayPDF(parlay, {
+                fileName: `Smart_Parlay_${index + 1}_${date}.pdf`,
+                titleOverride: `Smart Parlay #${index + 1}`
+            });
+        });
+    };
+
     const formatProbability = (prob: number) => `${Math.round(prob * 100)}%`;
 
     if (loading) {
@@ -73,8 +82,8 @@ const SmartParlaysList: React.FC<SmartParlaysListProps> = ({ date }) => {
                     onClick={handleGenerate}
                     disabled={generating}
                     className={`mt-4 px-6 py-3 rounded-lg font-bold transition-all flex items-center gap-2 ${generating
-                            ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 shadow-lg hover:shadow-emerald-500/25'
+                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 shadow-lg hover:shadow-emerald-500/25'
                         }`}
                 >
                     {generating ? (
@@ -106,8 +115,8 @@ const SmartParlaysList: React.FC<SmartParlaysListProps> = ({ date }) => {
                     onClick={handleGenerate}
                     disabled={generating}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${generating
-                            ? 'bg-gray-700 text-gray-400'
-                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-600'
+                        ? 'bg-gray-700 text-gray-400'
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-600'
                         }`}
                 >
                     {generating ? 'Regenerando...' : '🔄 Regenerar'}
@@ -131,11 +140,20 @@ const SmartParlaysList: React.FC<SmartParlaysListProps> = ({ date }) => {
                                     Smart Parlay #{index + 1}
                                 </h3>
                             </div>
-                            <div className="text-right">
-                                <div className="text-white/80 text-xs uppercase tracking-wider">Probabilidad</div>
-                                <div className="text-white font-bold text-3xl">
-                                    {formatProbability(parlay.combined_probability)}
+                            <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                    <div className="text-white/80 text-xs uppercase tracking-wider">Probabilidad</div>
+                                    <div className="text-white font-bold text-3xl">
+                                        {formatProbability(parlay.combined_probability)}
+                                    </div>
                                 </div>
+                                <button
+                                    onClick={() => handleDownloadPDF(parlay, index)}
+                                    className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors border border-white/10 shadow-lg"
+                                    title="Descargar Reporte PDF"
+                                >
+                                    <DocumentArrowDownIcon className="w-5 h-5" />
+                                </button>
                             </div>
                         </div>
                     </div>

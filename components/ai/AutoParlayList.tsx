@@ -102,59 +102,30 @@ export const AutoParlayList: React.FC<AutoParlayListProps> = ({ date }) => {
     };
 
     const generatePDF = (parlay: AutoParlay) => {
-        const doc = new jsPDF();
+        import('../../services/pdf/pdfGenerator').then(({ generateParlayPDF }) => {
+            // Mapeo de datos para el reporte premium
+            const smartParlayData: any = {
+                id: parlay.id,
+                parlay_type: 'Auto-Generated Parlay',
+                combined_probability: parlay.win_probability || 0,
+                confidence_tier: 'HIGH',
+                strategy: parlay.strategy,
+                picks: parlay.legs.map((leg: any) => ({
+                    home_team: leg.home || leg.match?.split(' vs ')[0] || 'Local',
+                    away_team: leg.away || leg.match?.split(' vs ')[1] || 'Visitante',
+                    market: leg.market,
+                    selection: leg.prediction,
+                    p_model: 0,
+                    odds: leg.odds,
+                    argument: leg.reasoning
+                }))
+            };
 
-        // Header
-        doc.setFillColor(6, 182, 212); // Cyan 500
-        doc.rect(0, 0, 210, 40, 'F');
-
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(22);
-        doc.setFont('helvetica', 'bold');
-        doc.text("Parlay Automático IA", 14, 20);
-
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Fecha: ${parlay.parlay_date}`, 14, 30);
-        doc.text(`Cuota Total: ${parlay.total_odds}`, 150, 20);
-
-        let yPos = 50;
-
-        // Strategy
-        if (parlay.strategy) {
-            doc.setTextColor(50, 50, 50);
-            doc.setFontSize(12);
-            doc.setFont('helvetica', 'bold');
-            doc.text("Estrategia:", 14, yPos);
-            yPos += 7;
-
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'normal');
-            const splitStrategy = doc.splitTextToSize(parlay.strategy, 180);
-            doc.text(splitStrategy, 14, yPos);
-            yPos += splitStrategy.length * 5 + 10;
-        }
-
-        // Table
-        const tableBody = parlay.legs.map((leg: any) => [
-            leg.match || `${leg.home} vs ${leg.away}`,
-            leg.market,
-            leg.prediction,
-            leg.odds || '-',
-            leg.reasoning || '-'
-        ]);
-
-        autoTable(doc, {
-            startY: yPos,
-            head: [['Partido', 'Mercado', 'Selección', 'Cuota', 'Análisis IA']],
-            body: tableBody,
-            theme: 'grid',
-            headStyles: { fillColor: [6, 182, 212] },
-            styles: { fontSize: 9, cellPadding: 3 },
-            columnStyles: { 4: { cellWidth: 80 } } // Wider analysis column
+            generateParlayPDF(smartParlayData, {
+                fileName: `Auto_Parlay_${date}.pdf`,
+                titleOverride: parlay.title
+            });
         });
-
-        doc.save(`parlay-auto-${parlay.parlay_date}.pdf`);
     };
 
     if (checkingAccess) {
@@ -168,23 +139,16 @@ export const AutoParlayList: React.FC<AutoParlayListProps> = ({ date }) => {
     if (!hasAccess) {
         return (
             <div className="bg-gray-800 rounded-lg p-8 border border-gray-700 text-center relative overflow-hidden group">
-                {/* Background decorative elements */}
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-50"></div>
-
                 <div className="relative z-10 flex flex-col items-center">
                     <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mb-4 border border-gray-700 shadow-[0_0_20px_rgba(6,182,212,0.15)] group-hover:shadow-[0_0_30px_rgba(6,182,212,0.3)] transition-all duration-500">
                         <LockClosedIcon className="w-8 h-8 text-cyan-400" />
                     </div>
-
-                    <h3 className="text-2xl font-bold text-white mb-2">
-                        Parlays con IA Bloqueados
-                    </h3>
-
+                    <h3 className="text-2xl font-bold text-white mb-2">Parlays con IA Bloqueados</h3>
                     <p className="text-gray-400 max-w-md mx-auto mb-6">
                         Nuestra IA analiza miles de combinaciones para crear los Parlays de mayor probabilidad matemática.
                         <br /><span className="text-cyan-400 font-medium">Actualiza a Starter o superior para desbloquear.</span>
                     </p>
-
                     <button
                         onClick={() => setShowUpgradeModal(true)}
                         className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold py-3 px-8 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
@@ -193,7 +157,6 @@ export const AutoParlayList: React.FC<AutoParlayListProps> = ({ date }) => {
                         DESBLOQUEAR AHORA
                     </button>
                 </div>
-
                 {showUpgradeModal && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm text-left">
                         <UpgradePlanModal
@@ -256,10 +219,11 @@ export const AutoParlayList: React.FC<AutoParlayListProps> = ({ date }) => {
                                 </div>
                                 <button
                                     onClick={() => generatePDF(parlay)}
-                                    className="text-gray-400 hover:text-white transition-colors p-1"
-                                    title="Descargar PDF"
+                                    className="flex items-center gap-2 bg-slate-700 hover:bg-cyan-600 text-white transition-all px-3 py-1.5 rounded-lg border border-white/10 hover:border-cyan-400 shadow-lg group"
+                                    title="Descargar Reporte PDF"
                                 >
-                                    <DocumentArrowDownIcon className="w-5 h-5" />
+                                    <DocumentArrowDownIcon className="w-4 h-4 text-cyan-400 group-hover:text-white" />
+                                    <span className="text-xs font-bold uppercase tracking-wide">PDF</span>
                                 </button>
                             </div>
                         </div>

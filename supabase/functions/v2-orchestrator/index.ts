@@ -13,6 +13,10 @@ serve(async (req) => {
 
     const totalStartTime = Date.now();
 
+    // SOLUCIÓN: Capturar el Authorization header de la solicitud entrante
+    // y usarlo para las llamadas a sub-funciones
+    const incomingAuth = req.headers.get('Authorization') || '';
+
     try {
         const { fixture_id } = await req.json();
         if (!fixture_id) throw new Error('fixture_id is required');
@@ -20,17 +24,25 @@ serve(async (req) => {
         console.log(`[V2-ORCHESTRATOR] Starting full pipeline for fixture: ${fixture_id}`);
 
         const sbUrl = Deno.env.get('SUPABASE_URL')!;
-        const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-        const supabase = createClient(sbUrl, sbKey);
+        const sbKeyFromEnv = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+        // ESTRATEGIA: Preferir el auth header entrante sobre el de env
+        // Esto asegura que si el llamador usa service_role, las sub-funciones también lo usen
+        const authHeader = incomingAuth || `Bearer ${sbKeyFromEnv}`;
+
+        console.log(`[V2-ORCHESTRATOR] Auth source: ${incomingAuth ? 'REQUEST' : 'ENV'}`);
+        console.log(`[V2-ORCHESTRATOR] Auth prefix: ${authHeader.substring(0, 60)}...`);
+
+        const supabase = createClient(sbUrl, sbKeyFromEnv || '');
 
         const baseUrl = sbUrl.replace('.supabase.co', '.supabase.co/functions/v1');
-        const authHeader = `Bearer ${sbKey}`;
 
         const results: Record<string, any> = {
             fixture_id,
             engine_version: ENGINE_VERSION,
             started_at: new Date().toISOString(),
-            motors: {}
+            motors: {},
+            auth_source: incomingAuth ? 'REQUEST' : 'ENV'
         };
 
         // ═══════════════════════════════════════════════════════════════
