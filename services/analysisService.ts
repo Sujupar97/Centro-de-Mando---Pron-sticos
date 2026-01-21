@@ -1080,7 +1080,7 @@ export const fetchMissingPostMatchRuns = async (startDate: string, endDate: stri
         `)
         .gte('created_at', expandedStartDate)
         .lte('created_at', endDate + 'T23:59:59')
-        .not('predictions.is_won', 'is', null) // Only verified/resolved bets
+        //.not('predictions.is_won', 'is', null) // ALLOW PENDING: User wants to analyze/verify everything available.
         .is('post_match_analysis', null);       // Missing the 360 analysis
 
     if (error) {

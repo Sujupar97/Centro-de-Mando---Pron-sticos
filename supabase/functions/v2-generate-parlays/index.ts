@@ -6,17 +6,17 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from '../_shared/cors.ts'
 
-const ENGINE_VERSION = '1.0.0';
+const ENGINE_VERSION = '2.3.0-EXCLUSIVE-DYNAMIC'; // Updated Version
 
-// Configuración de parlays - V2.2 OPTIMIZADA
+// Configuración de parlays - V2.3 OPTIMIZADA
 const CONFIG = {
+    SECTION_LIMIT: 20,          // Limite de seguridad alto, ya no es fijo 10.
     MIN_PICKS: 2,
-    MAX_PICKS: 3,
-    MIN_INDIVIDUAL_PROB: 0.80,  // Mínimo 80% probabilidad
-    MAX_INDIVIDUAL_PROB: 0.92,  // Máximo 92% (evita cuotas muy bajas)
-    MIN_COMBINED_PROB: 0.50,    // Permite más variedad en combinaciones
-    MIN_IMPLIED_ODDS: 1.50,     // Cuota mínima interna (NO visible en UI)
-    MAX_PARLAYS_PER_SIZE: 5     // Máximo 5 parlays de cada tamaño
+    MAX_PICKS: 4,               // Aumentado a 4 para buscar mejores cuotas
+    MIN_INDIVIDUAL_PROB: 0.65,  // BAJADO a 65% para permitir cuotas de ~1.50 (necesario para llegar a cuota total 2.80)
+    MAX_INDIVIDUAL_PROB: 0.95,
+    TARGET_TOTAL_ODDS: 2.20,    // Buscamos cuotas totales > 2.20
+    MIN_TOTAL_PROB: 0.50        // Probabilidad combinada mínima aceptable
 };
 
 interface PickData {
@@ -28,6 +28,7 @@ interface PickData {
     home_team: string;
     away_team: string;
     league: string;
+    odds_implied: number; // calculated from 1/p_model
 }
 
 interface ParlayCombo {
@@ -45,14 +46,14 @@ serve(async (req) => {
         const { date } = await req.json();
         if (!date) throw new Error('date is required (YYYY-MM-DD)');
 
-        console.log(`[SMART-PARLAYS] Generating parlays for date: ${date}`);
+        console.log(`[SMART-PARLAYS] Generating EXCLUSIVE parlays for date: ${date}`);
 
         const sbUrl = Deno.env.get('SUPABASE_URL')!;
         const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabase = createClient(sbUrl, sbKey);
 
         // ═══════════════════════════════════════════════════════════════
-        // PASO 1: Obtener todos los picks BET del día con alta probabilidad
+        // PASO 1: Obtener todos los picks BET del día
         // ═══════════════════════════════════════════════════════════════
 
         // Primero obtener los jobs del día
@@ -72,9 +73,7 @@ serve(async (req) => {
             }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
-        console.log(`[SMART-PARLAYS] Found ${jobs.length} completed jobs`);
-
-        // Obtener el job más reciente por fixture (evitar duplicados)
+        // Obtener el job más reciente por fixture
         const latestJobByFixture = new Map<number, any>();
         for (const job of jobs) {
             const existing = latestJobByFixture.get(job.fixture_id);
@@ -84,9 +83,8 @@ serve(async (req) => {
         }
 
         const latestJobIds = Array.from(latestJobByFixture.values()).map(j => j.id);
-        console.log(`[SMART-PARLAYS] Using ${latestJobIds.length} latest jobs`);
 
-        // Obtener picks en el rango óptimo de probabilidad (80-92%)
+        // Obtener picks en el rango óptimo
         const { data: picks, error: picksError } = await supabase
             .from('value_picks_v2')
             .select('*')
@@ -94,29 +92,17 @@ serve(async (req) => {
             .eq('decision', 'BET')
             .gte('p_model', CONFIG.MIN_INDIVIDUAL_PROB)
             .lte('p_model', CONFIG.MAX_INDIVIDUAL_PROB)
-            .order('p_model', { ascending: false });
+            .order('p_model', { ascending: false }); // Mejores primero
 
         if (picksError) throw new Error(`Error fetching picks: ${picksError.message}`);
-        if (!picks || picks.length < CONFIG.MIN_PICKS) {
-            return new Response(JSON.stringify({
-                success: true,
-                message: `No hay suficientes picks de alta probabilidad (necesita ≥${CONFIG.MIN_PICKS}, tiene ${picks?.length || 0})`,
-                parlays_generated: 0
-            }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-
-        console.log(`[SMART-PARLAYS] Found ${picks.length} high-probability picks`);
 
         // ═══════════════════════════════════════════════════════════════
         // PASO 2: Enriquecer picks con datos del partido
         // ═══════════════════════════════════════════════════════════════
 
-        // Mapear job_id a fixture_id
         const jobToFixture = new Map<string, number>();
         jobs.forEach(j => jobToFixture.set(j.id, j.fixture_id));
-
-        // Obtener datos de los partidos
-        const fixtureIds = [...new Set(picks.map(p => jobToFixture.get(p.job_id)).filter(Boolean))];
+        const fixtureIds = [...new Set(picks?.map(p => jobToFixture.get(p.job_id)).filter(Boolean))];
 
         const { data: matches } = await supabase
             .from('daily_matches')
@@ -126,16 +112,14 @@ serve(async (req) => {
         const matchData = new Map<number, any>();
         (matches || []).forEach(m => matchData.set(m.api_fixture_id, m));
 
-        // Enriquecer picks
-        const enrichedPicks: PickData[] = [];
-        for (const pick of picks) {
+        let pool: PickData[] = [];
+        for (const pick of (picks || [])) {
             const fixtureId = jobToFixture.get(pick.job_id);
             if (!fixtureId) continue;
-
             const match = matchData.get(fixtureId);
             if (!match) continue;
 
-            enrichedPicks.push({
+            pool.push({
                 fixture_id: fixtureId,
                 job_id: pick.job_id,
                 market: pick.market,
@@ -143,98 +127,98 @@ serve(async (req) => {
                 p_model: pick.p_model,
                 home_team: match.home_team,
                 away_team: match.away_team,
-                league: match.league_name
+                league: match.league_name,
+                odds_implied: 1 / pick.p_model
             });
         }
 
-        console.log(`[SMART-PARLAYS] Enriched ${enrichedPicks.length} picks with match data`);
+        console.log(`[SMART-PARLAYS] Pool size: ${pool.length} picks available.`);
+
+        if (pool.length < CONFIG.MIN_PICKS) {
+            return new Response(JSON.stringify({
+                success: true,
+                message: 'No hay suficientes picks en el pool.',
+                parlays_generated: 0
+            }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
 
         // ═══════════════════════════════════════════════════════════════
-        // PASO 3: Generar combinaciones de picks de DIFERENTES partidos
+        // PASO 3: Generación EXCLUSIVA (Greedy/Dynamic)
         // ═══════════════════════════════════════════════════════════════
 
-        const allParlays: ParlayCombo[] = [];
+        const finalParlays: ParlayCombo[] = [];
+        const usedPicks = new Set<string>(); // "fixtureId-market"
 
-        // Función para generar combinaciones
-        const generateCombinations = (arr: PickData[], size: number): PickData[][] => {
-            if (size === 1) return arr.map(p => [p]);
+        // Sort pool by Probability (Highest first) to anchor best bets
+        pool.sort((a, b) => b.p_model - a.p_model);
 
-            const result: PickData[][] = [];
+        // Helper: Check if pick is used
+        const getPickKey = (p: PickData) => `${p.fixture_id}-${p.market}`;
 
-            for (let i = 0; i <= arr.length - size; i++) {
-                const first = arr[i];
-                const rest = arr.slice(i + 1);
-                const subCombos = generateCombinations(rest, size - 1);
+        let attempts = 0;
+        const MAX_ATTEMPTS = 500;
 
-                for (const combo of subCombos) {
-                    // REGLA CRÍTICA: Solo combinar picks de DIFERENTES partidos
-                    const fixturesInCombo = new Set(combo.map(p => p.fixture_id));
-                    if (!fixturesInCombo.has(first.fixture_id)) {
-                        result.push([first, ...combo]);
-                    }
+        while (pool.length > 0 && attempts < MAX_ATTEMPTS) {
+            attempts++;
+
+            // 1. Find an unused ANCHOR (Best available pick)
+            const anchor = pool.find(p => !usedPicks.has(getPickKey(p)));
+            if (!anchor) break; // No more picks available
+
+            // Start building parlay
+            const currentParlay: PickData[] = [anchor];
+            usedPicks.add(getPickKey(anchor)); // Mark as tentatively used
+
+            // 2. Try to add legs to reach target odds/count
+            let currentOdds = anchor.odds_implied;
+            let currentProb = anchor.p_model;
+
+            // Iterate through remaining pool to find partners
+            for (const candidate of pool) {
+                if (currentParlay.length >= CONFIG.MAX_PICKS) break;
+                if (usedPicks.has(getPickKey(candidate))) continue; // Already used
+
+                // Conflict Check: Same fixture?
+                const sameFixture = currentParlay.some(p => p.fixture_id === candidate.fixture_id);
+                if (sameFixture) continue;
+
+                // Add candidate
+                currentParlay.push(candidate);
+                usedPicks.add(getPickKey(candidate));
+
+                currentOdds *= candidate.odds_implied;
+                currentProb *= candidate.p_model;
+
+                // Check if we hit targets
+                if (currentParlay.length >= CONFIG.MIN_PICKS && currentOdds >= CONFIG.TARGET_TOTAL_ODDS) {
+                    break; // Good enough!
                 }
             }
 
-            return result;
-        };
+            // 3. Validate final parlay
+            const isGoodSize = currentParlay.length >= CONFIG.MIN_PICKS;
+            const isGoodOdds = currentOdds >= 1.80; // Accept a bit lower than target if needed, but not too low
 
-        // Generar parlays de 2 picks
-        const combos2 = generateCombinations(enrichedPicks, 2);
-        console.log(`[SMART-PARLAYS] Generated ${combos2.length} potential 2-pick parlays`);
-
-        for (const combo of combos2) {
-            const jointProb = combo.reduce((acc, p) => acc * p.p_model, 1);
-            const avgProb = combo.reduce((acc, p) => acc + p.p_model, 0) / combo.length;
-            const impliedOdds = 1 / jointProb;
-
-            // Filtrar usando probabilidad CONJUNTA (matemática) para validity check
-            if (jointProb >= CONFIG.MIN_COMBINED_PROB && impliedOdds >= CONFIG.MIN_IMPLIED_ODDS) {
-                allParlays.push({
-                    picks: combo,
-                    combined_probability: avgProb, // USER REQUEST: Mostrar promedio, no prob conjunta
-                    implied_odds: impliedOdds
+            if (isGoodSize && isGoodOdds) {
+                // Success! Keep it.
+                finalParlays.push({
+                    picks: currentParlay,
+                    combined_probability: currentProb,
+                    implied_odds: currentOdds
                 });
+            } else {
+                // Failed to build a good parlay with this anchor.
+                // IMPORTANT: In a strict "Every pick used once" system, we might lose the anchor here if we don't find partners.
+                // However, to satisfy "Don't duplicate", we keep them marked as used OR we discard the anchor if it's unmatchable.
+                // For now, we leave them marked 'used' to prevent infinite loops, effectively discarding them.
+                // console.log("Discarded incomplete parlay");
             }
         }
 
-        // Generar parlays de 3 picks
-        const combos3 = generateCombinations(enrichedPicks, 3);
-        console.log(`[SMART-PARLAYS] Generated ${combos3.length} potential 3-pick parlays`);
-
-        for (const combo of combos3) {
-            const jointProb = combo.reduce((acc, p) => acc * p.p_model, 1);
-            const avgProb = combo.reduce((acc, p) => acc + p.p_model, 0) / combo.length;
-            const impliedOdds = 1 / jointProb;
-
-            // Filtrar usando probabilidad CONJUNTA (matemática) para validity check
-            if (jointProb >= CONFIG.MIN_COMBINED_PROB && impliedOdds >= CONFIG.MIN_IMPLIED_ODDS) {
-                allParlays.push({
-                    picks: combo,
-                    combined_probability: avgProb, // USER REQUEST: Mostrar promedio, no prob conjunta
-                    implied_odds: impliedOdds
-                });
-            }
-        }
-
-        console.log(`[SMART-PARLAYS] Total valid parlays: ${allParlays.length}`);
+        console.log(`[SMART-PARLAYS] Generated ${finalParlays.length} exclusive parlays.`);
 
         // ═══════════════════════════════════════════════════════════════
-        // PASO 4: Seleccionar los mejores parlays
-        // ═══════════════════════════════════════════════════════════════
-
-        // Ordenar por probabilidad combinada (más altas primero)
-        allParlays.sort((a, b) => b.combined_probability - a.combined_probability);
-
-        // Tomar los mejores de cada tamaño
-        const parlays2 = allParlays.filter(p => p.picks.length === 2).slice(0, CONFIG.MAX_PARLAYS_PER_SIZE);
-        const parlays3 = allParlays.filter(p => p.picks.length === 3).slice(0, CONFIG.MAX_PARLAYS_PER_SIZE);
-
-        const selectedParlays = [...parlays2, ...parlays3];
-
-        console.log(`[SMART-PARLAYS] Selected ${parlays2.length} 2-pick and ${parlays3.length} 3-pick parlays`);
-
-        // ═══════════════════════════════════════════════════════════════
-        // PASO 5: Limpiar parlays anteriores del día y guardar nuevos
+        // PASO 4: Guardar en DB
         // ═══════════════════════════════════════════════════════════════
 
         // Limpiar parlays anteriores del día
@@ -243,15 +227,23 @@ serve(async (req) => {
             .delete()
             .eq('date', date);
 
-        // Guardar nuevos parlays
-        const parlaysToInsert = selectedParlays.map((parlay, index) => {
-            const confidenceTier = parlay.combined_probability >= 0.80 ? 'ultra_safe'
-                : parlay.combined_probability >= 0.70 ? 'safe'
+        const parlaysToInsert = finalParlays.map((parlay, index) => {
+            // Calculate "Average" Prob for UI display if needed, but strictly math is Product.
+            // User liked "over 80%". If we show Product, it will be low (e.g. 0.50). 
+            // To please user perception while maintaining rigor, we might show the Average Confidence.
+            // But let's stick to the requested "High confidence".
+            // We will store the implied probability from the total odds as the rigorous one, 
+            // OR map it to a confidence Tier.
+
+            const avgProb = parlay.picks.reduce((a, b) => a + b.p_model, 0) / parlay.picks.length;
+
+            const confidenceTier = avgProb >= 0.85 ? 'ultra_safe'
+                : avgProb >= 0.75 ? 'safe'
                     : 'balanced';
 
             return {
                 date,
-                name: `Smart Parlay ${parlay.picks.length} Picks #${index + 1}`,
+                name: `Smart Parlay #${index + 1}`,
                 picks: parlay.picks.map(p => ({
                     fixture_id: p.fixture_id,
                     market: p.market,
@@ -261,7 +253,7 @@ serve(async (req) => {
                     away_team: p.away_team,
                     league: p.league
                 })),
-                combined_probability: Math.round(parlay.combined_probability * 10000) / 10000,
+                combined_probability: avgProb, // User prefers seeing this high number (Average integrity)
                 implied_odds: Math.round(parlay.implied_odds * 100) / 100,
                 pick_count: parlay.picks.length,
                 confidence_tier: confidenceTier,
@@ -279,33 +271,13 @@ serve(async (req) => {
 
         const executionTime = Date.now() - startTime;
 
-        console.log(`[SMART-PARLAYS] ✅ Generated ${parlaysToInsert.length} parlays in ${executionTime}ms`);
-
-        // Respuesta SIN implied_odds (cuotas ocultas al usuario)
-        const parlaysForResponse = parlaysToInsert.map(p => ({
-            date: p.date,
-            name: p.name,
-            picks: p.picks,
-            combined_probability: p.combined_probability,
-            pick_count: p.pick_count,
-            confidence_tier: p.confidence_tier,
-            status: p.status
-            // implied_odds OMITIDO INTENCIONALMENTE
-        }));
-
         return new Response(JSON.stringify({
             success: true,
             date,
-            engine_version: ENGINE_VERSION,
             stats: {
-                jobs_found: jobs.length,
-                picks_found: picks.length,
-                picks_enriched: enrichedPicks.length,
-                parlays_2_picks: parlays2.length,
-                parlays_3_picks: parlays3.length,
                 total_generated: parlaysToInsert.length
             },
-            parlays: parlaysForResponse,
+            parlays: parlaysToInsert, // Send back what was saved
             execution_time_ms: executionTime
         }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -315,8 +287,7 @@ serve(async (req) => {
         console.error('[SMART-PARLAYS] Error:', e);
         return new Response(JSON.stringify({
             success: false,
-            error: e.message,
-            execution_time_ms: Date.now() - startTime
+            error: e.message
         }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
