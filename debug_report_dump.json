@@ -1,0 +1,172 @@
+{
+  "meta": {
+    "fixture_id": 19450567,
+    "fecha_analisis": "2026-01-31T13:56:15.637Z",
+    "modelo_version": "V3-IA-PURO"
+  },
+  "pronosticos": [
+    {
+      "mercado": "Visitante Over 1.5 Goles",
+      "riesgos": [
+        "Solihull Moors mejora su defensa y limita las oportunidades de York City.",
+        "Un gol temprano de Solihull Moors cambia el planteamiento del partido."
+      ],
+      "confianza": "MEDIA",
+      "seleccion": "Sí",
+      "cuota_actual": 2,
+      "justificacion": {
+        "mercado": "El mercado subestima la capacidad goleadora de York City como visitante.",
+        "tactica": "La formación ofensiva de York City (4-3-3) explotará la defensa vulnerable de Solihull Moors, especialmente en las bandas.",
+        "contexto": "York City busca consolidar su posición en la tabla, mientras que Solihull Moors no tiene una motivación clara.",
+        "estadistica": [
+          "York City promedia 2.64 goles por partido.",
+          "Solihull Moors ha concedido al menos 2 goles en el 60% de sus partidos como local.",
+          "York City ha marcado al menos 2 goles en el 70% de sus partidos como visitante."
+        ]
+      },
+      "edge_porcentaje": 15,
+      "probabilidad_calculada_porcentaje": 65,
+      "probabilidad_implicita_porcentaje": 50
+    },
+    {
+      "mercado": "Visitante Anota: Sí",
+      "riesgos": [
+        "Solihull Moors juega un partido defensivo y logra mantener su portería a cero.",
+        "El portero de Solihull Moors tiene una actuación destacada."
+      ],
+      "confianza": "ALTA",
+      "seleccion": "Sí",
+      "cuota_actual": 1.44,
+      "justificacion": {
+        "mercado": "El mercado no valora suficientemente la consistencia goleadora de York City.",
+        "tactica": "La presión alta de York City forzará errores en la defensa de Solihull Moors, creando oportunidades de gol.",
+        "contexto": "York City necesita los goles para mantener su posición en la tabla.",
+        "estadistica": [
+          "York City ha marcado en el 90% de sus partidos esta temporada.",
+          "Solihull Moors ha concedido goles en el 80% de sus partidos como local.",
+          "York City promedia 2.64 goles por partido."
+        ]
+      },
+      "edge_porcentaje": 15.6,
+      "probabilidad_calculada_porcentaje": 85,
+      "probabilidad_implicita_porcentaje": 69.4
+    },
+    {
+      "mercado": "Over 2.5 Goles",
+      "riesgos": [
+        "Ambos equipos juegan un partido cauteloso y priorizan la defensa.",
+        "Lesiones de jugadores clave en ataque reducen el potencial goleador."
+      ],
+      "confianza": "MEDIA",
+      "seleccion": "Sí",
+      "cuota_actual": 1.9,
+      "justificacion": {
+        "mercado": "El mercado está siendo conservador y no valora el potencial ofensivo de ambos equipos.",
+        "tactica": "Ambos equipos tienen defensas vulnerables, lo que favorece un partido con varios goles.",
+        "contexto": "York City necesita los goles para mantener su posición en la tabla.",
+        "estadistica": [
+          "York City ha tenido partidos con más de 2.5 goles en el 65% de sus partidos.",
+          "Solihull Moors ha tenido partidos con más de 2.5 goles en el 55% de sus partidos como local.",
+          "York City promedia 2.64 goles por partido."
+        ]
+      },
+      "edge_porcentaje": 7.4,
+      "probabilidad_calculada_porcentaje": 60,
+      "probabilidad_implicita_porcentaje": 52.6
+    }
+  ],
+  "datos_modelo": {
+    "corners_esperados": 9.5,
+    "goles_esperados_local": 1.1,
+    "goles_esperados_partido": 2.8,
+    "goles_esperados_visitante": 1.7,
+    "probabilidad_btts_porcentaje": 55,
+    "probabilidad_over25_porcentaje": 58
+  },
+  "factores_riesgo": {
+    "riesgo_principal": "La falta de motivación de Solihull Moors puede llevarlos a jugar un partido impredecible.",
+    "riesgos_secundarios": [
+      "Lesiones de jugadores clave en ataque de York City.",
+      "Un planteamiento defensivo sólido de Solihull Moors."
+    ],
+    "mitigaciones_sugeridas": [
+      "Seguir de cerca las noticias sobre posibles lesiones en York City.",
+      "Evaluar el planteamiento táctico de Solihull Moors en los primeros minutos del partido."
+    ]
+  },
+  "conclusion_final": {
+    "resumen": "York City tiene una gran oportunidad de consolidar su posición de ascenso ante un Solihull Moors sin grandes aspiraciones. Su ataque potente y la necesidad de ganar hacen que los picks de 'Visitante Over 1.5 Goles' y 'Visitante Anota: Sí' sean atractivos. El pick de 'Over 2.5 Goles' es más arriesgado, pero tiene valor.",
+    "gestion_bankroll": "3 unidades en 'Visitante Anota: Sí', 2 unidades en 'Visitante Over 1.5 Goles', 1 unidad en 'Over 2.5 Goles'.",
+    "accion_recomendada": "Apostar con moderación en los picks de 'Visitante Over 1.5 Goles' y 'Visitante Anota: Sí'. Considerar el pick de 'Over 2.5 Goles' con una apuesta menor."
+  },
+  "analisis_profundo": {
+    "analisis_tactico": {
+      "enfoque_local": "Solihull Moors intentará defenderse con una línea de cuatro sólida y buscará oportunidades de contraataque con sus delanteros rápidos.",
+      "matchup_clave": "El duelo en el mediocampo entre los centrocampistas creativos de York City y los defensores de Solihull Moors será clave para determinar el control del partido.",
+      "enfoque_visitante": "York City presionará alto desde el inicio, buscando dominar el mediocampo y crear oportunidades de gol con sus extremos y delantero centro.",
+      "jugador_clave_local": "Andrew Dallas, delantero, es el máximo goleador del equipo y su principal amenaza en ataque.",
+      "jugador_clave_visitante": "Clayton Donaldson, delantero, es el máximo goleador del equipo y su experiencia será fundamental para abrir la defensa de Solihull Moors.",
+      "formacion_esperada_local": "4-4-2",
+      "formacion_esperada_visitante": "4-3-3"
+    },
+    "analisis_psicologico": {
+      "estado_mental_local": "Solihull Moors puede estar relajado debido a su posición en la tabla, pero también puede carecer de la motivación necesaria para enfrentar a un rival tan exigente.",
+      "factor_determinante": "La capacidad de York City para manejar la presión y mantener la concentración será fundamental para obtener un resultado positivo.",
+      "estado_mental_visitante": "York City puede sentir la presión de mantener su posición de ascenso, lo que podría afectar su rendimiento en el campo."
+    },
+    "contexto_competitivo": {
+      "situacion_local": "Solihull Moors se encuentra en la mitad de la tabla, sin aspiraciones claras de ascenso ni peligro de descenso. Su momento es inconsistente, alternando victorias y derrotas. La presión mediática es baja, lo que puede afectar su motivación.",
+      "situacion_visitante": "York City está luchando por el ascenso directo, con una fuerte presión para mantener su posición en la tabla. Su momento es bueno, con una racha de victorias y un ataque potente. La presión mediática es alta, lo que puede generar ansiedad.",
+      "implicaciones_partido": "El partido es más importante para York City, que necesita los puntos para asegurar su posición de ascenso. Solihull Moors, sin embargo, puede jugar más relajado, lo que podría generar un partido impredecible."
+    }
+  },
+  "resumen_ejecutivo": {
+    "titular": "York City, con su ataque potente, dominará un Solihull inconsistente.",
+    "veredicto": "APOSTAR",
+    "confianza_global": "MEDIA",
+    "picks_principales": [
+      "Visitante Over 1.5 Goles",
+      "Visitante Anota: Sí",
+      "Over 2.5 Goles"
+    ],
+    "edge_promedio_porcentaje": 7.5
+  },
+  "mercados_evaluados": {
+    "top_5_por_edge": [
+      {
+        "mercado": "Visitante Anota: Sí",
+        "edge_porcentaje": 15.6
+      },
+      {
+        "mercado": "Visitante Over 1.5 Goles",
+        "edge_porcentaje": 15
+      },
+      {
+        "mercado": "Over 2.5 Goles",
+        "edge_porcentaje": 7.4
+      }
+    ],
+    "total_analizados": 60,
+    "con_valor_detectado": 3,
+    "descartados_sin_edge": 57
+  },
+  "escenarios_proyectados": {
+    "escenario_sorpresa": {
+      "descripcion": "Solihull Moors aprovecha un error defensivo de York City y marca un gol temprano. York City se desorganiza y no logra remontar el partido. Solihull Moors gana el partido con un resultado ajustado.",
+      "señales_anticipadas": "Un gol temprano de Solihull Moors, errores defensivos de York City, falta de creatividad en el ataque de York City.",
+      "probabilidad_porcentaje": 20
+    },
+    "escenario_alternativo": {
+      "descripcion": "Solihull Moors sorprende con un planteamiento defensivo sólido y logra contener el ataque de York City. El partido se vuelve trabado y con pocas oportunidades de gol. El resultado final es un empate con pocos goles.",
+      "resultado_esperado": "1-1",
+      "impacto_pronosticos": "Los picks de 'Visitante Over 1.5 Goles' y 'Visitante Anota: Sí' no se cumplen. El pick de 'Over 2.5 Goles' no se cumple.",
+      "probabilidad_porcentaje": 30
+    },
+    "escenario_mas_probable": {
+      "descripcion": "York City domina el partido desde el inicio, presionando alto y creando varias oportunidades de gol. Solihull Moors se defiende con dificultad y busca oportunidades de contraataque. York City marca dos o más goles y asegura la victoria.",
+      "resultado_esperado": "1-2",
+      "impacto_pronosticos": "Los picks de 'Visitante Over 1.5 Goles' y 'Visitante Anota: Sí' se cumplen con alta probabilidad. El pick de 'Over 2.5 Goles' tiene una probabilidad moderada de cumplirse.",
+      "probabilidad_porcentaje": 50
+    }
+  }
+}

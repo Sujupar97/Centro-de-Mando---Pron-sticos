@@ -402,18 +402,32 @@ export function normalizeSportMonksToListGame(smFixture: any): any {
     let homeScore = null;
     let awayScore = null;
 
-    if (smFixture.scores) {
-        // Try to find CURRENT score first
-        const current = smFixture.scores.find((s: any) => s.description === 'CURRENT');
-        if (current && current.score) {
-            homeScore = current.score.home;
-            awayScore = current.score.away;
-        } else if (smFixture.scores.length > 0) {
-            // Fallback to first available score
-            const s = smFixture.scores[0].score;
-            if (s) {
-                homeScore = s.home;
-                awayScore = s.away;
+    if (smFixture.scores && Array.isArray(smFixture.scores)) {
+        // Priority list for descriptions - try to find the most relevant score
+        const priorities = ['CURRENT', '2ND_HALF', '1ST_HALF', 'ET', 'PEN', 'FT'];
+
+        const homeId = home?.id;
+        const awayId = away?.id;
+
+        for (const desc of priorities) {
+            // Find scores matching this description
+            const scoresForDesc = smFixture.scores.filter((s: any) => s.description === desc);
+
+            if (scoresForDesc.length > 0) {
+                // Try to find home and away values
+                const homeS = scoresForDesc.find((s: any) =>
+                    (s.score?.participant === 'home') ||
+                    (homeId && s.participant_id === homeId)
+                );
+                const awayS = scoresForDesc.find((s: any) =>
+                    (s.score?.participant === 'away') ||
+                    (awayId && s.participant_id === awayId)
+                );
+
+                if (homeS) homeScore = homeS.score?.goals;
+                if (awayS) awayScore = awayS.score?.goals;
+
+                if (homeScore !== null || awayScore !== null) break;
             }
         }
     }
@@ -468,4 +482,181 @@ export function normalizeSportMonksToListGame(smFixture: any): any {
             penalty: { home: null, away: null }
         }
     };
+}
+
+// --- LEGACY NORMALIZERS (API-FOOTBALL FORMAT COMPATIBILITY) ---
+
+/**
+ * Normalize SportMonks stats to API-Football format
+ * API-Football expects: { team: { id, name, logo }, statistics: [ { type: string, value: any } ] }
+ */
+export function normalizeLegacyStatistics(fixture: any, homeTeamId: number, awayTeamId: number): any[] | null {
+    if (!fixture.statistics || fixture.statistics.length === 0) return null;
+
+    const translateType = (typeId: number): string => {
+        // Map common SportMonks Type IDs to API-Football keys
+        const map: Record<number, string> = {
+            42: 'Shots on Goal', // Total? No, 42 is usually total
+            86: 'Shots on Goal', // On target
+            87: 'Shots off Goal',
+            45: 'Ball Possession',
+            83: 'Corner Kicks',
+            58: 'Red Cards',
+            57: 'Yellow Cards',
+            56: 'Fouls',
+            34: 'Goalkeeper Saves',
+            80: 'Total passes', // approx
+            // Add more as needed
+        };
+        // SportMonks v3 uses 'type.name' usually if included, simplified here if we only assume specific ID logic
+        // But better reliance is on the 'type' object if included
+        return map[typeId] || 'Unknown';
+    };
+
+    // Helper to build stat array for a team
+    const buildStats = (teamId: number) => {
+        const teamStats = fixture.statistics.filter((s: any) => s.participant_id === teamId);
+        if (teamStats.length === 0) return [];
+
+        return teamStats.map((s: any) => ({
+            type: s.type?.name || translateType(s.type_id),
+            value: s.data?.value || 0
+        }));
+    };
+
+    const home = fixture.participants?.find((p: any) => p.id === homeTeamId);
+    const away = fixture.participants?.find((p: any) => p.id === awayTeamId);
+
+    return [
+        {
+            team: { id: home?.id, name: home?.name, logo: home?.image_path },
+            statistics: buildStats(homeTeamId)
+        },
+        {
+            team: { id: away?.id, name: away?.name, logo: away?.image_path },
+            statistics: buildStats(awayTeamId)
+        }
+    ];
+}
+
+/**
+ * Normalize SportMonks events to API-Football format
+ */
+export function normalizeLegacyEvents(fixture: any): any[] | null {
+    if (!fixture.events || fixture.events.length === 0) return null;
+
+    return fixture.events.map((e: any) => ({
+        time: {
+            elapsed: e.minute,
+            extra: e.extra_minute || null
+        },
+        team: {
+            id: e.participant_id,
+            name: '', // We might catch this from participants lookup if critical
+            logo: ''
+        },
+        player: {
+            id: e.player_id,
+            name: e.player_name || 'Player'
+        },
+        assist: {
+            id: e.related_player_id,
+            name: e.related_player_name || null
+        },
+        type: e.type?.name || 'Goal', // Simplified mapping needed?
+        detail: e.sub_type_name || e.type?.name || '',
+        comments: null
+    })).sort((a: any, b: any) => (a.time.elapsed + (a.time.extra || 0)) - (b.time.elapsed + (b.time.extra || 0)));
+}
+
+/**
+ * Normalize SportMonks lineups to API-Football format
+ */
+export function normalizeLegacyLineups(fixture: any, homeTeamId: number, awayTeamId: number): any[] | null {
+    if (!fixture.lineups || fixture.lineups.length === 0) return null;
+
+    const buildLineup = (teamId: number) => {
+        const teamLineup = fixture.lineups.filter((l: any) => l.team_id === teamId);
+        const formation = fixture.formations?.find((f: any) => f.participant_id === teamId)?.formation || 'Unknown';
+
+        // Separate starting XI and subs
+        const startXI = teamLineup.filter((l: any) => l.type_id === 11 || l.type?.code === 'starting-xi' || !l.type_id) // Assuming start if no type? Warning.
+            .map((l: any) => ({
+                player: {
+                    id: l.player_id,
+                    name: l.player_name || l.player?.common_name || 'Unknown',
+                    number: l.jersey_number,
+                    pos: l.position?.code || 'P',
+                    grid: null
+                }
+            }));
+
+        const substitutes = teamLineup.filter((l: any) => l.type_id === 12 || l.type?.code === 'bench')
+            .map((l: any) => ({
+                player: {
+                    id: l.player_id,
+                    name: l.player_name || l.player?.common_name || 'Unknown',
+                    number: l.jersey_number,
+                    pos: l.position?.code || 'S',
+                    grid: null
+                }
+            }));
+
+        const team = fixture.participants?.find((p: any) => p.id === teamId);
+
+        return {
+            team: {
+                id: team?.id,
+                name: team?.name,
+                logo: team?.image_path,
+                colors: null
+            },
+            coach: { id: 0, name: 'Unknown', photo: null }, // SportMonks puts coaches elsewhere usually
+            formation: formation,
+            startXI: startXI,
+            substitutes: substitutes
+        };
+    };
+
+    return [buildLineup(homeTeamId), buildLineup(awayTeamId)];
+}
+
+/**
+ * Normalize SportMonks standings to API-Football format
+ */
+export function normalizeLegacyStandings(standings: any[]): any[][] | null {
+    if (!standings || standings.length === 0) return null;
+
+    // API-Football returns `response: [ [ {league...} ] ]` for standings? No, usually `response: [ { league: { standings: [[...]] } } ]`
+    // Our GameDetails expects `APIStanding[][]`.
+
+    const normalized = standings.map((s: any) => ({
+        rank: s.position,
+        team: {
+            id: s.participant_id,
+            name: s.participant?.name || 'Unknown',
+            logo: s.participant?.image_path || ''
+        },
+        points: s.points,
+        goalsDiff: s.details?.find((d: any) => d.type_id === 179)?.value || 0, // 179=GD usually
+        group: s.group_name || 'League',
+        form: s.form || '',
+        status: '',
+        description: s.result || '',
+        all: {
+            played: s.details?.find((d: any) => d.type_id === 129)?.value || 0,
+            win: s.details?.find((d: any) => d.type_id === 130)?.value || 0,
+            draw: s.details?.find((d: any) => d.type_id === 131)?.value || 0,
+            lose: s.details?.find((d: any) => d.type_id === 132)?.value || 0,
+            goals: {
+                for: s.details?.find((d: any) => d.type_id === 133)?.value || 0,
+                against: s.details?.find((d: any) => d.type_id === 134)?.value || 0
+            }
+        },
+        home: { played: 0, win: 0, draw: 0, lose: 0, goals: { for: 0, against: 0 } }, // Detailed home/away splits might need more parsing
+        away: { played: 0, win: 0, draw: 0, lose: 0, goals: { for: 0, against: 0 } },
+        update: new Date().toISOString()
+    }));
+
+    return [normalized];
 }

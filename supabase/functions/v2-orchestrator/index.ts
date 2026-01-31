@@ -135,7 +135,7 @@ serve(async (req) => {
                 fixture_id,
                 market_probs,
                 quality_flags,
-                odds_data: payload.datasets?.odds
+                odds_data: payload.odds
             })
         });
 

@@ -442,12 +442,12 @@ export const OperationsCenter: React.FC = () => {
                                     let processed = 0;
                                     for (const fid of selectedRetroIds) {
                                         try {
-                                            const success = await runPostMatchAnalysis(fid);
-                                            if (success) {
+                                            const result = await runPostMatchAnalysis(fid);
+                                            if (result.success) {
                                                 processed++;
                                                 setRetroLog(prev => [`✅ [${processed}/${selectedRetroIds.length}] ID ${fid} analizado.`, ...prev]);
                                             } else {
-                                                setRetroLog(prev => [`⚠️ Error en ID ${fid}.`, ...prev]);
+                                                setRetroLog(prev => [`⚠️ Error en ID ${fid}: ${result.message}`, ...prev]);
                                             }
                                         } catch (err: any) {
                                             setRetroLog(prev => [`❌ Excepción ID ${fid}: ${err.message}`, ...prev]);

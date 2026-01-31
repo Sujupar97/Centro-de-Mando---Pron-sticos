@@ -1,0 +1,2 @@
+Status: 200 OK
+Body: {"success":true,"job_id":"42cdd09f-7a35-43fb-8566-2f0d3cce2f0c","fixture_id":19427690,"engine":"3.0.0-SPORTMONKS","coverage":{"fixture":true,"lineups":true,"statistics":false,"odds":true,"predictions":false,"h2h":true,"standings":true,"injuries":true,"xg":false,"value_bets":false},"coverage_pct":60,"duration_ms":13207,"data_source":"SportMonks","predictions_available":false,"value_bets_count":0}

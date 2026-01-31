@@ -5,6 +5,97 @@ import JSON5 from "https://esm.sh/json5@2.2.3"
 import { corsHeaders } from '../_shared/cors.ts'
 // import { calculateAllMarkets, PreCalculatedMarkets } from '../_shared/marketCalculator.ts'
 
+// Import League Mapping
+import { LEAGUE_MAPPING, BOOKMAKER_MAPPING } from '../_shared/league-mapping.ts'
+
+const ODDS_API_KEY = "527a97a0d2316436a0bacf71c7b93eb5";
+
+async function fetchRealOdds(leagueId: number, homeTeam: string, awayTeam: string) {
+  const sportKey = LEAGUE_MAPPING[leagueId];
+  if (!sportKey) return null;
+
+  try {
+    const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&oddsFormat=decimal`;
+    console.log(`[ANALYSIS-ODDS] Fetching real odds for ${sportKey}...`);
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error(`[ANALYSIS-ODDS] Error fetching: ${res.statusText}`);
+      return null;
+    }
+    const data = await res.json();
+
+    // Fuzzy Match / Find the game
+    // Simple heuristic: specific part of team name match
+    // Strategy: Check if odds home_team contains our home_name or vice versa
+    // Normalize function (Robust)
+    const norm = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    const hNorm = norm(homeTeam);
+    const aNorm = norm(awayTeam);
+
+    const match = data.find((ev: any) => {
+      const evHome = norm(ev.home_team);
+      const evAway = norm(ev.away_team);
+      // Robust check: inclusion
+      const homeMatch = evHome.includes(hNorm) || hNorm.includes(evHome);
+      const awayMatch = evAway.includes(aNorm) || aNorm.includes(evAway);
+      return homeMatch && awayMatch;
+    });
+
+    if (!match) {
+      console.log(`[ANALYSIS-ODDS] Match NOT found for: ${homeTeam} (${hNorm}) vs ${awayTeam} (${aNorm})`);
+
+      let available = "";
+      if (Array.isArray(data)) {
+        available = data.slice(0, 50).map((e: any) => `${e.home_team} vs ${e.away_team}`).join(' | ');
+      }
+
+      return {
+        raw: null,
+        summary: "No se encontraron cuotas (Nombre no coincide).",
+        debug_candidates: available
+      };
+    }
+
+    console.log(`[ANALYSIS-ODDS] Found match: ${match.home_team} vs ${match.away_team}`);
+
+    // Process Best Odds
+    // We want Average or Best available. Let's pick 'pinnacle' or first available as reference.
+    const bookmakers = match.bookmakers || [];
+    const pinnacle = bookmakers.find((b: any) => b.key === 'pinnacle') || bookmakers[0];
+
+    if (!pinnacle) return { raw: match, summary: "Partido encontrado, sin bookmakers." };
+
+    // Extract Lines
+    let oddsSummary = `Casa: ${pinnacle.title}\n`;
+
+    // 1X2
+    const h2h = pinnacle.markets.find((m: any) => m.key === 'h2h');
+    if (h2h) {
+      const homeOdd = h2h.outcomes.find((o: any) => o.name === match.home_team)?.price;
+      const awayOdd = h2h.outcomes.find((o: any) => o.name === match.away_team)?.price;
+      const drawOdd = h2h.outcomes.find((o: any) => o.name === 'Draw')?.price;
+      oddsSummary += `1X2: Local @${homeOdd} | Empate @${drawOdd} | Visitante @${awayOdd}\n`;
+    }
+
+    // Totals
+    const totals = pinnacle.markets.find((m: any) => m.key === 'totals');
+    if (totals) {
+      const over = totals.outcomes.find((o: any) => o.name === 'Over')?.price;
+      const under = totals.outcomes.find((o: any) => o.name === 'Under')?.price;
+      const line = totals.outcomes[0]?.point;
+      oddsSummary += `Goles: Over ${line} @${over} | Under ${line} @${under}\n`;
+    }
+
+    return { raw: match, summary: oddsSummary };
+
+  } catch (e: any) {
+    console.error(`[ANALYSIS-ODDS] Exception: ${e.message}`);
+    return null;
+  }
+}
+
 // ... existing code ...
 
 
@@ -66,6 +157,14 @@ serve(async (req) => {
     const game = fixtureData[0];
     const { home: homeTeam, away: awayTeam } = game.teams;
     const leagueId = game.league.id;
+
+    // --- ODDS INTEGRATION ---
+    const realOddsData = await fetchRealOdds(leagueId, homeTeam.name, awayTeam.name);
+    if (realOddsData) {
+      console.log(`[ETL] Odds found: ${realOddsData.summary.split('\n')[0]}...`);
+    } else {
+      console.log(`[ETL] No Odds found for this match.`);
+    }
 
     // SEASON LOGIC (Robust)
     let season = game.league.season;
@@ -418,6 +517,11 @@ CONOCIMIENTO TÁCTICO RELEVANTE (RAG):
 ${knowledgeContext}
 
 ==================================================
+CONTEXTO DE MERCADO (ODDS API - REFERENCIA):
+==================================================
+${realOddsData ? realOddsData.summary : "No hay cuotas de referencia disponibles. Usa tu criterio puro."}
+
+==================================================
 CATÁLOGO DE MERCADOS DISPONIBLES:
 ==================================================
 ${marketsList}
@@ -426,25 +530,20 @@ ${marketsList}
 TU MISIÓN (CADENA DE PENSAMIENTO):
 ==================================================
 
-PASO 1: ANÁLISIS DE LA NARRATIVA (INTERPRETACIÓN)
-- ¿Quién necesita ganar? (Descenso, Título, Champions, Honor)
-- ¿Quién tiene la presión? ¿Quién juega relajado?
-- ¿Cómo llegan mentalmente? (Racha ganadora vs Crisis)
+PASO 1: ANÁLISIS DE ESCENARIOS (LA NARRATIVA TÁCTICA)
+- NO busques "apuestas seguras". BUSCA LA VERDAD DEL JUEGO.
+- Define el "ESCENARIO A" (El guion más probable, ~60-70% de veces).
+  - Ej: "Local domina, Visitante se encierra -> Pocos goles, Gana Local".
+- Define el "ESCENARIO B" (El plan alternativo / riesgo plausible).
+  - Ej: "Visitante marca primero en contra y se rompe el partido -> Over de goles".
 
-PASO 2: DUELO TÁCTICO (FORMACIONES)
-- Mira las formaciones probables en el JSON.
-- ¿Cómo interactúa el esquema del Local con el del Visitante? (Ej: 4-3-3 vs 5-4-1 bloque bajo).
-- ¿Dónde están los espacios? ¿Bandas? ¿Pasillos interiores?
+PASO 2: DUELO TÁCTICO & DESAJUSTES
+- ¿Dónde está la ventaja injusta? (Ej: Extremo rápido vs Lateral lento y amonestado).
+- ¿Hay valor en Goles (Over/Under) basado en el estilo de juego y no en la tabla?
 
-PASO 3: IDENTIFICACIÓN DE PATRONES (DATA)
-- Ignora promedios vacíos. Busca TENDENCIAS.
-- ¿El Local siempre encaja gol en el 2T? 
-- ¿El Árbitro saca amarilla fácil a los centrales lentos?
-
-PASO 4: VEREDICTO FINAL Y SELECCIÓN DE OPORTUNIDADES
-- Seleccionas las mejores oportunidades del catálogo.
-- NO TE LIMITES POR CUOTAS PRE-CALCULADAS. Usa tu intuición experta.
-- Determina el riesgo real.
+PASO 3: VEREDICTO FINAL Y SELECCIÓN INTELIGENTE
+- Selecciona oportunidades que encajen en el ESCENARIO A. 
+- Si detectas un valor inmenso en el ESCENARIO B (riesgo alto pero recompensa enorme), inclúyelo también.
 
 ==================================================
 FORMATO DE SALIDA (JSON STRICTO):
@@ -452,69 +551,77 @@ FORMATO DE SALIDA (JSON STRICTO):
 {
   "veredicto_analista": {
     "decision": "APOSTAR" | "OBSERVAR" | "EVITAR",
-    "titulo_accion": "Título corto e impactante (Ej: 'Guerra de Trincheras')",
-    "probabilidad": 85, // Tu estimación experta (0-100)
+    "titulo_accion": "Título corto (Ej: 'Asedio Local')",
+    "probabilidad": 85, 
     "nivel_confianza": "ALTA" | "MEDIA" | "BAJA",
-    "razon_principal": "Tu argumento #1",
-    "riesgo_principal": "El mayor peligro"
+    "razon_principal": "Argumento táctico central.",
+    "riesgo_principal": "El mayor peligro."
   },
   "header_partido": {
-    "titulo": "Local vs Visitante: [Frase Táctica]",
+    "titulo": "Local vs Visitante",
     "subtitulo": "Estadio - Torneo",
     "bullets_clave": ["Dato 1", "Dato 2", "Dato 3"]
   },
   "resumen_ejecutivo": {
-    "frase_principal": "Narrativa completa del partido en 2 líneas.",
+    "frase_principal": "Resumen narrativo del partido.",
     "puntos_clave": ["Clave 1", "Clave 2", "Clave 3", "Clave 4"]
   },
   "analisis_detallado": {
-    "contexto_competitivo": { "titulo": "La Narrativa", "bullets": ["Análisis de motivación y estado de forma"] },
-    "analisis_tactico_formaciones": { "titulo": "La Batalla Táctica", "bullets": ["Análisis de formaciones y espacios"] },
-    "impacto_arbitro": { "titulo": "El Juez", "bullets": ["Análisis del árbitro"] },
-    "alineaciones_y_bajas": { "titulo": "Novedades", "bullets": ["Bajas clave y regresos"] },
+    "contexto_competitivo": { "titulo": "La Narrativa", "bullets": ["..."] },
+    "analisis_tactico_formaciones": { "titulo": "La Batalla Táctica", "bullets": ["..."] },
+    "impacto_arbitro": { "titulo": "El Juez", "bullets": ["..."] },
+    "alineaciones_y_bajas": { "titulo": "Novedades", "bullets": ["..."] },
     "analisis_escenarios": {
-      "titulo": "Guion del Partido",
+      "titulo": "Guiones de Partido",
       "escenarios": [
-        { "nombre": "ESCENARIO A (Más Probable)", "probabilidad_aproximada": "60%", "descripcion": "...", "implicacion_apuestas": "..." },
-        { "nombre": "ESCENARIO B (Alternativo)", "probabilidad_aproximada": "40%", "descripcion": "...", "implicacion_apuestas": "..." }
+        { "nombre": "ESCENARIO A (Probable)", "probabilidad_aproximada": "65%", "descripcion": "...", "implicacion_apuestas": "..." },
+        { "nombre": "ESCENARIO B (Riesgo)", "probabilidad_aproximada": "35%", "descripcion": "...", "implicacion_apuestas": "..." }
       ]
     }
   },
   "predicciones_finales": {
     "detalle": [
       {
-        "mercado": "Nombre Mercado (Ej: Over 2.5 Goals)",
+        "mercado": "Nombre Mercado (Ej: Over 2.5)",
         "seleccion": "Selección (Ej: Over 2.5)",
         "probabilidad_estimado_porcentaje": 75,
+        "es_anchor": false, // Dejar en false, usaremos 'etiqueta_escenario'
+        "etiqueta_escenario": "SCENARIO_A" | "SCENARIO_B" | "ANCHOR" | "VALUE", // IMPORTANTE: CLASIFICAR AQUÍ
         "justificacion_detallada": {
-          "base_estadistica": ["Dato A", "Dato B"],
-          "contexto_competitivo": ["Argumento Contextual"],
-          "conclusion": "Por qué es una buena apuesta."
+          "base_estadistica": ["..."],
+          "contexto_competitivo": ["..."],
+          "conclusion": "..."
         }
       }
     ]
   },
   "mercado_recomendado": {
-    "descripcion": "La MEJOR oportunidad del partido (Pick Principal)",
-    "market_key": "clave_mercado", 
-    "market_name": "Nombre Mercado",
+    "descripcion": "Mejor Oportunidad",
+    "market_key": "clave", 
+    "market_name": "Nombre",
     "probabilidad_estimada": 80,
     "valor_detectado": "ALTO",
-    "razonamiento": "Argumento final contundente."
+    "razonamiento": "..."
   },
   "analisis_mercados_completo": {
-    "descripcion": "Análisis de valor en otros mercados",
+    "descripcion": "Otras opciones",
     "ranking_oportunidades": [
-       { "posicion": 1, "market_name": "Mercado 2", "confianza": "ALTA", "justificacion_tactica": "..." },
-       { "posicion": 2, "market_name": "Mercado 3", "confianza": "MEDIA", "justificacion_tactica": "..." }
+       { "posicion": 1, "market_name": "...", "confianza": "ALTA", "justificacion_tactica": "..." }
     ]
   }
 }
 
+PASO 5: "INTELIGENCIA DE PARLAY" (CRUCIAL - ETIQUETADO)
+- Clasifica cada pick en 'predicciones_finales' usando el campo "etiqueta_escenario":
+- "SCENARIO_A": Es la consecuencia lógica del guion principal. (Ej: Gana Favorito).
+- "VALUE": Oportunidad táctica clara ignorada por las cuotas teóricas. (Ej: Ambos Marcan en partido abierto).
+- "ANCHOR": Solo si es una certeza casi absoluta (>85%).
+- "SCENARIO_B": Solo si es una cobertura inteligente.
+
 REGLAS DE ORO:
 1. IDIOMA: SIEMPRE ESPAÑOL.
-2. SÉ CRÍTICO: Si el partido apesta, dilo ("EVITAR").
-3. NO INVENTES JUGADORES: Solo usa los del JSON.
+2. NO SEAS CONSERVADOR: Si el análisis táctico dice "Goles", ve a por el Over 2.5 o BTTS, no te quedes en el Over 1.5 por miedo.
+3. OLVIDA LAS CUOTAS: No las tienes. Usa tu cerebro táctico. ¿Es probable? ¿Tiene sentido? Apúestalo.
 `;
 
     // ═══════════════════════════════════════════════════════════════
@@ -543,13 +650,25 @@ REGLAS DE ORO:
 
 
     // --- STAGE 6: SAVE ---
+    // Construct Enriched Output with Debug Metadata
+    const finalOutput = {
+      ...aiData, // Use the parsed AI data
+      debug_metadata: {
+        odds_found: !!realOddsData,
+        odds_summary: realOddsData?.summary || "No odds found in API",
+        api_search_term: `${homeTeam.name} vs ${awayTeam.name}`,
+        league_id_used: leagueId,
+        rag_enabled: !!(ragDocs && ragDocs.length > 0)
+      }
+    };
+
     // Save enriched evidence
     const { data: runData, error: runError } = await supabase.from('analysis_runs').insert({
       job_id: job.id,
       fixture_id: job.id, // REVERTED: DB column expects UUID. Using job.id as intended by schema.
-      model_version: 'gemini-3-pro-preview',
+      model_version: 'gemini-2.0-flash-exp', // Updated model name
       summary_pre_text: aiData.resumen_ejecutivo?.frase_principal,
-      report_pre_jsonb: aiData,
+      report_pre_jsonb: finalOutput, // Use finalOutput with debug info
       match_date: game.fixture.date.split('T')[0] // YYYY-MM-DD del partido
     }).select().single();
 
@@ -570,7 +689,8 @@ REGLAS DE ORO:
         market: p.mercado || 'Mercado',
         selection: p.seleccion || 'Selección',
         probability: p.probabilidad_estimado_porcentaje || 50,
-        confidence: (p.probabilidad_estimado_porcentaje || 50) >= 70 ? 'Alta' : 'Media',
+        // CRITICAL HACK: Store the STRATEGIC TAG (Scenario A, B, Anchor) in confidence column
+        confidence: p.etiqueta_escenario || (p.es_anchor ? 'ANCHOR' : 'NORMAL'),
         reasoning: p.justificacion_detallada?.conclusion || '',
         model_version: modelVersion
       }));

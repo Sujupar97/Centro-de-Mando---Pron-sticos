@@ -62,8 +62,13 @@ serve(async (req) => {
 
     const startTime = Date.now();
 
+    let job_id_log_ref: string | null = null;
+
     try {
-        const { job_id, fixture_id, market_probs, quality_flags, odds_data } = await req.json();
+        const body = await req.json();
+        const { job_id, fixture_id, market_probs, quality_flags, odds_data } = body;
+        job_id_log_ref = job_id;
+
         if (!job_id || !fixture_id || !market_probs) throw new Error('job_id, fixture_id, and market_probs are required');
 
         console.log(`[V2-VALUE] Evaluating ${market_probs.length} markets for job: ${job_id}`);
@@ -87,17 +92,29 @@ serve(async (req) => {
 
         const thresholds = configData?.value || DEFAULT_THRESHOLDS;
 
-        // Parse odds data into lookup
+        // Parse odds data into lookup (Consuming from Motor A - already processed)
+        // Structure: { h2h: { home: 1.5, away: 2.5, draw: 3.5 }, totals: { over: 1.9, under: 1.9, line: 2.5 } }
         const oddsLookup = new Map<string, number>();
-        if (odds_data?.markets) {
-            for (const market of odds_data.markets) {
-                const marketName = (market.name || '').toLowerCase();
-                for (const bet of market.values || []) {
-                    const key = normalizeMarketKey(marketName, bet.value);
-                    if (key && bet.odd) {
-                        oddsLookup.set(key, parseFloat(bet.odd));
-                    }
-                }
+
+        if (odds_data) {
+            // 1X2
+            if (odds_data.h2h) {
+                if (odds_data.h2h.home) oddsLookup.set('1x2_home', parseFloat(odds_data.h2h.home));
+                if (odds_data.h2h.away) oddsLookup.set('1x2_away', parseFloat(odds_data.h2h.away));
+                if (odds_data.h2h.draw) oddsLookup.set('1x2_draw', parseFloat(odds_data.h2h.draw));
+            }
+
+            // Totals (Multi-Line Intelligence)
+            if (odds_data.totals_lines && Array.isArray(odds_data.totals_lines)) {
+                odds_data.totals_lines.forEach((t: any) => {
+                    if (t.line && t.over) oddsLookup.set(`over_${t.line}_goals`, parseFloat(t.over));
+                    if (t.line && t.under) oddsLookup.set(`under_${t.line}_goals`, parseFloat(t.under));
+                });
+            } else if (odds_data.totals) {
+                // Legacy Fallback
+                // FIXME: 2.5 assumption in legacy - this should ideally be `odds_data.totals.line`
+                if (odds_data.totals.over) oddsLookup.set('over_2.5_goals', parseFloat(odds_data.totals.over));
+                if (odds_data.totals.under) oddsLookup.set('under_2.5_goals', parseFloat(odds_data.totals.under));
             }
         }
 
@@ -444,11 +461,29 @@ serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
 
-    } catch (e: any) {
-        console.error('[V2-VALUE] Error:', e);
+    } catch (error: any) {
+        console.error('[V2-VALUE] Error:', error);
+
+        // Emergency Error Logging to DB
+        try {
+            const sbUrl = Deno.env.get('SUPABASE_URL')!;
+            const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+            const supabaseLogger = createClient(sbUrl, sbKey);
+
+            // Update job status with error
+            if (job_id_log_ref) { // Check if job_id was successfully parsed
+                await supabaseLogger
+                    .from('analysis_jobs_v2')
+                    .update({ status: 'error', error_message: error.message, current_motor: 'D' })
+                    .eq('id', job_id_log_ref);
+            }
+        } catch (e) {
+            console.error('[V2-VALUE] Failed to log error to DB:', e);
+        }
+
         return new Response(JSON.stringify({
             success: false,
-            error: e.message
+            error: error.message
         }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }

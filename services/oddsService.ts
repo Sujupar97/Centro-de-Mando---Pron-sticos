@@ -107,13 +107,26 @@ export const findOddsForFixture = (
 ): OddsEvent | null => {
     const fixtureDate = new Date(fixture.date);
 
-    // 1. Filter by Date (same day)
+    // 1. Candidate Selection (Relaxed)
     const candidates = oddsEvents.filter(e => {
         const eventDate = new Date(e.commence_time);
-        // Check if within 24 hours (timezone differences can be tricky)
+        // Standard check: 30 hours
         const diffHours = Math.abs(eventDate.getTime() - fixtureDate.getTime()) / 36e5;
-        return diffHours < 30;
+
+        // RELAXED RULE: If names are extremely similar, allow up to 7 days (schedule changes/timezone screwups)
+        // We do a quick pre-check on names to decide if we widen the window
+        const quickHomeSim = calculateSimilarity(fixture.home, e.home_team);
+        const quickAwaySim = calculateSimilarity(fixture.away, e.away_team);
+
+        // If strong name match (>0.85), allow 7 days (168h)
+        if (quickHomeSim > 0.85 && quickAwaySim > 0.85) {
+            return diffHours < 168;
+        }
+
+        return diffHours < 36; // Default 36h
     });
+
+    console.log(`[OddsService] Found ${candidates.length} candidates for ${fixture.home} vs ${fixture.away}`);
 
     let bestMatch: OddsEvent | null = null;
     let highestScore = 0;
@@ -125,6 +138,9 @@ export const findOddsForFixture = (
 
         // Average score
         const totalScore = (homeSim + awaySim) / 2;
+
+        // Debug log
+        if (totalScore > 0.5) console.log(`[OddsService] Candidate ${event.home_team} vs ${event.away_team}: Score ${totalScore}`);
 
         if (totalScore > highestScore) {
             highestScore = totalScore;

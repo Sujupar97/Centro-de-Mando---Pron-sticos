@@ -157,27 +157,35 @@ export const fetchGameDetails = async (game: Game): Promise<GameDetails> => {
         if (cachedData) return cachedData.dossier as GameDetails;
     }
 
-    // 2. Pedir al Proxy que construya el Dossier completo
-    // El proxy ahora tiene un modo especial 'full-dossier' para hacer todas las llamadas
-    // internas (H2H, Standings, Stats) en el servidor y ahorrar round-trips.
-    const dossier = await callProxy<GameDetails>('full-dossier', {
-        fixtureId: fixtureId,
-        homeTeamId: game.teams.home.id,
-        awayTeamId: game.teams.away.id,
-        leagueId: game.league.id,
-        fixtureDate: game.fixture.date // Pass date for server-side season calculation
-    });
+    // 2. Pedir al Proxy (Ahora actualizado a endpoint v2-get-fixture-details-sportmonks)
+    // Usamos la nueva Edge Function específica que normaliza IDs de SportMonks al formato legado
+    try {
+        const { data, error } = await supabase.functions.invoke('v2-get-fixture-details-sportmonks', {
+            body: { fixtureId }
+        });
 
-    // 3. Guardar en caché si terminó
-    if (isFinished && dossier) {
-        await supabase.from('partido_detalles_cache').upsert({
-            fixture_id: fixtureId,
-            dossier: dossier as any,
-            last_updated: new Date().toISOString(),
-        }, { onConflict: 'fixture_id' });
+        if (error) {
+            console.error('[fetchGameDetails] Error invocation:', error);
+            throw new Error(error.message || 'Error fetching details from SportMonks');
+        }
+
+        const dossier = data as GameDetails;
+
+        // 3. Guardar en caché si terminó
+        if (isFinished && dossier) {
+            await supabase.from('partido_detalles_cache').upsert({
+                fixture_id: fixtureId,
+                dossier: dossier as any,
+                last_updated: new Date().toISOString(),
+            }, { onConflict: 'fixture_id' });
+        }
+
+        return dossier;
+    } catch (e: any) {
+        console.error('[fetchGameDetails] Fallback failed:', e);
+        // Retornar objeto vacío o lanzar error - mejor lanzar para que UI muestre error
+        throw e;
     }
-
-    return dossier;
 };
 
 export const fetchTopPicks = async (date: string) => {

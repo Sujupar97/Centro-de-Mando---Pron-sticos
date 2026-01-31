@@ -508,6 +508,92 @@ const VerdictSummary: React.FC<{
     );
 };
 
+// --- MARKET ODDS COMPONENT ---
+const OddsOverviewSection: React.FC<{ odds: any }> = ({ odds }) => {
+    if (!odds) return null;
+
+    const bookmaker = odds.bookmakers?.[0]?.title || 'Casa de Apuestas';
+
+    // Extract main markets
+    const h2h = odds.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'h2h');
+    const totals = odds.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'totals'); // Assuming standard 2.5 usually first or check all
+    const btts = odds.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'btts'); // btts
+
+    // Helper to get price
+    const getPrice = (market: any, name: string) => market?.outcomes?.find((o: any) => o.name === name)?.price?.toFixed(2) || '-';
+
+    return (
+        <div className="bg-gradient-to-r from-slate-800 to-slate-900 border border-blue-500/20 rounded-xl p-5 mb-6 shadow-lg animate-fade-in relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-2 opacity-10">
+                <span className="text-4xl">📊</span>
+            </div>
+
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-white flex items-center">
+                    <span className="bg-blue-500/20 text-blue-400 p-1.5 rounded mr-2 text-xs">LIVE</span>
+                    Cuotas en Tiempo Real
+                </h3>
+                <span className="text-xs text-gray-400 bg-black/30 px-2 py-1 rounded border border-white/5">
+                    Fuente: <span className="text-blue-300 font-bold">{bookmaker}</span>
+                </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1X2 */}
+                <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                    <div className="text-xs text-gray-400 uppercase tracking-wider mb-2 text-center">Resultado Final (1X2)</div>
+                    <div className="flex justify-between items-center text-sm font-bold">
+                        <div className="flex flex-col items-center w-1/3">
+                            <span className="text-white">{getPrice(h2h, odds.home_team)}</span>
+                            <span className="text-[10px] text-gray-500 font-normal">Local</span>
+                        </div>
+                        <div className="flex flex-col items-center w-1/3 border-x border-white/5">
+                            <span className="text-white">{getPrice(h2h, 'Draw')}</span>
+                            <span className="text-[10px] text-gray-500 font-normal">Empate</span>
+                        </div>
+                        <div className="flex flex-col items-center w-1/3">
+                            <span className="text-white">{getPrice(h2h, odds.away_team)}</span>
+                            <span className="text-[10px] text-gray-500 font-normal">Visita</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Totals */}
+                <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                    <div className="text-xs text-gray-400 uppercase tracking-wider mb-2 text-center">
+                        Goles {totals?.outcomes?.[0]?.point ? `(${totals.outcomes[0].point})` : ''}
+                    </div>
+                    <div className="flex justify-around items-center text-sm font-bold">
+                        <div className="flex flex-col items-center">
+                            <span className="text-green-400">{getPrice(totals, 'Over')}</span>
+                            <span className="text-[10px] text-gray-500 font-normal">Over</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                            <span className="text-red-400">{getPrice(totals, 'Under')}</span>
+                            <span className="text-[10px] text-gray-500 font-normal">Under</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* BTTS */}
+                <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                    <div className="text-xs text-gray-400 uppercase tracking-wider mb-2 text-center">Ambos Anotan</div>
+                    <div className="flex justify-around items-center text-sm font-bold">
+                        <div className="flex flex-col items-center">
+                            <span className="text-blue-300">{getPrice(btts, 'Yes') || getPrice(btts, 'Sí')}</span>
+                            <span className="text-[10px] text-gray-500 font-normal">Sí</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                            <span className="text-gray-300">{getPrice(btts, 'No')}</span>
+                            <span className="text-[10px] text-gray-500 font-normal">No</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- COMPONENTE PRINCIPAL ---
 
 export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | null; onClose: () => void }> = ({ analysis, onClose }) => {
@@ -515,6 +601,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
     // We wrap the analysis data in state to trigger re-renders when odds are fetched.
     const [currentAnalysis, setCurrentAnalysis] = useState<VisualAnalysisResult | null>(analysis);
     const [showFullReport, setShowFullReport] = useState(false);
+    const [realOdds, setRealOdds] = useState<any | null>(null);
 
     useEffect(() => {
         setCurrentAnalysis(analysis);
@@ -541,11 +628,12 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
             // Let's cast for now or update types. 
             // Just in case, we'll store odds in the 'pred' object in the local state.
 
-            const usefulPredictions = uiPredictions.filter((p: any) => !p.odds && p.probabilidad_estimado_porcentaje >= 60);
+            // MODIFIED: Force fetch regardless of predictions state to show the main Odds Table
+            // const usefulPredictions = uiPredictions.filter((p: any) => !p.odds && p.probabilidad_estimado_porcentaje >= 60);
 
-            if (usefulPredictions.length === 0) return;
+            // if (usefulPredictions.length === 0) return;
 
-            console.log(`[Odds] Checking for ${usefulPredictions.length} predictions in analysis...`);
+            console.log(`[Odds] Starting odds fetch process for visual table...`);
 
             // Context for API
             const leaguePart = run.league_name || currentAnalysis.dashboardData?.header_partido?.titulo || 'Unknown';
@@ -561,19 +649,28 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
             // Let's assume the run is for an UPCOMING match or RECENT match.
             // We can try to extract date from the header "Fecha: ..." usually found in context bullets?
             // Or just use today/tomorrow if it's a new analysis.
-            const matchDate = new Date().toISOString(); // Default to now (for upcoming check)
+            // START FIX: Obtener fecha REAL del partido para el matching de cuotas
+            // Si usamos new Date(), falla para partidos futuros con filtro > 30h
+            let matchDate = (run as any).match_date || (run as any).date;
+
+            if (!matchDate) {
+                // Intentar extraer del subtítulo "Sabado 31 Enero" etc
+                // O usar fecha de creación si es muy reciente (pero cuidado con análisis adelantados)
+                matchDate = new Date().toISOString();
+                console.log("[Odds] Warning: Using current date for odds matching (feature incomplete in run data)");
+            } else {
+                console.log(`[Odds] Using match date from Run: ${matchDate}`);
+            }
+            // END FIX
 
             const sportKey = mapLeagueToSportKey(leaguePart);
 
             const checkItem = {
-                fixtureId: parseInt(run.fixture_id), // UUID or Int? DB says UUID for foreign key, but API fixture is Int. 
-                // Wait, analysis_runs.fixture_id is UUID in DB schema? No, it's text/uuid referencing the TABLE fixture_id?
-                // Let's check the code: AnalysisJob uses api_fixture_id (int). 
-                // We'll use the ID we have. The Odds Service just uses it as a key for the Map.
+                fixtureId: parseInt(run.fixture_id),
                 sportKey: sportKey,
                 home: homeTeam,
                 away: awayTeam,
-                date: matchDate // This might be loose, but logic has fuzzy matching
+                date: matchDate
             };
 
             try {
@@ -613,6 +710,9 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                             }
                             return pred;
                         });
+
+                        // STORE FULL ODDS DATA FOR DISPLAY
+                        setRealOdds(event);
 
                         if (updates > 0) {
                             console.log(`[Odds] Updated ${updates} predictions with real odds.`);
@@ -735,6 +835,11 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
 
                             {/* Header Section (Banner) */}
                             {data.header_partido && <HeaderSection data={data.header_partido} />}
+
+                            {/* ODDS SECTION - LIVE */}
+                            <div className="px-4 md:px-8 pt-4">
+                                <OddsOverviewSection odds={realOdds} />
+                            </div>
 
                             <div className="p-4 md:p-8 space-y-8">
 
