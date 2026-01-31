@@ -89,7 +89,7 @@ export function normalizeFixture(fixture: any): NormalizedPayload['match'] {
 }
 
 /**
- * Normalize match history (last 40 fixtures)
+ * Normalize match history (last N fixtures)
  */
 export function normalizeMatchHistory(fixtures: any[], teamId: number): any[] {
     return fixtures.map((f: any) => {
@@ -113,6 +113,46 @@ export function normalizeMatchHistory(fixtures: any[], teamId: number): any[] {
             score_away: awayScore,
             venue: f.venue?.name || null,
             league: f.league?.name || ''
+        };
+    });
+}
+
+/**
+ * Normalize DEEP match history for V4 Mastermind Engine
+ * Extracts detailed stats like possession, shots, corners, formations
+ */
+export function normalizeDetailedMatchHistory(fixtures: any[], teamId: number): any[] {
+    return fixtures.map((f: any) => {
+        // Basic Info
+        const basic = normalizeMatchHistory([f], teamId)[0];
+        const isHome = f.participants?.find((p: any) => p.id === teamId)?.meta?.location === 'home';
+
+        // Extract Formations
+        const myFormation = f.formations?.find((lm: any) => lm.participant_id === teamId)?.formation || 'Unknown';
+        const opponentFormation = f.formations?.find((lm: any) => lm.participant_id !== teamId)?.formation || 'Unknown';
+
+        // Extract Stats (Possession, Shots, Corners, Fouls, Cards)
+        const findStat = (typeId: number, team: number) => {
+            const stat = f.statistics?.find((s: any) => s.participant_id === team && s.type_id === typeId);
+            return stat?.data?.value || 0;
+        };
+
+        // SportMonks Type IDs (approximate common ones, check docs if needed)
+        // 45=Possession, 57=YellowCards, 83=Cornes, 56=Fouls, 42=ShotsTotal, 86=ShotsOnTarget
+
+        return {
+            ...basic,
+            details: {
+                formation_used: myFormation,
+                opponent_formation: opponentFormation,
+                possession: findStat(45, teamId),
+                shots_total: findStat(42, teamId),
+                shots_on_target: findStat(86, teamId),
+                corners: findStat(83, teamId),
+                yellow_cards: findStat(57, teamId),
+                red_cards: f.statistics?.find((s: any) => s.participant_id === teamId && s.type_id === 58)?.data?.value || 0, // 58=RedCaard
+                fouls: findStat(56, teamId)
+            }
         };
     });
 }

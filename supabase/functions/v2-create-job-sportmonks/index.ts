@@ -83,7 +83,10 @@ serve(async (req) => {
         // ═══════════════════════════════════════════════════════════════
         // STAGE 2: FETCH ADDITIONAL DATA (parallel)
         // ═══════════════════════════════════════════════════════════════
-        console.log('[v2-create-job-sportmonks] Stage 2: Fetching additional data...');
+        console.log('[v2-create-job-sportmonks] Stage 2: Fetching additional data (Deep Dive V4)...');
+
+        // V4 REQUIREMENT: 20 matches with FULL stats (lineups, statistics, events)
+        const deepIncludes = ['participants', 'scores', 'venue', 'league', 'statistics', 'lineups', 'events', 'formations'];
 
         const [
             homeHistory,
@@ -93,8 +96,8 @@ serve(async (req) => {
             predictions,
             valueBets
         ] = await Promise.all([
-            getTeamFixtures(homeTeamId, 40),
-            getTeamFixtures(awayTeamId, 40),
+            getTeamFixtures(homeTeamId, 20, deepIncludes), // 20 matches Deep Dive
+            getTeamFixtures(awayTeamId, 20, deepIncludes), // 20 matches Deep Dive
             getH2H(homeTeamId, awayTeamId),
             seasonId ? getStandings(seasonId) : Promise.resolve([]),
             getPredictions(fixture_id),
@@ -102,8 +105,8 @@ serve(async (req) => {
         ]);
 
         console.log(`[v2-create-job-sportmonks] Data fetched:`);
-        console.log(`  - Home history: ${homeHistory.length} matches`);
-        console.log(`  - Away history: ${awayHistory.length} matches`);
+        console.log(`  - Home deep history: ${homeHistory.length} matches`);
+        console.log(`  - Away deep history: ${awayHistory.length} matches`);
         console.log(`  - H2H: ${h2h.length} matches`);
         console.log(`  - Standings: ${standings.length} teams`);
         console.log(`  - Predictions: ${predictions ? 'YES' : 'NO'}`);
@@ -114,17 +117,56 @@ serve(async (req) => {
         // ═══════════════════════════════════════════════════════════════
         console.log('[v2-create-job-sportmonks] Stage 3: Building normalized payload...');
 
-        const normalizedPayload = buildNormalizedPayload(
-            fixtureData,
-            homeHistory,
-            awayHistory,
-            h2h,
-            standings,
+        // Note: buildNormalizedPayload will need to be updated to accept and process 
+        // the deep stats, OR we pre-process them here. 
+        // Ideally, we pass the raw data and let the normalizer handle it, 
+        // BUT buildNormalizedPayload signature expects simple arrays.
+        // We will update sportmonks-normalizer.ts to export a new 'buildDeepPayload' 
+        // or just monkey-patch the payload construction here for V4.
+
+        // Import the new normalizer function
+        const { normalizeDetailedMatchHistory } = await import('../_shared/sportmonks-normalizer.ts');
+
+        const homeDeep = normalizeDetailedMatchHistory(homeHistory, homeTeamId);
+        const awayDeep = normalizeDetailedMatchHistory(awayHistory, awayTeamId);
+
+        const normalizedPayload = {
+            match: {
+                fixture_id: fixtureData.id,
+                stats: fixtureData.statistics,
+                venue: fixtureData.venue,
+                league_id: fixtureData.league_id,
+                season_id: fixtureData.season_id,
+                date_time_utc: fixtureData.starting_at,
+                teams: {
+                    home: { id: homeTeamId, name: homeTeam.name, image: homeTeam.image_path },
+                    away: { id: awayTeamId, name: awayTeam.name, image: awayTeam.image_path }
+                },
+                competition: {
+                    id: fixtureData.league?.id,
+                    name: fixtureData.league?.name,
+                    country: fixtureData.league?.country?.name,
+                    round: fixtureData.round?.name
+                }
+            },
+            datasets: {
+                home_team_last40: { all: homeDeep }, // Using Deep history in place of simple
+                away_team_last40: { all: awayDeep }, // Using Deep history in place of simple
+                h2h: h2h, // Helper function to normalize H2H can be reused or raw if fine
+                standings: {
+                    home_context: standings.find((s: any) => s.participant_id === homeTeamId),
+                    away_context: standings.find((s: any) => s.participant_id === awayTeamId),
+                    table: standings
+                },
+                injuries: {
+                    home: fixtureData.sidelined?.filter((s: any) => s.team_id === homeTeamId) || [],
+                    away: fixtureData.sidelined?.filter((s: any) => s.team_id === awayTeamId) || []
+                }
+            },
             predictions,
-            valueBets,
-            homeTeamId,
-            awayTeamId
-        );
+            value_bets: valueBets,
+            odds: fixtureData.odds
+        };
 
         // Calculate coverage score
         const coverage = {
@@ -137,7 +179,8 @@ serve(async (req) => {
             standings: standings.length > 0,
             injuries: (fixtureData.sidelined?.length || 0) > 0,
             xg: !!fixtureData.xGFixture,
-            value_bets: valueBets.length > 0
+            value_bets: valueBets.length > 0,
+            deep_history: homeDeep.length > 0 && homeDeep[0].details // Check if deep stats exist
         };
 
         const coverageScore = Object.values(coverage).filter(Boolean).length / Object.keys(coverage).length;

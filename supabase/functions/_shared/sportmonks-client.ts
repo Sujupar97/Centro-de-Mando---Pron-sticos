@@ -191,10 +191,14 @@ export async function getFixtureComplete(fixtureId: number): Promise<any | null>
  * Note: v3 API prefers flat filters for some endpoints or specific include logic.
  * The 'participant_id' parameter works directly.
  */
-export async function getTeamFixtures(teamId: number, last: number = 40): Promise<any[]> {
+export async function getTeamFixtures(
+    teamId: number,
+    last: number = 40,
+    includes: string[] = ['participants', 'scores', 'venue', 'league']
+): Promise<any[]> {
     return await fetchSportMonks<any[]>(
         `/fixtures`,
-        ['participants', 'scores', 'venue', 'league'],
+        includes,
         {
             'participant_id': teamId.toString(),
             'per_page': last.toString(),
