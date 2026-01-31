@@ -510,7 +510,10 @@ export const FixturesFeed: React.FC = () => {
 
                 {viewMode === 'top-picks' ? (
                     <div className="glass rounded-2xl p-6 min-h-[500px] animate-fade-in border border-white/5">
-                        <HighProbPicks date={selectedDate} />
+                        <HighProbPicks
+                            date={selectedDate}
+                            onViewReport={handleViewReport}
+                        />
                     </div>
                 ) : (
                     <>

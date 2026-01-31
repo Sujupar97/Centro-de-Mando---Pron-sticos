@@ -169,6 +169,15 @@ serve(async (req) => {
             console.warn(`[v2] WARNING: Deno.env.get Key (${envKey ? envKey.substring(0, 5) : 'null'}) DOES NOT MATCH Known Good Key!`);
         }
 
+        // DEBUG: Inspect normalized odds before sending
+        if (normalizedPayload.odds && normalizedPayload.odds.bookmakers && normalizedPayload.odds.bookmakers.length > 0) {
+            const bestBookie = normalizedPayload.odds.bookmakers[0];
+            console.log(`[v2] Best Bookmaker Selected: ${bestBookie.title} (ID: ${bestBookie.id})`);
+            console.log(`[v2] Markets Available: ${bestBookie.markets.map((m: any) => m.key).join(', ')}`);
+        } else {
+            console.log('[v2] No Odds/Bookmakers found in normalized payload');
+        }
+
         const analyzerUrl = `${sbUrl}/functions/v1/v3-ai-analyzer`;
         console.log(`[v2] Calling analyzer at ${analyzerUrl} with payload size: ${JSON.stringify(normalizedPayload).length} chars`);
 

@@ -16,13 +16,15 @@ interface HighProbPick {
     home_team?: string;
     away_team?: string;
     league?: string;
+    odds?: number;
 }
 
 interface HighProbPicksProps {
     date: string;
+    onViewReport?: (jobId: string, fixtureId: number) => void;
 }
 
-const HighProbPicks: React.FC<HighProbPicksProps> = ({ date }) => {
+const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => {
     const [picks, setPicks] = useState<HighProbPick[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -64,15 +66,22 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date }) => {
             const latestJobs = Array.from(latestJobByFixture.values());
             const latestJobIds = latestJobs.map(j => j.id);
 
-            // 2. Obtener datos de partidos para enriquecer
-            const fixtureIds = latestJobs.map(j => j.fixture_id);
-            const { data: matches } = await supabase
-                .from('daily_matches')
-                .select('api_fixture_id, home_team, away_team, league_name')
-                .in('api_fixture_id', fixtureIds);
+            // 2. Obtener datos de partidos (FUENTE DE VERDAD: Edge Function via liveDataService o fetch directo)
+            // En lugar de consultar daily_matches (cache parcial), invocamos la función de listado que trae TOOOODOS los partidos de la fecha.
+            const { data: fixtures, error: fixturesError } = await supabase.functions.invoke('v2-list-fixtures-sportmonks', {
+                body: { date }
+            });
+
+            if (fixturesError) console.error('[HighProbPicks] Error fetching fixtures:', fixturesError);
 
             const matchData = new Map<number, any>();
-            (matches || []).forEach(m => matchData.set(m.api_fixture_id, m));
+            (fixtures || []).forEach((m: any) => {
+                // El objeto devuelto por normalizeSportMonksToListGame tiene estructura anidada:
+                // { fixture: { id: ... }, teams: { home: { name: ... }, away: { name: ... } } }
+                if (m.fixture?.id) {
+                    matchData.set(m.fixture.id, m);
+                }
+            });
 
             // 3. Obtener reports_v2 con los pronósticos embebidos
             const { data: reports, error: reportsError } = await supabase
@@ -91,13 +100,38 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date }) => {
                 const packet = report.report_packet;
                 if (!packet) continue;
 
-                const match = matchData.get(report.fixture_id);
+                // Fallback de nombres robusto
+                let homeName = 'Local';
+                let awayName = 'Visitante';
+                let leagueName = 'Liga';
 
-                // Los pronósticos pueden estar en diferentes ubicaciones según la versión
+                // PRIORIDAD 1: Datos frescos de SportMonks (API)
+                const matchApi = matchData.get(report.fixture_id);
+
+                if (matchApi) {
+                    // Estructura normalizada de v2-list-fixtures
+                    homeName = matchApi.teams?.home?.name || 'Local';
+                    awayName = matchApi.teams?.away?.name || 'Visitante';
+                    leagueName = matchApi.league?.name || 'Liga';
+                }
+                // PRIORIDAD 2: Header del reporte (IA)
+                else if (packet.header_partido?.titulo) {
+                    const parts = packet.header_partido.titulo.split(' vs ');
+                    if (parts.length === 2) {
+                        homeName = parts[0];
+                        awayName = parts[1];
+                    } else {
+                        homeName = packet.header_partido.titulo;
+                        awayName = '';
+                    }
+                    if (packet.header_partido.subtitulo) {
+                        leagueName = packet.header_partido.subtitulo.split(' • ')[0] || 'Liga';
+                    }
+                }
+
                 const pronosticos = packet.pronosticos || [];
 
                 for (const p of pronosticos) {
-                    // Extraer probabilidad (puede estar en diferentes campos)
                     const prob =
                         p.probabilidad_calculada_porcentaje ||
                         p.probabilidad_calculada ||
@@ -105,7 +139,6 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date }) => {
                         p.confianza ||
                         0;
 
-                    // Convertir a decimal si está en porcentaje
                     const probDecimal = prob > 1 ? prob / 100 : prob;
 
                     if (probDecimal >= 0.80) {
@@ -117,9 +150,10 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date }) => {
                             selection: p.seleccion || 'Selección',
                             p_model: probDecimal,
                             decision: 'BET',
-                            home_team: match?.home_team || 'Local',
-                            away_team: match?.away_team || 'Visitante',
-                            league: match?.league_name || 'Liga'
+                            home_team: homeName,
+                            away_team: awayName,
+                            league: leagueName,
+                            odds: p.cuota_actual || p.cuota || 0
                         });
                     }
                 }
@@ -266,24 +300,36 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date }) => {
                 {picks.map((pick, index) => (
                     <div
                         key={pick.id || index}
-                        className="glass rounded-xl p-4 border border-white/5 hover:border-brand/30 transition-all group"
+                        onClick={() => onViewReport && onViewReport(pick.job_id, pick.fixture_id)}
+                        className={`glass rounded-xl p-4 border border-white/5 hover:border-brand/30 transition-all group ${onViewReport ? 'cursor-pointer hover:bg-slate-800/50' : ''}`}
                     >
                         {/* Header del Pick */}
                         <div className="flex items-start justify-between mb-3">
                             <div className="flex-1 min-w-0">
                                 <p className="text-xs text-slate-500 truncate mb-1">{pick.league}</p>
                                 <p className="text-sm font-bold text-white truncate">
-                                    {pick.home_team} vs {pick.away_team}
+                                    {pick.home_team} {pick.away_team ? `vs ${pick.away_team}` : ''}
                                 </p>
                             </div>
-                            <span className={`ml-2 px-2 py-1 text-xs font-bold rounded-lg bg-gradient-to-r ${getProbabilityColor(pick.p_model)} text-white`}>
+                            <span className={`ml-2 px-2 py-1 text-xs font-bold rounded-lg bg-gradient-to-r ${getProbabilityColor(pick.p_model)} text-white shadow-sm`}>
                                 {getProbabilityLabel(pick.p_model)}
                             </span>
                         </div>
 
                         {/* Mercado y Selección */}
-                        <div className="bg-slate-800/50 rounded-lg p-3 mb-3">
-                            <p className="text-xs text-slate-400 mb-1">MERCADO</p>
+                        <div className="bg-slate-800/50 rounded-lg p-3 mb-3 border border-white/5">
+                            <div className="flex justify-between items-start mb-1">
+                                <p className="text-xs text-slate-400">MERCADO</p>
+                                {pick.odds ? (
+                                    <span className="text-xs font-bold text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">
+                                        Cuota {pick.odds.toFixed(2)}
+                                    </span>
+                                ) : (
+                                    <span className="text-xs font-bold text-slate-500 bg-slate-700/30 px-1.5 py-0.5 rounded">
+                                        Cuota N/D
+                                    </span>
+                                )}
+                            </div>
                             <p className="text-sm font-medium text-white">{translateMarket(pick.market)}</p>
                             <div className="mt-2 flex items-center gap-2">
                                 <SparklesIcon className="w-4 h-4 text-brand" />

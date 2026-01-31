@@ -343,6 +343,16 @@ INSTRUCCIÓN CRÍTICA SOBRE CUOTAS:
 - Si no hay cuotas, calcula probabilidades y recomienda los mercados más seguros
 - USA los Value Bets como punto de partida para identificar oportunidades
 
+INSTRUCCIÓN DE EMERGENCIA (FALLBACK):
+Si NO hay estadísticas detalladas ni cuotas disponibles para calcular Edge:
+1. NO respondas "Observar" automáticamente.
+2. BASA tu análisis en:
+   - Historial H2H (Patrones de dominancia)
+   - Forma Reciente (Últimos 10 partidos)
+   - Localía (Factor Casa)
+3. GENERAR AL MENOS 2 PRONÓSTICOS basados en probabilidad pura.
+4. Indica "Confianza: BAJA" si los datos son insuficientes, pero PROPÓN una estrategia.
+
 ${MARKETS_CATALOG}
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -585,6 +595,12 @@ Responde ÚNICAMENTE con un JSON válido con esta estructura exacta:
                 titulo: `${homeTeam} vs ${awayTeam}`,
                 subtitulo: `${leagueName} • ${match.date_time_utc ? new Date(match.date_time_utc).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }) : 'Próximamente'}`,
                 bullets_clave: analysisResult.resumen_ejecutivo?.picks_principales || []
+            },
+            // DEBUG INFO EXPOSED TO FRONTEND/CLIENT
+            debug_info: {
+                books_found: odds?.bookmakers?.length || 0,
+                best_bookie: odds?.bookmakers?.[0]?.title || 'None',
+                markets_count: odds?.bookmakers?.[0]?.markets?.length || 0
             },
             veredicto_analista: {
                 decision: analysisResult.resumen_ejecutivo?.veredicto || 'OBSERVAR',

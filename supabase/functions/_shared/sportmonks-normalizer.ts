@@ -250,7 +250,21 @@ export function normalizeOdds(odds: any[]): any {
     }
 
     return {
-        bookmakers: Array.from(groupedByBookmaker.values())
+        bookmakers: Array.from(groupedByBookmaker.values()).sort((a: any, b: any) => {
+            const priority = ['Bet365', 'Pinnacle', '1xBet', 'Unibet', 'Bwin', 'William Hill'];
+            const scoreA = priority.indexOf(a.title);
+            const scoreB = priority.indexOf(b.title);
+
+            // If both are priority, sort by index (lower is better)
+            if (scoreA !== -1 && scoreB !== -1) return scoreA - scoreB;
+            // If only A is priority, A comes first
+            if (scoreA !== -1) return -1;
+            // If only B is priority, B comes first
+            if (scoreB !== -1) return 1;
+
+            // Fallback: Sort by number of markets (more markets = better data usually)
+            return b.markets.length - a.markets.length;
+        })
     };
 }
 
