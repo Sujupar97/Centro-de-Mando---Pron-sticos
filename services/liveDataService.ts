@@ -59,38 +59,30 @@ const processFixturesResponse = (response: Game[]): DashboardData => {
 
 // --- FUNCIONES EXPORTADAS ---
 
+// --- FUNCIONES EXPORTADAS ---
+
 export const fetchFixturesByDate = async (date: string): Promise<DashboardData> => {
-    console.log(`[DEBUG] fetchFixturesByDate called for: ${date}`);
-    // Delegamos la petición al proxy
+    console.log(`[DEBUG] fetchFixturesByDate (SportMonks) called for: ${date}`);
     try {
-        const data = await callProxy<Game[]>('fixtures', { date });
-        console.log(`[DEBUG] Proxy returned ${data?.length} fixtures for ${date}`);
-
-        // ═══════════════════════════════════════════════════════════════
-        // FIX: Filtrar por fecha LOCAL de Bogotá (API devuelve en UTC)
-        // Esto resuelve el bug donde partidos del día anterior aparecen
-        // cuando la diferencia horaria hace que UTC difiera del día local
-        // ═══════════════════════════════════════════════════════════════
-        const filtered = (data || []).filter(game => {
-            if (!game?.fixture?.timestamp) return false;
-
-            // Convertir timestamp del partido a fecha local de Bogotá
-            const gameDate = new Date(game.fixture.timestamp * 1000);
-            const formatter = new Intl.DateTimeFormat('en-CA', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                timeZone: 'America/Bogota'
-            });
-            const localDate = formatter.format(gameDate);
-
-            return localDate === date;
+        // Llamada directa a la nueva función de listado SportMonks
+        const { data, error } = await supabase.functions.invoke('v2-list-fixtures-sportmonks', {
+            body: { date }
         });
 
-        console.log(`[DEBUG] Filtered to ${filtered.length} fixtures for local date ${date}`);
-        const processed = processFixturesResponse(filtered);
+        if (error) {
+            console.error('[DEBUG] Error invocando v2-list-fixtures-sportmonks:', error);
+            throw new Error(error.message || 'Error fetching fixtures from SportMonks');
+        }
+
+        console.log(`[DEBUG] SportMonks returned ${data?.length} fixtures for ${date}`);
+
+        // No necesitamos filtrar localDate aquí porque SportMonks ya recibe la fecha YYYY-MM-DD
+        // y devuelve partidos de ese día.
+
+        const processed = processFixturesResponse(data || []);
         console.log(`[DEBUG] Processed data:`, processed);
         return processed;
+
     } catch (e) {
         console.error(`[DEBUG] Error in fetchFixturesByDate:`, e);
         throw e;
@@ -98,9 +90,24 @@ export const fetchFixturesByDate = async (date: string): Promise<DashboardData> 
 };
 
 export const fetchFixturesByRange = async (from: string, to: string): Promise<DashboardData> => {
+    // TODO: Implementar rango en SportMonks si es necesario. Por ahora un loop simple.
+    // OJO: SportMonks API es rápida, pero loops pueden ser lentos.
     try {
-        const data = await callProxy<Game[]>('fixtures', { from, to });
-        return processFixturesResponse(data);
+        console.log(`[DEBUG] fetchFixturesByRange (SportMonks) called for: ${from} to ${to}`);
+        // Iterar días (solución temporal rápida)
+        const start = new Date(from);
+        const end = new Date(to);
+        const allGames: Game[] = [];
+
+        for (let d = start; d <= end; d.setDate(d.getDate() + 1)) {
+            const dateStr = d.toISOString().split('T')[0];
+            const { data } = await supabase.functions.invoke('v2-list-fixtures-sportmonks', {
+                body: { date: dateStr }
+            });
+            if (data) allGames.push(...data);
+        }
+
+        return processFixturesResponse(allGames);
     } catch (e) {
         console.error(`[DEBUG] Error in fetchFixturesByRange:`, e);
         throw e;

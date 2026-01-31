@@ -8,7 +8,7 @@ import { getCurrentDateInBogota } from '../utils/dateUtils';
 import { AnalysisInProgressModal } from './ai/AnalysisInProgressModal';
 import { AnalysisReportModal } from './ai/AnalysisReportModal';
 import { GameCard as DetailsGameCard } from './live/GameCard';
-import SmartParlaysList from './ai/SmartParlaysList';
+import HighProbPicks from './ai/HighProbPicks';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../services/supabaseService';
 import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
@@ -510,7 +510,7 @@ export const FixturesFeed: React.FC = () => {
 
                 {viewMode === 'top-picks' ? (
                     <div className="glass rounded-2xl p-6 min-h-[500px] animate-fade-in border border-white/5">
-                        <SmartParlaysList date={selectedDate} />
+                        <HighProbPicks date={selectedDate} />
                     </div>
                 ) : (
                     <>

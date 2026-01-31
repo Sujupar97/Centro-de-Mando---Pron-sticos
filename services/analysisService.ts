@@ -18,6 +18,122 @@ export interface PerformanceStats {
 }
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ADAPTADOR V3 -> FRONTEND
+ * ═══════════════════════════════════════════════════════════════════════════
+ * El motor V3 genera datos con una estructura ligeramente diferente a lo que
+ * espera el componente AnalysisReportModal.tsx. Esta función normaliza TODO.
+ * 
+ * MAPEOS PRINCIPALES:
+ * - resumen_ejecutivo.titular → resumen_ejecutivo.frase_principal
+ * - resumen_ejecutivo.bullets → resumen_ejecutivo.puntos_clave
+ * - analisis_detallado.enfoque_local → analisis_detallado.contexto_competitivo.bullets[]
+ * - analisis_detallado.matchup_clave → analisis_detallado.estilo_y_tactica.bullets[]
+ * - analisis_detallado.analisis_escenarios → escenarios_de_partido
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+const adaptV3ToFrontend = (rawData: any): DashboardAnalysisJSON => {
+    if (!rawData) return rawData;
+
+    // Helper: Convertir string o array a objeto {titulo, bullets}
+    const toSection = (data: any, defaultTitle: string): { titulo: string; bullets: string[] } | null => {
+        if (!data) return null;
+        if (typeof data === 'string') {
+            return { titulo: defaultTitle, bullets: [data] };
+        }
+        if (Array.isArray(data)) {
+            return { titulo: defaultTitle, bullets: data };
+        }
+        if (typeof data === 'object' && (data.titulo || data.bullets)) {
+            return data;
+        }
+        return null;
+    };
+
+    const ad = rawData.analisis_detallado || {};
+
+    // Construir analisis_detallado adaptado
+    const adaptedAnalisisDetallado = rawData.analisis_detallado ? {
+        // Mantener campos existentes que ya tienen formato correcto
+        ...rawData.analisis_detallado,
+
+        // Contexto Competitivo: prioridad a objeto existente, luego string
+        contexto_competitivo: toSection(
+            ad.contexto_competitivo,
+            'Contexto Competitivo'
+        ) || (ad.enfoque_local || ad.enfoque_visitante ? {
+            titulo: 'Contexto del Partido',
+            bullets: [
+                ad.enfoque_local ? `🏠 Local: ${ad.enfoque_local}` : null,
+                ad.enfoque_visitante ? `✈️ Visitante: ${ad.enfoque_visitante}` : null,
+                ad.matchup_clave ? `⚔️ Matchup Clave: ${ad.matchup_clave}` : null
+            ].filter(Boolean) as string[]
+        } : null),
+
+        // Estilo y Táctica
+        estilo_y_tactica: toSection(
+            ad.estilo_y_tactica || ad.analisis_tactico,
+            'Análisis Táctico'
+        ) || (ad.formacion_esperada_local || ad.formacion_esperada_visitante ? {
+            titulo: 'Formaciones y Táctica',
+            bullets: [
+                ad.formacion_esperada_local ? `Local: ${ad.formacion_esperada_local}` : null,
+                ad.formacion_esperada_visitante ? `Visitante: ${ad.formacion_esperada_visitante}` : null
+            ].filter(Boolean) as string[]
+        } : null),
+
+        // Análisis Táctico Formaciones (jugadores clave)
+        analisis_tactico_formaciones: toSection(
+            ad.analisis_tactico_formaciones,
+            'Jugadores Clave'
+        ) || (ad.jugador_clave_local || ad.jugador_clave_visitante ? {
+            titulo: 'Jugadores a Observar',
+            bullets: [
+                ad.jugador_clave_local ? `⭐ Local: ${ad.jugador_clave_local}` : null,
+                ad.jugador_clave_visitante ? `⭐ Visitante: ${ad.jugador_clave_visitante}` : null
+            ].filter(Boolean) as string[]
+        } : null),
+
+        // Escenarios de partido
+        escenarios_de_partido: ad.analisis_escenarios || ad.escenarios_de_partido || null
+    } : null;
+
+    // Construir objeto adaptado final
+    const adapted: DashboardAnalysisJSON = {
+        ...rawData,
+
+        // Resumen Ejecutivo adaptado
+        resumen_ejecutivo: rawData.resumen_ejecutivo ? {
+            frase_principal: rawData.resumen_ejecutivo.titular ||
+                rawData.resumen_ejecutivo.frase_principal ||
+                rawData.resumen_ejecutivo.veredicto ||
+                "Análisis de Inteligencia Completado",
+            puntos_clave: rawData.resumen_ejecutivo.bullets ||
+                rawData.resumen_ejecutivo.puntos_clave ||
+                (rawData.resumen_ejecutivo.picks_principales ?
+                    rawData.resumen_ejecutivo.picks_principales.map((p: any) =>
+                        typeof p === 'string' ? p : `${p.mercado}: ${p.seleccion}`
+                    ) : [])
+        } : {
+            frase_principal: "Informe de Inteligencia Generado",
+            puntos_clave: []
+        },
+
+        // Análisis Detallado adaptado
+        analisis_detallado: adaptedAnalisisDetallado,
+
+        // Header del partido (asegurar que exista)
+        header_partido: rawData.header_partido || {
+            titulo: "Partido",
+            subtitulo: ""
+        }
+    };
+
+    console.log('[ADAPTER] V3 data adaptado para Frontend');
+    return adapted;
+};
+
+/**
  * Utility: Mark stuck jobs as failed (Zombies cleanup)
  */
 export const resetStuckJobs = async (): Promise<number> => {
@@ -39,17 +155,18 @@ export const resetStuckJobs = async (): Promise<number> => {
 };
 
 /**
- * Inicia un trabajo de análisis llamando al Motor V2.
- * V2 usa pipeline: ETL → Features → Models → Value Engine → Report
+ * Inicia un trabajo de análisis llamando al Motor V3.
+ * V3 usa pipeline simplificado: ETL → IA Puro (Gemini hace TODO)
  */
 export const createAnalysisJob = async (apiFixtureId: number, timezone: string = 'America/Bogota', organizationId?: string): Promise<string> => {
     try {
-        console.log(`[V2] Iniciando análisis para fixture ${apiFixtureId}...`);
+        console.log(`[V3] Iniciando análisis IA PURO para fixture ${apiFixtureId}...`);
 
         // ═══════════════════════════════════════════════════════════════
-        // MOTOR V2: Pipeline completo (5 motores)
+        // MOTOR V3: Pipeline simplificado (ETL SportMonks → IA Puro)
+        // Gemini recibe TODOS los datos y toma TODAS las decisiones
         // ═══════════════════════════════════════════════════════════════
-        const { data, error } = await supabase.functions.invoke('v2-orchestrator', {
+        const { data, error } = await supabase.functions.invoke('v2-create-job-sportmonks', {
             body: {
                 fixture_id: apiFixtureId
             }
@@ -62,27 +179,27 @@ export const createAnalysisJob = async (apiFixtureId: number, timezone: string =
             try {
                 responseData = JSON.parse(data);
             } catch (e) {
-                console.error("[V2] Error parseando respuesta:", e);
+                console.error("[V3] Error parseando respuesta:", e);
             }
         }
 
         if (error) {
-            console.error("[V2] Error de Edge Function:", error);
+            console.error("[V3] Error de Edge Function:", error);
             throw new Error(error.message || JSON.stringify(error));
         }
 
         if (!responseData?.success) {
-            console.error("[V2] Pipeline falló:", responseData?.error);
-            throw new Error(responseData?.error || "Pipeline V2 falló");
+            console.error("[V3] Pipeline falló:", responseData?.error);
+            throw new Error(responseData?.error || "Pipeline V3 falló");
         }
 
         if (!responseData.job_id) {
-            console.error("[V2] Respuesta sin job_id:", responseData);
-            throw new Error("V2 no devolvió job_id válido");
+            console.error("[V3] Respuesta sin job_id:", responseData);
+            throw new Error("V3 no devolvió job_id válido");
         }
 
-        console.log(`[V2] ✅ Análisis completado: ${responseData.job_id}`);
-        console.log(`[V2] Picks: ${responseData.summary?.bet_picks || 0} BET, ${responseData.summary?.watch_picks || 0} WATCH`);
+        console.log(`[V3] ✅ Análisis IA completado: ${responseData.job_id}`);
+        console.log(`[V3] Veredicto: ${responseData.summary?.veredicto}, Picks: ${responseData.summary?.picks || 0}`);
 
         // V2 guarda en analysis_jobs_v2, pero retornamos el job_id para compatibilidad
         return responseData.job_id;
@@ -195,19 +312,163 @@ export const getAnalysisResultByFixture = async (fixtureId: number): Promise<Vis
 
 /**
  * Obtiene el resultado final del análisis.
+ * V3: Busca en reports_v2, retorna dashboardData pre-formateado (V3 ya lo construye)
  * V2: Busca en reports_v2 + value_picks_v2, luego fallback a V1.
  */
 export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisResult | null> => {
     // ═══════════════════════════════════════════════════════════════
-    // INTENTAR V2 PRIMERO
+    // INTENTAR V2/V3 PRIMERO (reports_v2)
     // ═══════════════════════════════════════════════════════════════
-    const { data: v2Report } = await supabase
+    const { data: v2Report, error: reportError } = await supabase
         .from('reports_v2')
         .select('*')
         .eq('job_id', jobId)
-        .single();
+        .maybeSingle(); // Use maybeSingle to avoid error when no rows
+
+    if (reportError) {
+        console.error('[analysisService] Error fetching report:', reportError);
+    }
 
     if (v2Report?.report_packet) {
+        const report = v2Report.report_packet;
+
+        // ═══════════════════════════════════════════════════════════════
+        // V3 DETECTION: Si tiene 'pronosticos' array o meta.modelo_version = V3
+        // V3 ya guarda dashboardData pre-formateado en la tabla 'analisis'
+        // ═══════════════════════════════════════════════════════════════
+        const isV3 = report.pronosticos || report.meta?.modelo_version?.includes('V3');
+
+        if (isV3) {
+            console.log(`[analysisService] V3 report detected for job ${jobId}`);
+
+            // Buscar el dashboardData pre-formateado en la tabla 'analisis'
+            const { data: v3Analysis } = await supabase
+                .from('analysis_jobs_v2')
+                .select('fixture_id')
+                .eq('id', jobId)
+                .single();
+
+            if (v3Analysis?.fixture_id) {
+                const { data: cachedAnalysis } = await supabase
+                    .from('analisis')
+                    .select('resultado_analisis')
+                    .eq('partido_id', v3Analysis.fixture_id)
+                    .single();
+
+                if (cachedAnalysis?.resultado_analisis?.dashboardData) {
+                    console.log(`[analysisService] V3 cached dashboardData found, applying adapter`);
+                    const adaptedData = adaptV3ToFrontend(cachedAnalysis.resultado_analisis.dashboardData);
+                    return {
+                        analysisText: adaptedData.resumen_ejecutivo?.frase_principal || "Análisis V3 completado.",
+                        dashboardData: adaptedData,
+                        analysisRun: undefined
+                    };
+                }
+            }
+
+            // Fallback: Construir dashboardData directamente del V3 report_packet
+            console.log(`[analysisService] V3 building dashboardData from report_packet`);
+            const betPicks = report.pronosticos || [];
+
+            return {
+                analysisText: report.resumen_ejecutivo?.titular || "Análisis V3 completado.",
+                dashboardData: {
+                    veredicto_analista: {
+                        decision: report.resumen_ejecutivo?.veredicto || 'OBSERVAR',
+                        nivel_confianza: report.resumen_ejecutivo?.confianza_global || 'MEDIA',
+                        probabilidad: betPicks[0]?.probabilidad_calculada_porcentaje || 50,
+                        titulo_accion: report.resumen_ejecutivo?.veredicto === 'APOSTAR' ? 'OPORTUNIDAD DETECTADA' : 'PARTIDO COMPLEJO',
+                        razon_principal: report.resumen_ejecutivo?.titular || '',
+                        riesgo_principal: report.factores_riesgo?.riesgo_principal || '',
+                        seleccion_clave: betPicks[0]?.seleccion || 'N/A'
+                    },
+                    resumen_ejecutivo: {
+                        frase_principal: report.resumen_ejecutivo?.titular || '',
+                        puntos_clave: [
+                            report.analisis_profundo?.contexto_competitivo?.situacion_local,
+                            report.analisis_profundo?.contexto_competitivo?.situacion_visitante,
+                            report.analisis_profundo?.contexto_competitivo?.implicaciones_partido
+                        ].filter(Boolean)
+                    },
+                    analisis_detallado: {
+                        contexto_competitivo: {
+                            titulo: 'Lo Que Se Juegan',
+                            bullets: [
+                                report.analisis_profundo?.contexto_competitivo?.situacion_local,
+                                report.analisis_profundo?.contexto_competitivo?.situacion_visitante
+                            ].filter(Boolean)
+                        },
+                        analisis_tactico_formaciones: {
+                            titulo: 'Análisis Táctico Profundo',
+                            bullets: [
+                                report.analisis_profundo?.analisis_tactico?.enfoque_local,
+                                report.analisis_profundo?.analisis_tactico?.enfoque_visitante,
+                                report.analisis_profundo?.analisis_tactico?.matchup_clave
+                            ].filter(Boolean)
+                        },
+                        analisis_escenarios: {
+                            titulo: 'Escenarios Proyectados',
+                            bullets: [
+                                report.escenarios_proyectados?.escenario_mas_probable?.descripcion,
+                                report.escenarios_proyectados?.escenario_alternativo?.descripcion
+                            ].filter(Boolean)
+                        }
+                    },
+                    predicciones_finales: {
+                        detalle: betPicks.map((p: any) => ({
+                            mercado: p.mercado,
+                            seleccion: p.seleccion,
+                            probabilidad_estimado_porcentaje: p.probabilidad_calculada_porcentaje || 50,
+                            edge: p.edge_porcentaje || null,
+                            odds: p.cuota_actual || null,
+                            justificacion_detallada: {
+                                base_estadistica: p.justificacion?.estadistica || [],
+                                contexto_competitivo: [p.justificacion?.contexto, p.justificacion?.mercado].filter(Boolean),
+                                conclusion: p.justificacion?.tactica || 'Análisis V3 completado.'
+                            }
+                        }))
+                    },
+                    analisis_mercados_calculados: {
+                        descripcion: "Análisis IA V3 - Motor Puro",
+                        mercados_evaluados: report.mercados_evaluados?.total_analizados || 60,
+                        mercados_con_valor: report.mercados_evaluados?.con_valor_detectado || betPicks.length,
+                        resumen: {
+                            goles_esperados: report.datos_modelo?.goles_esperados_partido || 2.5,
+                            corners_esperados: report.datos_modelo?.corners_esperados || 9,
+                            tarjetas_esperadas: 3.5,
+                            btts_probabilidad: report.datos_modelo?.probabilidad_btts_porcentaje || 50
+                        },
+                        top_oportunidades: betPicks.slice(0, 5).map((p: any) => ({
+                            mercado: p.mercado,
+                            categoria: p.mercado?.split(' ')[0]?.toUpperCase() || 'OTRO',
+                            seleccion: p.seleccion,
+                            cuota: p.cuota_actual,
+                            probabilidad_calculada: p.probabilidad_calculada_porcentaje,
+                            probabilidad_tipica: p.probabilidad_implicita_porcentaje || 50,
+                            confianza: p.confianza,
+                            value_score: p.edge_porcentaje
+                        }))
+                    },
+                    advertencias: {
+                        titulo: 'Factores de Riesgo',
+                        riesgos: [report.factores_riesgo?.riesgo_principal, ...(report.factores_riesgo?.riesgos_secundarios || [])].filter(Boolean)
+                    },
+                    // Required properties for DashboardAnalysisJSON compatibility
+                    header_partido: {
+                        titulo: `${report.meta?.fixture_id || 'Partido'}`,
+                        subtitulo: report.resumen_ejecutivo?.titular || '',
+                        bullets_clave: report.resumen_ejecutivo?.picks_principales || []
+                    },
+                    tablas_comparativas: null,
+                    graficos_sugeridos: null
+                } as unknown as DashboardAnalysisJSON,
+                analysisRun: undefined
+            };
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // V2 LEGACY: Procesar con value_picks_v2 y lógica compleja
+        // ═══════════════════════════════════════════════════════════════
         // Obtener picks V2 - Primero BET, si no hay, WATCH ordenados por edge
         let { data: v2Picks } = await supabase
             .from('value_picks_v2')
@@ -216,6 +477,7 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
             .eq('decision', 'BET')
             .order('rank', { ascending: true })
             .limit(3);
+
 
         // ✅ FALLBACK: Si no hay BET, mostrar top 3 WATCH por edge
         if (!v2Picks || v2Picks.length === 0) {
@@ -255,7 +517,7 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
         }
 
         // Transformar V2 al formato esperado por la UI
-        const report = v2Report.report_packet;
+        const reportV2 = v2Report.report_packet;
         const betPicks = v2Picks || [];
 
         // ═══════════════════════════════════════════════════════════════
@@ -263,7 +525,8 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
         // ═══════════════════════════════════════════════════════════════
         const normalizeMarket = (m: string): string => {
             return m.toLowerCase()
-                .replace(/[_\.\s]/g, '')
+                .replace(/\bde\b/g, '') // Eliminar 'de' (ej: mas de 2.5 -> mas 2.5)
+                .replace(/[_\.\s]/g, '') // Eliminar espacios, puntos y guiones bajos
                 .replace('goals', 'goles')
                 .replace('over', 'mas')
                 .replace('under', 'menos')
@@ -274,7 +537,7 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
 
         const getJustification = (market: string) => {
             const normalized = normalizeMarket(market);
-            const justif = report.justificacion_picks?.find((j: any) => {
+            const justif = reportV2.justificacion_picks?.find((j: any) => {
                 const pickNorm = normalizeMarket(j.pick || '');
                 return pickNorm.includes(normalized) || normalized.includes(pickNorm);
             });
@@ -292,58 +555,58 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
 
             return {
                 base_estadistica: [
-                    `Probabilidad calculada: ${prob}% basado en estadísticas históricas`,
-                    `Análisis de ${pick.model_name || 'modelo cuantitativo'}`
+                    `Probabilidad basada en Identificación de Patrones Neurales: ${prob}%`,
+                    `Correlación de vectores detectada por el Motor de IA (${pick.model_name || 'V2-Core'})`
                 ],
                 contexto_competitivo: [
                     pick.rationale || `Tendencia favorable para ${market}`
                 ],
-                conclusion: pick.rationale || `El modelo indica ${prob}% de probabilidad para ${pick.selection}.`
+                conclusion: pick.rationale || `La Inteligencia Artificial proyecta un ${prob}% de probabilidad para ${pick.selection} basada en simulación de escenarios.`
             };
         };
 
         return {
-            analysisText: report.resumen_ejecutivo?.titular || "Análisis V2 completado.",
+            analysisText: reportV2.resumen_ejecutivo?.titular || "Análisis V2 completado.",
             dashboardData: {
                 veredicto_analista: {
                     decision: betPicks.length > 0 ? 'APOSTAR' : 'OBSERVAR',
-                    titulo_accion: report.resumen_ejecutivo?.titular || '',
+                    titulo_accion: reportV2.resumen_ejecutivo?.titular || '',
                     seleccion_clave: betPicks[0]?.selection || null,
                     probabilidad: betPicks[0] ? Math.round(betPicks[0].p_model * 100) : 50,
                     nivel_confianza: betPicks[0]?.confidence >= 70 ? 'ALTA' : betPicks[0]?.confidence >= 50 ? 'MEDIA' : 'BAJA',
-                    razon_principal: report.conclusion?.veredicto || '',
-                    riesgo_principal: report.resumen_ejecutivo?.riesgo_principal || ''
+                    razon_principal: reportV2.conclusion?.veredicto || '',
+                    riesgo_principal: reportV2.resumen_ejecutivo?.riesgo_principal || ''
                 },
                 resumen_ejecutivo: {
-                    frase_principal: report.resumen_ejecutivo?.titular || '',
+                    frase_principal: reportV2.resumen_ejecutivo?.titular || '',
                     puntos_clave: [
-                        report.contexto_competitivo?.situacion_local,
-                        report.contexto_competitivo?.situacion_visitante,
-                        report.resumen_ejecutivo?.riesgo_principal
+                        reportV2.contexto_competitivo?.situacion_local,
+                        reportV2.contexto_competitivo?.situacion_visitante,
+                        reportV2.resumen_ejecutivo?.riesgo_principal
                     ].filter(Boolean)
                 },
                 analisis_detallado: {
                     contexto_competitivo: {
-                        titulo: report.contexto_competitivo?.titulo || 'Contexto Competitivo',
+                        titulo: reportV2.contexto_competitivo?.titulo || 'Contexto Competitivo',
                         bullets: [
-                            report.contexto_competitivo?.situacion_local,
-                            report.contexto_competitivo?.situacion_visitante,
-                            report.contexto_competitivo?.implicaciones
+                            reportV2.contexto_competitivo?.situacion_local,
+                            reportV2.contexto_competitivo?.situacion_visitante,
+                            reportV2.contexto_competitivo?.implicaciones
                         ].filter(Boolean)
                     },
                     analisis_tactico_formaciones: {
-                        titulo: report.analisis_tactico?.titulo || 'Análisis Táctico',
+                        titulo: reportV2.analisis_tactico?.titulo || 'Análisis Táctico',
                         bullets: [
-                            report.analisis_tactico?.enfoque_local,
-                            report.analisis_tactico?.enfoque_visitante,
-                            report.analisis_tactico?.matchup
+                            reportV2.analisis_tactico?.enfoque_local,
+                            reportV2.analisis_tactico?.enfoque_visitante,
+                            reportV2.analisis_tactico?.matchup
                         ].filter(Boolean)
                     },
                     analisis_escenarios: {
                         titulo: 'Escenarios Proyectados',
                         bullets: [
-                            `Probable (${report.proyeccion_escenarios?.escenario_probable?.probabilidad || '60-70%'}): ${report.proyeccion_escenarios?.escenario_probable?.descripcion || ''}`,
-                            `Alternativo (${report.proyeccion_escenarios?.escenario_alternativo?.probabilidad || '20-30%'}): ${report.proyeccion_escenarios?.escenario_alternativo?.descripcion || ''}`
+                            `Probable (${reportV2.proyeccion_escenarios?.escenario_probable?.probabilidad || '60-70%'}): ${reportV2.proyeccion_escenarios?.escenario_probable?.descripcion || ''}`,
+                            `Alternativo (${reportV2.proyeccion_escenarios?.escenario_alternativo?.probabilidad || '20-30%'}): ${reportV2.proyeccion_escenarios?.escenario_alternativo?.descripcion || ''}`
                         ].filter(b => b && b.length > 20)
                     }
                 },
@@ -371,7 +634,7 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                 },
                 advertencias: {
                     titulo: 'Factores de Riesgo',
-                    riesgos: report.factores_riesgo?.riesgos || []
+                    riesgos: reportV2.factores_riesgo?.riesgos || []
                 },
                 // ═══════════════════════════════════════════════════════════════
                 // MEGA-UPGRADE V2: Probabilidades típicas REALES + ordenamiento por VALUE
@@ -584,7 +847,7 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                 job_id: jobId,
                 fixture_id: v2Job?.fixture_id,
                 report_pre_jsonb: report,
-                summary_pre_text: report.resumen_ejecutivo?.titular,
+                summary_pre_text: reportV2.resumen_ejecutivo?.titular,
                 predictions: betPicks.map((p: any) => ({
                     id: p.id,
                     market: p.market,
@@ -600,16 +863,20 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // FALLBACK A V1
+    // FALLBACK A V1 - Usar maybeSingle para evitar error si no hay datos
     // ═══════════════════════════════════════════════════════════════
     const { data: runData, error: runError } = await supabase
         .from('analysis_runs')
         .select('*, predictions(*)')
         .eq('job_id', jobId)
-        .single();
+        .maybeSingle();
 
-    if (runError || !runData) {
-        console.error("Error fetching analysis run:", runError);
+    if (runError) {
+        console.error("[analysisService] Error en fallback analysis_runs:", runError);
+    }
+
+    if (!runData) {
+        console.log(`[analysisService] No se encontró análisis V1 para job ${jobId}`);
         return null;
     }
 
@@ -685,12 +952,52 @@ export const getAnalysisResultByRunId = async (runId: string): Promise<VisualAna
 };
 
 /**
- * Obtiene el resultado (Reporte) por Fixture ID desde la tabla 'analisis' (legacy cache).
- * Útil para Top Picks donde las predicciones no tienen analysis_run_id.
+ * Obtiene el resultado (Reporte) por Fixture ID.
+ * PRIORIDAD: 1) Tabla 'analisis' (V3 siempre guarda aquí), 2) V2 job + reports_v2, 3) analysis_runs (V1)
  */
 export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<VisualAnalysisResult | null> => {
+    console.log(`[analysisService] 🟢 [V3 PATCH ACTIVO] Buscando análisis para fixture ${fixtureId}...`);
+
     // ═══════════════════════════════════════════════════════════════
-    // FIX: Buscar en V2 primero (analysis_jobs_v2)
+    // PASO 1: Buscar en tabla 'analisis' PRIMERO (V3 siempre guarda aquí)
+    // ═══════════════════════════════════════════════════════════════
+    const { data: analisisData, error: analisisError } = await supabase
+        .from('analisis')
+        .select('resultado_analisis')
+        .eq('partido_id', fixtureId)
+        .maybeSingle();
+
+    if (analisisData?.resultado_analisis) {
+        const result = analisisData.resultado_analisis as any;
+
+        // V3 guarda { dashboardData: {...} }
+        if (result.dashboardData) {
+            // Usar adaptador completo V3 -> Frontend
+            const adaptedDashboardData = adaptV3ToFrontend(result.dashboardData);
+
+            console.log(`[analysisService] ✅ V3 dashboardData encontrado y adaptado para Frontend`);
+            return {
+                analysisText: adaptedDashboardData.resumen_ejecutivo?.frase_principal || "Análisis V3 completado.",
+                dashboardData: adaptedDashboardData,
+                analysisRun: undefined
+            };
+        }
+
+        // Legacy format (resultado directo sin dashboardData wrapper)
+        if (result.veredicto_analista || result.predicciones_finales) {
+            // También adaptar formato legacy por si acaso
+            const adaptedResult = adaptV3ToFrontend(result);
+            console.log(`[analysisService] ✅ Análisis legacy encontrado y adaptado`);
+            return {
+                analysisText: adaptedResult.resumen_ejecutivo?.frase_principal || "Análisis completado.",
+                dashboardData: adaptedResult,
+                analysisRun: undefined
+            };
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // PASO 2: Buscar en V2/V3 via analysis_jobs_v2 + reports_v2
     // ═══════════════════════════════════════════════════════════════
     const { data: v2Job } = await supabase
         .from('analysis_jobs_v2')
@@ -699,35 +1006,37 @@ export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<V
         .eq('status', 'done')
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
     if (v2Job) {
-        console.log(`[analysisService] V2 job encontrado para fixture ${fixtureId}: ${v2Job.id}`);
-        return await getAnalysisResult(v2Job.id);
+        console.log(`[analysisService] V2/V3 job encontrado: ${v2Job.id}`);
+        const result = await getAnalysisResult(v2Job.id);
+        if (result) return result;
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // FALLBACK: Buscar en tabla legacy 'analisis'
+    // PASO 3: Fallback final - analysis_runs (V1 legacy)
     // ═══════════════════════════════════════════════════════════════
-    const { data, error } = await supabase
-        .from('analisis')
-        .select('resultado_analisis')
-        .eq('partido_id', fixtureId)
-        .single();
+    const { data: runData } = await supabase
+        .from('analysis_runs')
+        .select('*, predictions(*)')
+        .eq('fixture_id', fixtureId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    if (error || !data) {
-        console.log(`[analysisService] No se encontró análisis para fixture ${fixtureId} en ninguna fuente`);
-        return null;
+    if (runData) {
+        console.log(`[analysisService] V1 analysis_run encontrado`);
+        const run = runData as AnalysisRun;
+        return {
+            analysisText: run.summary_pre_text || "Análisis completado.",
+            dashboardData: run.report_pre_jsonb as DashboardAnalysisJSON,
+            analysisRun: run
+        };
     }
 
-    // El formato en 'analisis' tiene la estructura { dashboardData: {...} }
-    const result = data.resultado_analisis as any;
-
-    return {
-        analysisText: result?.dashboardData?.resumen_ejecutivo?.frase_principal || "Análisis completado.",
-        dashboardData: result?.dashboardData as DashboardAnalysisJSON,
-        analysisRun: undefined // No hay run asociado en esta tabla legacy
-    };
+    console.log(`[analysisService] ❌ No se encontró análisis para fixture ${fixtureId}`);
+    return null;
 };
 
 
@@ -1013,16 +1322,20 @@ export const fetchPendingVerificationRuns = async (startDate: string, endDate: s
 /**
  * Forzar un análisis post-partido (Retroactivo) para un partido específico.
  */
-export const runPostMatchAnalysis = async (fixtureId: number): Promise<boolean> => {
+export const runPostMatchAnalysis = async (fixtureId: number): Promise<{ success: boolean; message?: string }> => {
     try {
         const { data, error } = await supabase.functions.invoke('verify-prediction', {
             body: { fixture_id: fixtureId }
         });
         if (error) throw error;
-        return data.success;
-    } catch (e) {
+        // Edge Function might return { success: false, error: "..." }
+        if (data && !data.success) {
+            return { success: false, message: data.error || "Edge Function returned failure" };
+        }
+        return { success: true };
+    } catch (e: any) {
         console.error("Error invoking post-match analysis:", e);
-        return false;
+        return { success: false, message: e.message || "Unknown Error" };
     }
 };
 

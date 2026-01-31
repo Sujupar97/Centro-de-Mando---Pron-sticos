@@ -8,6 +8,193 @@ import { corsHeaders } from '../_shared/cors.ts'
 
 const API_FOOTBALL_BASE = 'https://v3.football.api-sports.io';
 const ENGINE_VERSION = '2.0.0';
+import { LEAGUE_MAPPING } from '../_shared/league-mapping.ts'
+
+const ODDS_API_KEY = "527a97a0d2316436a0bacf71c7b93eb5";
+
+import { areTeamsEqual, normalizeName } from '../_shared/team-normalization.ts';
+
+async function fetchRealOdds(leagueId: number, homeTeam: { id: number, name: string }, awayTeam: { id: number, name: string }, supabase: any) {
+    const sportKey = LEAGUE_MAPPING[leagueId];
+    if (!sportKey) return { raw: null, summary: "Liga no soportada por Odds API", found: false, debug_info: { error: "No Sport Key", league_id: leagueId } };
+
+    try {
+        const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&oddsFormat=decimal`;
+        console.log(`[V2-ODDS] Fetching real odds for ${sportKey}...`);
+
+        const res = await fetch(url);
+        if (!res.ok) {
+            console.error(`[V2-ODDS] Error fetching: ${res.statusText}`);
+            return { raw: null, summary: `Error API: ${res.statusText}`, found: false, debug_info: { error: `API Error: ${res.statusText} (${res.status})`, match_found: false } };
+        }
+        const data = await res.json();
+
+        // ═══════════════════════════════════════════════════════════════
+        // TEAM MAPPING LOGIC (The "Memory" Layer)
+        // ═══════════════════════════════════════════════════════════════
+
+        // 1. Fetch Mappings from DB
+        const { data: mappings } = await supabase
+            .from('team_mappings')
+            .select('api_football_id, team_name_odds_api')
+            .in('api_football_id', [homeTeam.id, awayTeam.id]);
+
+        const homeMapping = mappings?.find((m: any) => m.api_football_id === homeTeam.id)?.team_name_odds_api;
+        const awayMapping = mappings?.find((m: any) => m.api_football_id === awayTeam.id)?.team_name_odds_api;
+
+        console.log(`[V2-ODDS] Mappings found: Home=${homeMapping || 'No'}, Away=${awayMapping || 'No'}`);
+
+        // 2. Find Match using Mappings or Intelligent Fallback
+        const match = data.find((ev: any) => {
+            const evHome = normalizeName(ev.home_team);
+            const evAway = normalizeName(ev.away_team);
+
+            // Check Home
+            let homeMatch = false;
+            if (homeMapping) {
+                homeMatch = ev.home_team === homeMapping; // Exact match on mapped name
+            } else {
+                homeMatch = areTeamsEqual(ev.home_team, homeTeam.name);
+            }
+
+            // Check Away
+            let awayMatch = false;
+            if (awayMapping) {
+                awayMatch = ev.away_team === awayMapping;
+            } else {
+                awayMatch = areTeamsEqual(ev.away_team, awayTeam.name);
+            }
+
+            return homeMatch && awayMatch;
+        });
+
+        if (!match) {
+            console.log(`[V2-ODDS] Match NOT found using ${homeMapping ? 'MAPPING' : 'FUZZY'} for: ${homeTeam.name} vs ${awayTeam.name}`);
+            return { raw: null, summary: "No se encontraron cuotas (Nombre no coincide).", found: false, debug_info: { match_found: false, home_map: homeMapping, away_map: awayMapping } };
+        }
+
+        console.log(`[V2-ODDS] ✅ FOUND: ${match.home_team} vs ${match.away_team}`);
+
+        // 3. AUTO-LEARN: Save mappings if they didn't exist
+        if (!homeMapping || !awayMapping) {
+            const newMappings = [];
+            if (!homeMapping) {
+                newMappings.push({
+                    api_football_id: homeTeam.id,
+                    team_name_api_football: homeTeam.name,
+                    team_name_odds_api: match.home_team,
+                    league_id: leagueId,
+                    is_verified: false, // Auto-learned
+                    confidence_score: 0.95
+                });
+                console.log(`[V2-ODDS] 🧠 LEARNING: ${homeTeam.name} -> ${match.home_team}`);
+            }
+            if (!awayMapping) {
+                newMappings.push({
+                    api_football_id: awayTeam.id,
+                    team_name_api_football: awayTeam.name,
+                    team_name_odds_api: match.away_team,
+                    league_id: leagueId,
+                    is_verified: false,
+                    confidence_score: 0.95
+                });
+                console.log(`[V2-ODDS] 🧠 LEARNING: ${awayTeam.name} -> ${match.away_team}`);
+            }
+
+            if (newMappings.length > 0) {
+                const { error: mapError } = await supabase.from('team_mappings').upsert(newMappings, { onConflict: 'api_football_id, team_name_odds_api' });
+                if (mapError) console.error("[V2-ODDS] Error saving mappings:", mapError);
+            }
+        }
+
+        // Process Best Odds (Pinnacle or first available)
+        const bookmakers = match.bookmakers || [];
+        const pinnacle = bookmakers.find((b: any) => b.key === 'pinnacle') || bookmakers[0];
+
+        if (!pinnacle) return { raw: match, summary: "Partido encontrado, sin bookmakers.", found: false, debug_info: { match_found: true, pinnacle_found: false } };
+
+        // Extract detailed odds for Value Engine consumption
+        // Extract detailed odds for Value Engine consumption
+        const oddsData: any = {
+            bookmaker: pinnacle.title,
+            h2h: {},
+            totals: {},
+            btts: {}
+        };
+
+        // 1X2
+        const h2h = pinnacle.markets.find((m: any) => m.key === 'h2h');
+        if (h2h) {
+            oddsData.h2h.home = h2h.outcomes.find((o: any) => o.name === match.home_team)?.price;
+            oddsData.h2h.away = h2h.outcomes.find((o: any) => o.name === match.away_team)?.price;
+            oddsData.h2h.draw = h2h.outcomes.find((o: any) => o.name === 'Draw')?.price;
+        }
+
+        // Totals (Aggregate from ALL Bookmakers)
+        const aggregatedLines = new Map<number, any>();
+
+        // Iterate ALL bookmakers to Find Lines (Composite)
+        bookmakers.forEach((b: any) => {
+            const totals = b.markets.filter((m: any) => m.key === 'totals');
+            totals.forEach((m: any) => {
+                const line = m.outcomes[0]?.point;
+                const over = m.outcomes.find((o: any) => o.name === 'Over')?.price;
+                const under = m.outcomes.find((o: any) => o.name === 'Under')?.price;
+
+                if (line && over && under) {
+                    // If we don't have this line yet, OR if we want to overwrite (simple aggregation)
+                    // Ideally we check for best price, but for now we just want coverage.
+                    // Let's rely on the order of bookmakers? No, just take the first valid one or all.
+                    // Map ensures unique lines.
+                    if (!aggregatedLines.has(line)) {
+                        aggregatedLines.set(line, { line, over, under, source: b.title });
+                    }
+                }
+            });
+        });
+
+        // Convert Map to Array
+        oddsData.totals_lines = Array.from(aggregatedLines.values());
+
+        // Legacy Support: Populate oddsData.totals with the "Main" line (usually 2.5 or first available)
+        // Try to find 2.5, else first
+        const mainLine = aggregatedLines.get(2.5) || aggregatedLines.values().next().value;
+        if (mainLine) {
+            oddsData.totals.over = mainLine.over;
+            oddsData.totals.under = mainLine.under;
+            oddsData.totals.line = mainLine.line;
+        }
+
+        // BTTS (Both Teams To Score)
+        const btts = pinnacle.markets.find((m: any) => m.key === 'btts');
+        if (btts) {
+            oddsData.btts.yes = btts.outcomes.find((o: any) => o.name === 'Yes')?.price;
+            oddsData.btts.no = btts.outcomes.find((o: any) => o.name === 'No')?.price;
+        }
+
+        // Friendly Summary
+        let oddsSummary = `Casa: ${pinnacle.title}\n`;
+        if (oddsData.h2h.home) oddsSummary += `1X2: Local @${oddsData.h2h.home} | Empate @${oddsData.h2h.draw} | Visitante @${oddsData.h2h.away}\n`;
+        if (oddsData.totals.line) oddsSummary += `Goles: Over ${oddsData.totals.line} @${oddsData.totals.over} | Under ${oddsData.totals.line} @${oddsData.totals.under}\n`;
+        if (oddsData.btts.yes) oddsSummary += `BTTS: Si @${oddsData.btts.yes} | No @${oddsData.btts.no}\n`;
+        if (oddsData.h2h.home) oddsSummary += `1X2: Local @${oddsData.h2h.home} | Empate @${oddsData.h2h.draw} | Visitante @${oddsData.h2h.away}\n`;
+        if (oddsData.totals.line) oddsSummary += `Goles: Over ${oddsData.totals.line} @${oddsData.totals.over} | Under ${oddsData.totals.line} @${oddsData.totals.under}\n`;
+
+        return {
+            raw: match, summary: oddsSummary, processed: oddsData, found: true, debug_info: {
+                match_found: true,
+                pinnacle_found: true,
+                totals_count: aggregatedLines.size,
+                totals_lines_count: oddsData.totals_lines.length,
+                raw_bookmakers: bookmakers.map((b: any) => ({ key: b.key, markets: b.markets.map((m: any) => m.key) }))
+            }
+        };
+
+    } catch (e: any) {
+        console.error(`[V2-ODDS] Exception: ${e.message}`);
+        return null;
+    }
+}
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -87,7 +274,7 @@ serve(async (req) => {
             h2h,
             standingsData,
             injuriesData,
-            // ❌ PROHIBIDO: predictionsData y oddsData - NO se incluyen
+            oddsDataResults, // ✅ V2.2: Fetch Real Odds (Correct Position)
             statsHome,
             statsAway,
             currentMatchLineups,
@@ -98,9 +285,9 @@ serve(async (req) => {
             fetchFootball(`fixtures/headtohead?h2h=${homeTeam.id}-${awayTeam.id}&last=20`),
             fetchFootball(`standings?league=${leagueId}&season=${season}`),
             fetchFootball(`injuries?fixture=${fixture_id}`),
+            fetchRealOdds(leagueId, { id: homeTeam.id, name: homeTeam.name }, { id: awayTeam.id, name: awayTeam.name }, supabase), // ✅ V2.2: Fetch Real Odds with Mapping
             fetchFootball(`teams/statistics?league=${leagueId}&season=${season}&team=${homeTeam.id}`),
             fetchFootball(`teams/statistics?league=${leagueId}&season=${season}&team=${awayTeam.id}`),
-            // ❌ ELIMINADO: fetchFootball(`odds?fixture=${fixture_id}`),
             fetchFootball(`fixtures/lineups?fixture=${fixture_id}`),
             game.fixture.referee ? fetchFootball(`fixtures?referee=${encodeURIComponent(game.fixture.referee)}&last=20&status=FT`) : Promise.resolve([])
         ]);
@@ -214,23 +401,24 @@ serve(async (req) => {
                     home: statsHome,
                     away: statsAway
                 },
-                // ❌ PROHIBIDO: api_prediction y odds NO SE INCLUYEN
-                // V2.1: Sistema 100% basado en probabilidades calculadas
-                odds: null,
-                lineups: {
-                    home: currentMatchLineups?.[0] || null,
-                    away: currentMatchLineups?.[1] || null
-                },
-                referee: {
-                    name: game.fixture.referee,
-                    recent_matches: (refereeFixtures || []).slice(0, 10).map((f: any) => ({
-                        fixture_id: f.fixture.id,
-                        date: f.fixture.date.split('T')[0],
-                        home_team: f.teams.home.name,
-                        away_team: f.teams.away.name
-                    }))
-                }
+            },
+            // ✅ V2.2: Injected Real Odds
+            odds: oddsDataResults?.found ? oddsDataResults.processed : null,
+            odds_debug: oddsDataResults?.debug_info,
+            lineups: {
+                home: currentMatchLineups?.[0] || null,
+                away: currentMatchLineups?.[1] || null
+            },
+            referee: {
+                name: game.fixture.referee,
+                recent_matches: (refereeFixtures || []).slice(0, 10).map((f: any) => ({
+                    fixture_id: f.fixture.id,
+                    date: f.fixture.date.split('T')[0],
+                    home_team: f.teams.home.name,
+                    away_team: f.teams.away.name
+                }))
             }
+
         };
 
         // ═══════════════════════════════════════════════════════════════
@@ -248,7 +436,7 @@ serve(async (req) => {
         coverageDetails.injuries = true; // Always available (may be empty)
         coverageDetails.season_stats_home = !!statsHome;
         coverageDetails.season_stats_away = !!statsAway;
-        // ❌ ELIMINADO: coverageDetails.odds - ya no dependemos de cuotas
+        coverageDetails.odds = !!oddsDataResults?.found; // ✅ Check if we found odds
         coverageDetails.comparables_enriched = statsMap.size >= 10;
         coverageDetails.lineups = !!(currentMatchLineups?.[0] || currentMatchLineups?.[1]);
         coverageDetails.referee = !!game.fixture.referee;
