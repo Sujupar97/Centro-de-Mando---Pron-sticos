@@ -47,47 +47,60 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
         try {
             console.log(`[SmartParlays] Loading picks for date: ${date}`);
 
-            // 1. Obtener jobs de la fecha
-            const { data: jobs, error: jobsError } = await supabase
-                .from('analysis_jobs_v2')
-                .select('id, fixture_id, created_at')
-                .gte('created_at', `${date}T00:00:00`)
-                .lt('created_at', `${date}T23:59:59`)
-                .eq('status', 'done');
-
-            if (jobsError) throw jobsError;
-
-            if (!jobs || jobs.length === 0) {
-                console.log('[SmartParlays] No jobs found');
-                setParlays([]);
-                setIsLoading(false);
-                return;
-            }
-
-            // Deduplicar por fixture
-            const latestJobByFixture = new Map<number, any>();
-            for (const job of jobs) {
-                const existing = latestJobByFixture.get(job.fixture_id);
-                if (!existing || new Date(job.created_at) > new Date(existing.created_at)) {
-                    latestJobByFixture.set(job.fixture_id, job);
-                }
-            }
-            const latestJobs = Array.from(latestJobByFixture.values());
-            const latestJobIds = latestJobs.map(j => j.id);
-
-            // 2. Obtener fixtures (SportMonks V2-List)
+            // 1. Obtener fixtures (SportMonks V2-List) - La Verdad del Calendario
             const { data: fixtures, error: fixturesError } = await supabase.functions.invoke('v2-list-fixtures-sportmonks', {
                 body: { date }
             });
 
             if (fixturesError) console.error('[SmartParlays] Error fetching fixtures:', fixturesError);
 
+            if (!fixtures || fixtures.length === 0) {
+                console.log('[SmartParlays] No fixtures found for date');
+                setParlays([]);
+                setIsLoading(false);
+                return;
+            }
+
             const matchData = new Map<number, any>();
+            const fixtureIds: number[] = [];
+
             (fixtures || []).forEach((m: any) => {
                 if (m.fixture?.id) {
                     matchData.set(m.fixture.id, m);
+                    fixtureIds.push(m.fixture.id);
                 }
             });
+
+            console.log(`[SmartParlays] Found ${fixtureIds.length} fixtures. Fetching jobs...`);
+
+            // 2. Obtener jobs para los fixtures encontrados (Cualquier fecha de creación)
+            const { data: jobs, error: jobsError } = await supabase
+                .from('analysis_jobs_v2')
+                .select('id, fixture_id, created_at')
+                .in('fixture_id', fixtureIds)
+                .eq('status', 'done')
+                .order('created_at', { ascending: false }); // Traer los más recientes primero
+
+            if (jobsError) throw jobsError;
+
+            if (!jobs || jobs.length === 0) {
+                console.log('[SmartParlays] No jobs found for these fixtures');
+                setParlays([]);
+                setIsLoading(false);
+                return;
+            }
+
+            // Deduplicar: Quedarse solo con el job más reciente por fixture
+            const latestJobByFixture = new Map<number, any>();
+            for (const job of jobs) {
+                if (!latestJobByFixture.has(job.fixture_id)) {
+                    latestJobByFixture.set(job.fixture_id, job);
+                }
+            }
+            const latestJobs = Array.from(latestJobByFixture.values());
+            const latestJobIds = latestJobs.map(j => j.id);
+
+            console.log(`[SmartParlays] Using ${latestJobIds.length} valid analysis jobs.`);
 
             // 3. Obtener reports
             const { data: reports, error: reportsError } = await supabase
