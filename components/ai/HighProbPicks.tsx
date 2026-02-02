@@ -41,184 +41,24 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const loadPicks = async () => {
+    const loadPicks = async (forceRegenerate = false) => {
         setIsLoading(true);
         setError(null);
 
         try {
-            console.log(`[SmartParlays] Loading picks for date: ${date}`);
+            console.log(`[SmartParlays] Requesting parlays for date: ${date} (Force: ${forceRegenerate})`);
 
-            // 1. Obtener fixtures (SportMonks V2-List) - La Verdad del Calendario
-            const { data: fixtures, error: fixturesError } = await supabase.functions.invoke('v2-list-fixtures-sportmonks', {
-                body: { date }
+            const { data, error: fnError } = await supabase.functions.invoke('v2-generate-parlays', {
+                body: { date, force_regenerate: forceRegenerate }
             });
 
-            if (fixturesError) console.error('[SmartParlays] Error fetching fixtures:', fixturesError);
+            if (fnError) throw fnError;
+            if (!data.success) throw new Error(data.message || 'Error generating parlays');
 
-            if (!fixtures || fixtures.length === 0) {
-                console.log('[SmartParlays] No fixtures found for date');
-                setParlays([]);
-                setSingles([]);
-                setIsLoading(false);
-                return;
-            }
+            console.log('[SmartParlays] Response:', data.stats);
 
-            const matchData = new Map<number, any>();
-            const fixtureIds: number[] = [];
-
-            (fixtures || []).forEach((m: any) => {
-                if (m.fixture?.id) {
-                    matchData.set(m.fixture.id, m);
-                    fixtureIds.push(m.fixture.id);
-                }
-            });
-
-            console.log(`[SmartParlays] Found ${fixtureIds.length} fixtures. Fetching jobs...`);
-
-            // 2. Obtener jobs para los fixtures encontrados (Cualquier fecha de creación)
-            const { data: jobs, error: jobsError } = await supabase
-                .from('analysis_jobs_v2')
-                .select('id, fixture_id, created_at')
-                .in('fixture_id', fixtureIds)
-                .eq('status', 'done')
-                .order('created_at', { ascending: false }); // Traer los más recientes primero
-
-            if (jobsError) throw jobsError;
-
-            if (!jobs || jobs.length === 0) {
-                console.log('[SmartParlays] No jobs found for these fixtures');
-                setParlays([]);
-                setSingles([]);
-                setIsLoading(false);
-                return;
-            }
-
-            // Deduplicar: Quedarse solo con el job más reciente por fixture
-            const latestJobByFixture = new Map<number, any>();
-            for (const job of jobs) {
-                if (!latestJobByFixture.has(job.fixture_id)) {
-                    latestJobByFixture.set(job.fixture_id, job);
-                }
-            }
-            const latestJobs = Array.from(latestJobByFixture.values());
-            const latestJobIds = latestJobs.map(j => j.id);
-
-            console.log(`[SmartParlays] Using ${latestJobIds.length} valid analysis jobs.`);
-
-            // 3. Obtener reports
-            const { data: reports, error: reportsError } = await supabase
-                .from('reports_v2')
-                .select('job_id, fixture_id, report_packet')
-                .in('job_id', latestJobIds);
-
-            if (reportsError) throw reportsError;
-
-            // 4. Extraer TODOS los picks > 80%
-            const rawPicks: HighProbPick[] = [];
-
-            for (const report of (reports || [])) {
-                const packet = report.report_packet;
-                if (!packet) continue;
-
-                let homeName = 'Local';
-                let awayName = 'Visitante';
-                let leagueName = 'Liga';
-                let homeLogo = '';
-                let awayLogo = '';
-
-                // Datos frescos
-                const matchApi = matchData.get(report.fixture_id);
-                if (matchApi) {
-                    homeName = matchApi.teams?.home?.name || 'Local';
-                    awayName = matchApi.teams?.away?.name || 'Visitante';
-                    homeLogo = matchApi.teams?.home?.logo || '';
-                    awayLogo = matchApi.teams?.away?.logo || '';
-                    leagueName = matchApi.league?.name || 'Liga';
-                } else if (packet.header_partido?.titulo) {
-                    const parts = packet.header_partido.titulo.split(' vs ');
-                    homeName = parts[0] || 'Local';
-                    awayName = parts[1] || 'Visitante';
-                }
-
-                const pronosticos = packet.pronosticos || [];
-
-                for (const p of pronosticos) {
-                    const prob = p.probabilidad_calculada_porcentaje || p.probabilidad_calculada || p.probabilidad || 0;
-                    const probDecimal = prob > 1 ? prob / 100 : prob;
-
-                    if (probDecimal >= 0.80) {
-                        rawPicks.push({
-                            id: `${report.job_id}-${p.mercado}`,
-                            job_id: report.job_id,
-                            fixture_id: report.fixture_id,
-                            market: p.mercado || 'Mercado',
-                            selection: p.seleccion || 'Selección',
-                            p_model: probDecimal,
-                            decision: 'BET',
-                            home_team: homeName,
-                            away_team: awayName,
-                            league: leagueName,
-                            odds: p.cuota_actual || p.cuota || 0,
-                            logo_home: homeLogo,
-                            logo_away: awayLogo
-                        });
-                    }
-                }
-            }
-
-            // 5. ALGORITMO SMART PARLAYS
-            // A. Clasificar
-            const anchors = rawPicks.filter(p => p.odds >= 1.40).sort((a, b) => b.odds - a.odds); // Sort by Odds DESC
-            const complements = rawPicks.filter(p => p.odds < 1.40).sort((a, b) => b.odds - a.odds); // Sort by Odds DESC (Value priority)
-
-            console.log(`[SmartParlays] Anchors: ${anchors.length}, Complements: ${complements.length}`);
-
-            const generatedParlays: SmartParlay[] = [];
-            const usedPickIds = new Set<string>();
-
-            // B. Emparejar
-            for (const anchor of anchors) {
-                if (usedPickIds.has(anchor.id)) continue;
-
-                // Buscar mejor complemento disponible
-                // Criterio: Mejor cuota, que no sea del mismo partido (idealmente), aunque si no hay de otra se permite?
-                // Preferencia: Diferente partido para diversificar riesgo.
-                const bestComplement = complements.find(c =>
-                    !usedPickIds.has(c.id) &&
-                    c.fixture_id !== anchor.fixture_id // Evitar mismo partido si es posible
-                ) || complements.find(c => !usedPickIds.has(c.id)); // Fallback: Mismo partido
-
-                if (bestComplement) {
-                    // Validar Probabilidad Conjunta > 80%
-                    const combinedProb = (anchor.p_model + bestComplement.p_model) / 2;
-                    if (combinedProb > 0.80) {
-                        generatedParlays.push({
-                            id: `parlay-${anchor.id}-${bestComplement.id}`,
-                            anchor,
-                            complement: bestComplement,
-                            combined_odds: anchor.odds * bestComplement.odds,
-                            combined_prob: combinedProb
-                        });
-                        usedPickIds.add(anchor.id);
-                        usedPickIds.add(bestComplement.id);
-                    }
-                }
-            }
-
-            setParlays(generatedParlays);
-
-            // 6. LOGICA SI NO HAY PARLAYS: SINGLES DE VALOR
-            if (generatedParlays.length === 0) {
-                // Filtrar picks sueltos que tengan Cuota >= 1.50 (Estricto) y Prob > 80%
-                const highValueSingles = rawPicks
-                    .filter(p => p.odds >= 1.50)
-                    .sort((a, b) => b.p_model - a.p_model); // Sort by Prob DESC (Highest confidence)
-
-                console.log(`[SmartParlays] No parlays. Found ${highValueSingles.length} singles >= 1.50`);
-                setSingles(highValueSingles);
-            } else {
-                setSingles([]);
-            }
+            setParlays(data.parlays || []);
+            setSingles(data.singles || []); // Backend now returns singles if parlays are empty
 
         } catch (err: any) {
             console.error('[SmartParlays] Error:', err);
@@ -229,7 +69,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
     };
 
     useEffect(() => {
-        loadPicks();
+        loadPicks(false);
     }, [date]);
 
     // Helpers UI
@@ -269,7 +109,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
                             <p className="text-sm text-slate-400">Mezclas de Alto Valor (Cuota {'>'} 1.40)</p>
                         </div>
                     </div>
-                    <button onClick={loadPicks} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
+                    <button onClick={() => loadPicks(true)} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors" title="Regenerar Oportunidades">
                         <ArrowPathIcon className="w-5 h-5" />
                     </button>
                 </div>
@@ -303,7 +143,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
                             <p className="text-sm text-slate-400">Picks de Valor (Cuota {'>='} 1.50) sin combinar</p>
                         </div>
                     </div>
-                    <button onClick={loadPicks} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
+                    <button onClick={() => loadPicks(true)} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors" title="Regenerar Oportunidades">
                         <ArrowPathIcon className="w-5 h-5" />
                     </button>
                 </div>
@@ -323,7 +163,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
     }
 
     // CASO 3: NADA (Empty)
-    return <EmptyState onRetry={loadPicks} />;
+    return <EmptyState onRetry={() => loadPicks(true)} />;
 };
 
 // --- SUB-COMPONENTS ---

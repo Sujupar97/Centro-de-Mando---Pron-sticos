@@ -48,13 +48,40 @@ serve(async (req) => {
         const logs: string[] = [];
         const log = (msg: string) => { console.log(msg); logs.push(msg); };
 
-        const { date } = await req.json();
-        if (!date) throw new Error('date is required (YYYY-MM-DD)');
-
-        log(`[SMART-PARLAYS] Generating SMART MIX parlays for date: ${date}`);
         const sbUrl = Deno.env.get('SUPABASE_URL')!;
         const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabase = createClient(sbUrl, sbKey);
+
+        const { date, force_regenerate } = await req.json();
+        if (!date) throw new Error('date is required (YYYY-MM-DD)');
+
+        log(`[SMART-PARLAYS] Request for date: ${date} (Force: ${force_regenerate})`);
+
+        // ═══════════════════════════════════════════════════════════════
+        // PASO 0: CACHE CHECK
+        // ═══════════════════════════════════════════════════════════════
+        if (!force_regenerate) {
+            const { data: cachedParlays, error: cacheError } = await supabase
+                .from('smart_parlays_v2')
+                .select('*')
+                .eq('date', date)
+                .order('combined_probability', { ascending: false });
+
+            if (!cacheError && cachedParlays && cachedParlays.length > 0) {
+                log(`[SMART-PARLAYS] Returning ${cachedParlays.length} cached parlays`);
+                return new Response(JSON.stringify({
+                    success: true,
+                    date,
+                    source: 'cache',
+                    stats: { total_generated: cachedParlays.length },
+                    parlays: cachedParlays,
+                    debug_logs: logs,
+                    execution_time_ms: Date.now() - startTime
+                }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+            log(`[SMART-PARLAYS] No cache found or empty. Generating...`);
+        }
+
 
         // ═══════════════════════════════════════════════════════════════
         // PASO 1: Obtener picks de Alta Probabilidad
@@ -316,15 +343,32 @@ serve(async (req) => {
             await supabase.from('smart_parlays_v2').insert(parlaysToInsert);
         }
 
+        // ═══════════════════════════════════════════════════════════════
+        // PASO 4: Prepare Response & Singles Fallback
+        // ═══════════════════════════════════════════════════════════════
+
+        let singles: PickData[] = [];
+        if (parlaysToInsert.length === 0) {
+            // Extract High Value Singles (Odds >= 1.50, Prob >= 80%) logic from pool
+            // Note: Pool already filtered by Prob >= 80% (MIN_INDIVIDUAL_PROB)
+            singles = pool
+                .filter(p => p.odds_implied >= 1.50)
+                .sort((a, b) => b.p_model - a.p_model);
+
+            log(`[SMART-PARLAYS] No parlays generated. Returning ${singles.length} singles.`);
+        }
+
         const executionTime = Date.now() - startTime;
 
         return new Response(JSON.stringify({
             success: true,
             date,
             stats: {
-                total_generated: parlaysToInsert.length
+                total_generated: parlaysToInsert.length,
+                singles_found: singles.length
             },
             parlays: parlaysToInsert,
+            singles: singles, // Return singles for frontend fallback
             debug_logs: logs,
             execution_time_ms: executionTime
         }), {
