@@ -14,7 +14,7 @@ import {
     getPredictions,
     getValueBets
 } from '../_shared/sportmonks-client.ts'
-import { buildNormalizedPayload } from '../_shared/sportmonks-normalizer.ts'
+import { buildNormalizedPayload, organizeOddsForAI } from '../_shared/sportmonks-normalizer.ts'
 
 const ENGINE_VERSION = '3.0.0-SPORTMONKS';
 
@@ -165,7 +165,7 @@ serve(async (req) => {
             },
             predictions,
             value_bets: valueBets,
-            odds: fixtureData.odds
+            odds: organizeOddsForAI(fixtureData.odds || [])
         };
 
         // Calculate coverage score

@@ -153,9 +153,23 @@ serve(async (req) => {
 
         // ... (Existing helpers for H2H, Standings, etc - keeping concise for readability) ...
         const h2hText = datasets.h2h?.map((m: any) => `${m.date}: ${m.home_team} ${m.score_home}-${m.score_away} ${m.away_team}`).join('\n') || 'Sin H2H recientes';
-        const oddsText = odds?.bookmakers?.[0] ?
-            `${odds.bookmakers[0].title}:\n` + odds.bookmakers[0].markets?.map((m: any) => `${m.key}: ` + m.outcomes?.map((o: any) => `${o.name} @ ${o.price}`).join(' | ')).join('\n')
-            : 'SIN CUOTAS VIVAS (USAR FALLBACK)';
+        let oddsText = '';
+        if (odds && (odds.MAIN || odds.GOALS)) {
+            const fmtSection = (name: string, items: any[]) => {
+                if (!items || items.length === 0) return '';
+                return `>>> ${name}:\n` + items.map((o: any) => `- ${o.lbl}: ${o.val}`).join('\n') + '\n';
+            };
+
+            oddsText += fmtSection('PRINCIPALES (1X2, DC)', odds.MAIN);
+            oddsText += fmtSection('GOLES (O/U)', odds.GOALS);
+            oddsText += fmtSection('EQUIPOS (BTTS, Team Score)', odds.TEAMS);
+            oddsText += fmtSection('POR MITADES', odds.HALVES);
+            oddsText += fmtSection('CORNERS', odds.CORNERS);
+        } else if (odds?.bookmakers?.[0]) {
+            oddsText = `${odds.bookmakers[0].title}:\n` + odds.bookmakers[0].markets?.map((m: any) => `${m.key}: ` + m.outcomes?.map((o: any) => `${o.name} @ ${o.price}`).join(' | ')).join('\n');
+        } else {
+            oddsText = 'SIN CUOTAS VIVAS (USAR FALLBACK)';
+        }
 
         // ═══════════════════════════════════════════════════════════════
         // CONSTRUIR EL SUPER-PROMPT V4 (MASTERMIND)
@@ -356,9 +370,9 @@ PERO asegúrate de incluir:
             },
             // DEBUG INFO EXPOSED TO FRONTEND/CLIENT
             debug_info: {
-                books_found: odds?.bookmakers?.length || 0,
-                best_bookie: odds?.bookmakers?.[0]?.title || 'None',
-                markets_count: odds?.bookmakers?.[0]?.markets?.length || 0
+                books_found: 1, // Normalized to single view
+                best_bookie: 'SportMonks Aggregated',
+                markets_count: (odds?.MAIN?.length || 0) + (odds?.GOALS?.length || 0) + (odds?.TEAMS?.length || 0)
             },
             veredicto_analista: {
                 decision: analysisResult.resumen_ejecutivo?.veredicto || 'OBSERVAR',

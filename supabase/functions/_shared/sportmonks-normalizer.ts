@@ -621,42 +621,107 @@ export function normalizeLegacyLineups(fixture: any, homeTeamId: number, awayTea
     return [buildLineup(homeTeamId), buildLineup(awayTeamId)];
 }
 
+// ... existing exports ...
+
 /**
- * Normalize SportMonks standings to API-Football format
+ * Get Canonical Market ID for semantic unification
+ * Maps semantically identical markets to a single ID
  */
-export function normalizeLegacyStandings(standings: any[]): any[][] | null {
-    if (!standings || standings.length === 0) return null;
+function getCanonicalMarketId(marketId: number, label: string): string {
+    const l = label.toLowerCase();
 
-    // API-Football returns `response: [ [ {league...} ] ]` for standings? No, usually `response: [ { league: { standings: [[...]] } } ]`
-    // Our GameDetails expects `APIStanding[][]`.
+    // 1x2
+    if (marketId === 1) return `1x2_${l}`;
 
-    const normalized = standings.map((s: any) => ({
-        rank: s.position,
-        team: {
-            id: s.participant_id,
-            name: s.participant?.name || 'Unknown',
-            logo: s.participant?.image_path || ''
-        },
-        points: s.points,
-        goalsDiff: s.details?.find((d: any) => d.type_id === 179)?.value || 0, // 179=GD usually
-        group: s.group_name || 'League',
-        form: s.form || '',
-        status: '',
-        description: s.result || '',
-        all: {
-            played: s.details?.find((d: any) => d.type_id === 129)?.value || 0,
-            win: s.details?.find((d: any) => d.type_id === 130)?.value || 0,
-            draw: s.details?.find((d: any) => d.type_id === 131)?.value || 0,
-            lose: s.details?.find((d: any) => d.type_id === 132)?.value || 0,
-            goals: {
-                for: s.details?.find((d: any) => d.type_id === 133)?.value || 0,
-                against: s.details?.find((d: any) => d.type_id === 134)?.value || 0
-            }
-        },
-        home: { played: 0, win: 0, draw: 0, lose: 0, goals: { for: 0, against: 0 } }, // Detailed home/away splits might need more parsing
-        away: { played: 0, win: 0, draw: 0, lose: 0, goals: { for: 0, against: 0 } },
-        update: new Date().toISOString()
-    }));
+    // Double Chance (usually market 10 or similar, but let's rely on label if ID varies)
+    if (l.includes('double chance') || l.includes('doble oportunidad')) return `dc_${l.replace(/\s/g, '_')}`;
 
-    return [normalized];
+    // Goals Over/Under (Market 12 usually)
+    // "Over 2.5" -> "goals_over_2.5"
+    if (marketId === 12 || l.includes('over ') || l.includes('under ')) {
+        const type = l.includes('over') ? 'over' : 'under';
+        const val = l.match(/[\d\.]+/)?.[0];
+        if (val) return `goals_${type}_${val}`;
+    }
+
+    // BTTS (Market 13 usually)
+    if (l.includes('both teams to score')) {
+        return l.includes('yes') ? 'btts_yes' : 'btts_no';
+    }
+
+    // Exact Score
+    if (marketId === 3) return `exact_score_${l.replace(/\s|:/g, '-')}`;
+
+    // TEAM PROPS (The critical part for deduplication)
+    // "Away Team Score" vs "Away Over 0.5"
+    if (l.includes('team to score') || l.includes('anota')) {
+        const team = l.includes('home') || l.includes('local') ? 'home' : 'away';
+        return `${team}_team_score_yes`; // Canonical "Team Valid Goal"
+    }
+
+    // Handle specific mappings for known duplicates
+    // If market is "Away Team Total" and line is 0.5, it maps to team_score_yes
+
+    return `market_${marketId}_${l.replace(/[^a-z0-9]/g, '_')}`;
 }
+
+/**
+ * Organize Odds for AI Processing
+ * Groups flat market list into structured categories to prevent hallucinations
+ */
+export function organizeOddsForAI(odds: any[]): any {
+    if (!odds || odds.length === 0) return { info: "No odds available" };
+
+    const structured = {
+        MAIN: [] as any[],    // 1x2, DC, DNB
+        GOALS: [] as any[],   // Over/Under, Exact Goals
+        TEAMS: [] as any[],   // BTTS, Team to Score, Team Totals
+        HALVES: [] as any[],  // HT Results, HT Goals
+        CORNERS: [] as any[],
+        OTHERS: [] as any[]
+    };
+
+    // Helper to format output odd
+    const fmt = (o: any) => ({
+        m_id: o.market_id,
+        b_id: o.bookmaker_id,
+        lbl: o.label,
+        val: o.value,
+        canon: getCanonicalMarketId(o.market_id, o.label)
+    });
+
+    // Valid market IDs (approximate whitelist for categorization, but we accept ALL)
+    for (const o of odds) {
+        const mid = o.market_id;
+        const label = (o.label || '').toLowerCase();
+
+        // Categorization Logic
+        if (mid === 1 || mid === 2 || mid === 10) { // 1x2, Double Chance
+            structured.MAIN.push(fmt(o));
+        } else if (label.includes('double chance') || label.includes('draw no bet') || label.includes(' or ')) {
+            structured.MAIN.push(fmt(o));
+        } else if (mid === 12 || label.includes('over') || label.includes('under')) {
+            // Distinguish Team Overs vs Match Overs
+            if (label.includes('team') || label.includes('home') || label.includes('away')) {
+                structured.TEAMS.push(fmt(o));
+            } else {
+                structured.GOALS.push(fmt(o));
+            }
+        } else if (mid === 6 || mid === 13 || mid === 37 || label.includes('both teams') || label.includes('btts')) {
+            structured.TEAMS.push(fmt(o));
+        } else if (label.includes('corner')) {
+            structured.CORNERS.push(fmt(o));
+        } else if (label.includes('1st half') || label.includes('2nd half') || label.includes('half time')) {
+            structured.HALVES.push(fmt(o));
+        } else {
+            structured.OTHERS.push(fmt(o));
+        }
+    }
+
+    // Optional: Deduplicate within categories?
+    // User asked "prompt can determine which represents greater opportunity"
+    // So we basically pass them all but grouped.
+
+    return structured;
+}
+

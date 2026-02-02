@@ -22,7 +22,7 @@ serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
     try {
-        const { fixtureId } = await req.json();
+        const { fixtureId, debug } = await req.json();
 
         if (!fixtureId) {
             throw new Error('fixtureId is required');
@@ -34,6 +34,12 @@ serve(async (req) => {
         const fixtureData = await getFixtureComplete(fixtureId);
         if (!fixtureData) {
             throw new Error(`Fixture ${fixtureId} not found`);
+        }
+
+        if (debug) {
+            return new Response(JSON.stringify(fixtureData), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
         }
 
         // 2. Fetch Additional Context (H2H, Standings, Recent Form)

@@ -15,7 +15,7 @@ if (!SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-const targetDate = '2026-02-01'; // YYYY-MM-DD
+const targetDate = '2026-02-02'; // YYYY-MM-DD
 
 async function run() {
     console.log(`Auditing picks for ${targetDate}...`);

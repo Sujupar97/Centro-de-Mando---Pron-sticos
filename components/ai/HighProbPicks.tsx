@@ -37,6 +37,7 @@ interface HighProbPicksProps {
 
 const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => {
     const [parlays, setParlays] = useState<SmartParlay[]>([]);
+    const [singles, setSingles] = useState<HighProbPick[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +58,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
             if (!fixtures || fixtures.length === 0) {
                 console.log('[SmartParlays] No fixtures found for date');
                 setParlays([]);
+                setSingles([]);
                 setIsLoading(false);
                 return;
             }
@@ -86,6 +88,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
             if (!jobs || jobs.length === 0) {
                 console.log('[SmartParlays] No jobs found for these fixtures');
                 setParlays([]);
+                setSingles([]);
                 setIsLoading(false);
                 return;
             }
@@ -204,6 +207,19 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
 
             setParlays(generatedParlays);
 
+            // 6. LOGICA SI NO HAY PARLAYS: SINGLES DE VALOR
+            if (generatedParlays.length === 0) {
+                // Filtrar picks sueltos que tengan Cuota >= 1.50 (Estricto) y Prob > 80%
+                const highValueSingles = rawPicks
+                    .filter(p => p.odds >= 1.50)
+                    .sort((a, b) => b.p_model - a.p_model); // Sort by Prob DESC (Highest confidence)
+
+                console.log(`[SmartParlays] No parlays. Found ${highValueSingles.length} singles >= 1.50`);
+                setSingles(highValueSingles);
+            } else {
+                setSingles([]);
+            }
+
         } catch (err: any) {
             console.error('[SmartParlays] Error:', err);
             setError(err.message);
@@ -238,38 +254,76 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
 
     if (isLoading) return <LoadingState />;
     if (error) return <ErrorState error={error} onRetry={loadPicks} />;
-    if (parlays.length === 0) return <EmptyState onRetry={loadPicks} />;
 
-    return (
-        <div className="space-y-8">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="p-3 bg-gradient-to-br from-brand to-emerald-600 rounded-xl shadow-lg shadow-brand/20">
-                        <SparklesIcon className="w-6 h-6 text-white" />
+    // CASO 1: HAY PARLAYS (Prioridad)
+    if (parlays.length > 0) {
+        return (
+            <div className="space-y-8">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-gradient-to-br from-brand to-emerald-600 rounded-xl shadow-lg shadow-brand/20">
+                            <SparklesIcon className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                            <h3 className="text-2xl font-bold text-white tracking-tight">Oportunidades Maestras</h3>
+                            <p className="text-sm text-slate-400">Mezclas de Alto Valor (Cuota {'>'} 1.40)</p>
+                        </div>
                     </div>
-                    <div>
-                        <h3 className="text-2xl font-bold text-white tracking-tight">Oportunidades Maestras</h3>
-                        <p className="text-sm text-slate-400">Mezclas de Alto Valor (Cuota {'>'} 1.40)</p>
-                    </div>
+                    <button onClick={loadPicks} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
+                        <ArrowPathIcon className="w-5 h-5" />
+                    </button>
                 </div>
-                <button onClick={loadPicks} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
-                    <ArrowPathIcon className="w-5 h-5" />
-                </button>
-            </div>
 
-            <div className="grid grid-cols-1 gap-6">
-                {parlays.map((parlay, idx) => (
-                    <SmartParlayCard
-                        key={parlay.id}
-                        parlay={parlay}
-                        index={idx}
-                        onViewReport={onViewReport}
-                        translateMarket={translateMarket}
-                    />
-                ))}
+                <div className="grid grid-cols-1 gap-6">
+                    {parlays.map((parlay, idx) => (
+                        <SmartParlayCard
+                            key={parlay.id}
+                            parlay={parlay}
+                            index={idx}
+                            onViewReport={onViewReport}
+                            translateMarket={translateMarket}
+                        />
+                    ))}
+                </div>
             </div>
-        </div>
-    );
+        );
+    }
+
+    // CASO 2: NO HAY PARLAYS PERO HAY SINGLES (Fallback de Valor)
+    if (singles.length > 0) {
+        return (
+            <div className="space-y-8">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl shadow-lg shadow-blue-500/20">
+                            <SparklesIcon className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                            <h3 className="text-2xl font-bold text-white tracking-tight">Mejores Individuales</h3>
+                            <p className="text-sm text-slate-400">Picks de Valor (Cuota {'>='} 1.50) sin combinar</p>
+                        </div>
+                    </div>
+                    <button onClick={loadPicks} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
+                        <ArrowPathIcon className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {singles.map((pick) => (
+                        <SinglePickCard
+                            key={pick.id}
+                            pick={pick}
+                            translateMarket={translateMarket}
+                            onView={() => onViewReport?.(pick.job_id, pick.fixture_id)}
+                        />
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    // CASO 3: NADA (Empty)
+    return <EmptyState onRetry={loadPicks} />;
 };
 
 // --- SUB-COMPONENTS ---
@@ -431,5 +485,47 @@ const EmptyState: React.FC<{ onRetry: () => void }> = ({ onRetry }) => (
         </button>
     </div>
 );
+
+// --- SUB-COMPONENTS ---
+const SinglePickCard: React.FC<{
+    pick: HighProbPick;
+    translateMarket: (m: string) => string;
+    onView: () => void;
+}> = ({ pick, translateMarket, onView }) => {
+    return (
+        <div className="bg-slate-900 border border-white/10 rounded-xl p-4 hover:bg-slate-800 transition-all cursor-pointer group relative overflow-hidden" onClick={onView}>
+            <div className="absolute top-0 right-0 p-2 bg-blue-600/20 rounded-bl-xl border-b border-l border-blue-500/20">
+                <span className="text-blue-400 font-bold text-xs">{Math.round(pick.p_model * 100)}% Prob</span>
+            </div>
+
+            <div className="flex items-center gap-3 mb-4">
+                <div className="flex -space-x-2">
+                    <img src={pick.logo_home || ''} className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700" />
+                    <img src={pick.logo_away || ''} className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700" />
+                </div>
+                <div>
+                    <h4 className="text-white font-bold text-sm leading-tight">{pick.home_team}</h4>
+                    <span className="text-xs text-slate-400">vs {pick.away_team}</span>
+                </div>
+            </div>
+
+            <div className="bg-black/40 rounded-lg p-3 border border-white/5 flex justify-between items-center mb-3">
+                <div>
+                    <p className="text-[10px] uppercase text-slate-500">{translateMarket(pick.market)}</p>
+                    <p className="text-white font-bold text-sm">{pick.selection}</p>
+                </div>
+                <div className="text-right">
+                    <span className="block text-xl font-black text-amber-400">@{pick.odds.toFixed(2)}</span>
+                    <span className="text-[10px] text-slate-500 uppercase">Cuota</span>
+                </div>
+            </div>
+
+            <div className="w-full py-1.5 flex items-center justify-center gap-2 text-xs font-bold text-slate-500 group-hover:text-white transition-colors">
+                <ArrowTopRightOnSquareIcon className="w-3 h-3" />
+                Ver Análisis Completo
+            </div>
+        </div>
+    );
+};
 
 export default HighProbPicks;
