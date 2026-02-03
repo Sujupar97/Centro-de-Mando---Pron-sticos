@@ -238,7 +238,47 @@ export const FixturesFeed: React.FC = () => {
         return () => clearInterval(interval);
     }, [activeBatchJobId]);
 
-    // ...
+    // 3. Iniciar Análisis (Individual)
+    // Hook de suscripciones
+    const { subscription, checkAnalysisAccess, analysesRemaining, recommendedUpgrade } = useSubscriptionLimits();
+    const { currentOrganization } = useOrganization();
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+    const [upgradeReason, setUpgradeReason] = useState('');
+
+    // 3. Iniciar Análisis de Partido Individual
+    const handleAnalyzeGame = async (game: Game) => {
+        // Verificar límite de análisis
+        const accessCheck = await checkAnalysisAccess();
+
+        if (!accessCheck.allowed) {
+            setUpgradeReason(accessCheck.reason || 'Actualiza tu plan para acceder a más análisis');
+            setIsUpgradeModalOpen(true);
+            return;
+        }
+        try {
+            setGameJobStatus(prev => ({ ...prev, [game.fixture.id]: 'queued' }));
+            const jobId = await createAnalysisJob(game.fixture.id);
+            setActiveJobs(prev => ({ ...prev, [game.fixture.id]: jobId }));
+            const initialJobState: AnalysisJob = {
+                id: jobId,
+                api_fixture_id: game.fixture.id,
+                fixture_id: '',
+                status: 'queued',
+                completeness_score: 0,
+                estimated_calls: 0,
+                actual_calls: 0,
+                progress_jsonb: { step: 'Encolando petición...', completeness_score: 0, fetched_items: 0, total_items: 0 },
+                created_at: new Date().toISOString()
+            };
+            setCurrentJob(initialJobState);
+            setIsJobModalOpen(true);
+
+        } catch (err: any) {
+            console.error(err);
+            setGameJobStatus(prev => ({ ...prev, [game.fixture.id]: 'failed' }));
+            alert("Error al iniciar job: " + err.message);
+        }
+    };
 
     // 3.1 Iniciar Análisis de Liga (Batch)
     const handleAnalyzeLeague = (league: League) => {
