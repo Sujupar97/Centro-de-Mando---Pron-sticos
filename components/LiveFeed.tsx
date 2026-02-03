@@ -167,11 +167,134 @@ export const FixturesFeed: React.FC = () => {
     const [isJobModalOpen, setIsJobModalOpen] = useState(false);
     const [viewingResult, setViewingResult] = useState<VisualAnalysisResult | null>(null);
 
-    // ... (useEffect for persistence omitted, no change) ...
+    // ═══════════════════════════════════════════════════════════════
+    // FIX: Persistencia de informe en URL (no desaparece al refrescar)
+    // ═══════════════════════════════════════════════════════════════
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const reportFixtureId = urlParams.get('report');
 
-    // ... (useEffect for loading fixtures omitted, no change) ...
+        if (reportFixtureId && !viewingResult) {
+            console.log(`[LiveFeed] Cargando informe desde URL: fixture ${reportFixtureId}`);
+            const loadReportFromUrl = async () => {
+                const result = await getAnalysisResultByFixtureId(Number(reportFixtureId));
+                if (result) {
+                    setViewingResult(result);
+                } else {
+                    // Limpiar URL si no existe el informe
+                    window.history.replaceState(null, '', window.location.pathname);
+                }
+            };
+            loadReportFromUrl();
+        }
+    }, []);
 
-    // ... (useEffect for single job modal polling omitted, no change) ...
+    // 1. Cargar Partidos
+    useEffect(() => {
+        const loadFixtures = async () => {
+            if (viewMode === 'top-picks') return;
+            setIsLoading(true);
+            try {
+                // 1. Cargar Partidos
+                console.log(`[DEBUG] LiveFeed: calling fetchFixturesByDate for ${selectedDate}`);
+                const result = await fetchFixturesByDate(selectedDate);
+                console.log(`[DEBUG] LiveFeed: received result`, result);
+                setData(result);
+
+                // 2. Cargar Estado de Análisis Existentes (Persistencia)
+                const fixtureIds = [
+                    ...result.importantLeagues.flatMap(l => l.games.map(g => g.fixture.id)),
+                    ...result.countryLeagues.flatMap(c => c.leagues.flatMap(l => l.games.map(g => g.fixture.id)))
+                ];
+
+                if (fixtureIds.length > 0) {
+                    const newReportsAvailable: Record<number, boolean> = {};
+                    const newGameJobStatus: Record<number, AnalysisJob['status']> = {};
+                    const newActiveJobs: Record<number, string> = {};
+
+                    // ═══════════════════════════════════════════════════════════════
+                    // FIX: Consultar V2 primero para mostrar INFORME correctamente
+                    // ═══════════════════════════════════════════════════════════════
+                    const { data: v2Jobs, error: v2Error } = await supabase
+                        .from('analysis_jobs_v2')
+                        .select('fixture_id, status, id')
+                        .in('fixture_id', fixtureIds)
+                        .eq('status', 'done');
+
+                    if (!v2Error && v2Jobs) {
+                        v2Jobs.forEach(job => {
+                            newReportsAvailable[job.fixture_id] = true;
+                            newActiveJobs[job.fixture_id] = job.id;
+                        });
+                        console.log(`[LiveFeed] V2 Jobs encontrados: ${v2Jobs.length}`);
+                    }
+
+                    // Fallback: Consultar V1 para los que no tienen V2
+                    const { data: existingJobs, error: fetchError } = await supabase
+                        .from('analysis_jobs')
+                        .select('api_fixture_id, status, id')
+                        .in('api_fixture_id', fixtureIds)
+                        .in('status', ['done', 'analyzing', 'queued', 'ingesting', 'data_ready', 'collecting_evidence']);
+
+                    if (fetchError) {
+                        console.error("Error fetching existing V1 jobs:", fetchError);
+                    }
+
+                    if (existingJobs) {
+                        existingJobs.forEach(job => {
+                            // Solo agregar si no hay ya un V2 para este fixture
+                            if (!newActiveJobs[job.api_fixture_id]) {
+                                if (job.status === 'done') {
+                                    newReportsAvailable[job.api_fixture_id] = true;
+                                    newActiveJobs[job.api_fixture_id] = job.id;
+                                } else {
+                                    newGameJobStatus[job.api_fixture_id] = job.status as any;
+                                    newActiveJobs[job.api_fixture_id] = job.id;
+                                }
+                            }
+                        });
+                    }
+
+                    setReportsAvailable(prev => ({ ...prev, ...newReportsAvailable }));
+                    setGameJobStatus(prev => ({ ...prev, ...newGameJobStatus }));
+                    setActiveJobs(prev => ({ ...prev, ...newActiveJobs }));
+                }
+
+            } catch (err: any) {
+                console.error(`[DEBUG] LiveFeed: error loading fixtures`, err);
+                setError(err.message || 'Error al cargar partidos.');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadFixtures();
+    }, [selectedDate, viewMode]);
+
+    // 2. Polling de Jobs Activos (MODAL)
+    useEffect(() => {
+        if (!isJobModalOpen || !currentJob) return;
+        if (['done', 'failed', 'insufficient_data'].includes(currentJob.status)) return;
+
+        const interval = setInterval(async () => {
+            const updatedJob = await getAnalysisJob(currentJob.id);
+            if (updatedJob) {
+                setCurrentJob(updatedJob);
+                setGameJobStatus(prev => ({ ...prev, [updatedJob.api_fixture_id]: updatedJob.status }));
+
+                if (updatedJob.status === 'done') {
+                    setReportsAvailable(prev => ({ ...prev, [updatedJob.api_fixture_id]: true }));
+                    setTimeout(async () => {
+                        setIsJobModalOpen(false);
+                        await handleViewReport(updatedJob.id, updatedJob.api_fixture_id);
+                    }, 1500);
+                } else if (updatedJob.status === 'failed' || updatedJob.status === 'insufficient_data') {
+                    setTimeout(() => setIsJobModalOpen(false), 3000);
+                }
+            }
+        }, 2000);
+
+        return () => clearInterval(interval);
+    }, [currentJob, isJobModalOpen]);
 
     // 2.1 Polling de Batch Jobs (COLA)
     useEffect(() => {
