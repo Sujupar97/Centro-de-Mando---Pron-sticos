@@ -211,6 +211,7 @@ export interface AnalisisSeccion {
     titulo: string;
     bullets?: string[];
     escenarios?: AnalisisEscenario[];
+    contenido_texto?: string; // Generic text content fallback
 }
 
 export interface VeredictoAnalista {
@@ -276,6 +277,7 @@ export interface DashboardAnalysisJSON {
         analisis_escenarios?: AnalisisSeccion; // New Explicit Scenario Section
         impacto_arbitro?: AnalisisSeccion; // Explicit Referee Section
         analisis_tactico_formaciones?: AnalisisSeccion; // Explicit Formation Section
+        factor_psicologico?: string; // New: Psychological Factor (Text)
     };
     graficos_sugeridos: GraficoSugerido[];
     predicciones_finales: {
@@ -297,6 +299,7 @@ export interface VisualAnalysisResult {
     dashboardData?: DashboardAnalysisJSON | null;
     analysisRun?: AnalysisRun; // Nuevo campo: Data cruda de DB
     visualData?: any; // Legacy support
+    payload?: any; // New field: Raw API Payload (Input)
 }
 
 export interface BettingRecommendationVisual {

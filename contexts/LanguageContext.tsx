@@ -112,41 +112,20 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     useEffect(() => {
         // Simple geo-location check based on public API
         // Fallback to Spanish if fetch fails or country is Hispanic
-        const checkLocation = async () => {
-            // Only auto-detect if not already manually set in session/local storage
+        const checkLocation = () => {
             const savedLang = localStorage.getItem('app_language');
             if (savedLang === 'en' || savedLang === 'es') {
                 setLanguage(savedLang);
                 return;
             }
 
-            try {
-                // Short timeout to avoid blocking UI feel
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-                const res = await fetch('https://ipapi.co/json/', { signal: controller.signal });
-                const data = await res.json();
-                clearTimeout(timeoutId);
-
-                // List of Spanish speaking country codes (simplified)
-                const hispanicCountries = ['ES', 'MX', 'CO', 'AR', 'PE', 'VE', 'CL', 'EC', 'GT', 'CU', 'BO', 'DO', 'HN', 'PY', 'SV', 'NI', 'CR', 'PA', 'UY', 'GQ'];
-
-                if (data && data.country_code) {
-                    if (hispanicCountries.includes(data.country_code)) {
-                        setLanguage('es');
-                    } else {
-                        // Default to English for non-hispanic countries (e.g. US)
-                        setLanguage('en');
-                    }
-                }
-            } catch (error) {
-                // console.warn("Could not detect location, defaulting to browser pref or ES");
-                const browserLang = navigator.language.split('-')[0];
-                if (browserLang === 'en') setLanguage('en');
-                else setLanguage('es');
-            }
+            // Fallback to browser preference
+            const browserLang = navigator.language.split('-')[0];
+            if (browserLang === 'en') setLanguage('en');
+            else setLanguage('es');
         };
+
+        checkLocation();
 
         checkLocation();
     }, []);

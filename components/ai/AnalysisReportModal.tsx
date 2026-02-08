@@ -2,7 +2,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { VisualAnalysisResult, DashboardAnalysisJSON, TablaComparativaData, AnalisisSeccion, DetallePrediccion, GraficoSugerido, PredictionDB } from '../../types';
-import { XMarkIcon, TrophyIcon, ChartBarIcon, ListBulletIcon, LightBulbIcon, ExclamationTriangleIcon, LinkIcon, EyeIcon } from '../icons/Icons';
+import { XMarkIcon, TrophyIcon, ChartBarIcon, ListBulletIcon, LightBulbIcon, ExclamationTriangleIcon, LinkIcon, EyeIcon, SparklesIcon } from '../icons/Icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../services/supabaseService';
 import { mapLeagueToSportKey, fastBatchOddsCheck, findPriceInEvent } from '../../services/oddsService';
@@ -600,13 +600,15 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
     // Local state to handle real-time updates (like odds) without mutating props directly (though standard React props are read-only)
     // We wrap the analysis data in state to trigger re-renders when odds are fetched.
     const [currentAnalysis, setCurrentAnalysis] = useState<VisualAnalysisResult | null>(analysis);
-    const [showFullReport, setShowFullReport] = useState(false);
-    const [realOdds, setRealOdds] = useState<any | null>(null);
 
+    // EFFECT: Sync state with prop (CRITICAL for opening modal when data arrives)
     useEffect(() => {
         setCurrentAnalysis(analysis);
-        setShowFullReport(false);
     }, [analysis]);
+    const [showFullReport, setShowFullReport] = useState(false);
+    const [realOdds, setRealOdds] = useState<any | null>(null);
+    const [showDebug, setShowDebug] = useState(false);
+    const [debugTab, setDebugTab] = useState<'ai' | 'payload'>('ai'); // Toggle for Debug View
 
     // EFFECT: Fetch Real Odds for High Confidence Predictions
     useEffect(() => {
@@ -781,9 +783,52 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
         <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-0 md:p-6 animate-fade-in backdrop-blur-md" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div className="bg-slate-900 w-full h-full md:h-[90vh] md:max-w-6xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-white/10" onClick={(e) => e.stopPropagation()}>
 
-                {showVerdictView ? (
+                {/* ═══════════════════════════════════════════════════════════════
+                            DEBUG MODE: SPLIT VIEW (PAYLOAD vs AI RESPONSE)
+                           ═══════════════════════════════════════════════════════════════ */}
+                {showDebug ? (
+                    <div className="p-6 bg-slate-950 h-full overflow-hidden flex flex-col">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                <span className="text-blue-400">⚡</span> Inspector de Datos V3
+                            </h3>
+                            <div className="flex bg-slate-800 rounded-lg p-1">
+                                <button
+                                    onClick={() => setDebugTab('payload')}
+                                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${debugTab === 'payload' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                                >
+                                    Input (API Payload)
+                                </button>
+                                <button
+                                    onClick={() => setDebugTab('ai')}
+                                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${debugTab === 'ai' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                                >
+                                    Output (IA Response)
+                                </button>
+                            </div>
+                            <button onClick={() => setShowDebug(false)} className="text-slate-400 hover:text-white">
+                                <XMarkIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="flex-grow overflow-auto border border-white/10 rounded-xl bg-slate-900 custom-scrollbar">
+                            {debugTab === 'payload' ? (
+                                <pre className="p-4 text-xs font-mono text-blue-300 leading-relaxed whitespace-pre-wrap">
+                                    {analysis.payload ? JSON.stringify(analysis.payload, null, 2) : "// No raw payload available for this analysis run."}
+                                </pre>
+                            ) : (
+                                <pre className="p-4 text-xs font-mono text-purple-300 leading-relaxed whitespace-pre-wrap">
+                                    {JSON.stringify(data, null, 2)}
+                                </pre>
+                            )}
+                        </div>
+                        <div className="mt-2 text-xs text-slate-500 text-center">
+                            {debugTab === 'payload' ? "Datos crudos enviados al motor Gemini (SportMonks V3)" : "Estructura JSON generada por el motor Gemini"}
+                        </div>
+                    </div>
+                ) : showVerdictView ? (
                     <div className="relative h-full flex flex-col overflow-y-auto custom-scrollbar bg-slate-900">
-                        <div className="absolute top-4 right-4 z-50">
+                        <div className="absolute top-4 right-4 z-50 flex gap-2">
                             <button onClick={onClose} className="p-2 bg-black/40 hover:bg-black/60 rounded-full text-white transition-colors backdrop-blur-sm">
                                 <XMarkIcon className="w-6 h-6" />
                             </button>
@@ -795,7 +840,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                         />
                     </div>
                 ) : (
-                    <>
+                    <div className="flex flex-col h-full">
                         {/* Persistent Toolbar Header */}
                         <div className="flex items-center justify-between px-6 py-4 bg-slate-800 border-b border-white/5 z-20 shadow-md">
                             <div className="flex items-center gap-3">
@@ -812,6 +857,15 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => setShowDebug(!showDebug)}
+                                    className={`p-1.5 rounded transition-colors ${showDebug ? 'bg-red-500/20 text-red-400' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+                                    title="Modo Inspector de Datos"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                                    </svg>
+                                </button>
                                 <button
                                     onClick={handleDownloadReport}
                                     className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all group border border-white/10 hover:border-brand/50"
@@ -874,11 +928,28 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                     <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
                                         <h3 className="text-2xl font-bold text-white mb-6 border-b border-gray-700 pb-2">Análisis Profundo</h3>
 
+                                        {/* 1. Razonamiento Central (Tesis de Inversión) - NUEVO */}
+                                        {(data.analisis_detallado as any).razonamiento_central && (
+                                            <div className="bg-slate-800/80 p-6 rounded-xl border border-blue-500/30 mb-8 shadow-inner">
+                                                <h4 className="text-lg font-bold text-blue-300 mb-4 flex items-center">
+                                                    <span className="bg-blue-500/20 p-1.5 rounded-lg mr-3">
+                                                        <SparklesIcon className="w-5 h-5 text-blue-400" />
+                                                    </span>
+                                                    Tesis de Inversión
+                                                </h4>
+                                                <p className="text-gray-200 leading-relaxed text-sm md:text-base whitespace-pre-line border-l-4 border-blue-500 pl-4">
+                                                    {(data.analisis_detallado as any).razonamiento_central}
+                                                </p>
+                                            </div>
+                                        )}
+
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                                            <AnalysisBlock section={data.analisis_detallado.contexto_competitivo} />
-                                            <AnalysisBlock section={data.analisis_detallado.analisis_tactico_formaciones || data.analisis_detallado.estilo_y_tactica} />
+                                            {/* Eliminado: Contexto Competitivo (Redundante) */}
+                                            {/* Eliminado: Alineaciones/Jugadores Clave (No disponible en API) */}
+
+                                            <AnalysisBlock section={data.analisis_detallado.matchup_tactico || data.analisis_detallado.estilo_y_tactica} />
+                                            <AnalysisBlock section={data.analisis_detallado.factor_psicologico} icon={<LightBulbIcon className="w-4 h-4 mr-2 text-purple-400" />} />
                                             <AnalysisBlock section={data.analisis_detallado.impacto_arbitro} icon={<ExclamationTriangleIcon className="w-4 h-4 mr-2 text-yellow-500" />} />
-                                            <AnalysisBlock section={data.analisis_detallado.alineaciones_y_bajas} icon={<div className="w-4 h-4 mr-2 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold">!</div>} />
                                         </div>
 
                                         {/* NUEVA SECCIÓN: ESCENARIOS DETALLADOS */}
@@ -1016,7 +1087,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                 Cerrar Informe
                             </button>
                         </div>
-                    </>
+                    </div>
                 )}
             </div>
         </div>,

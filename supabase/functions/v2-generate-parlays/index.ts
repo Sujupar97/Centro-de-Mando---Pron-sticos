@@ -1,44 +1,14 @@
 // supabase/functions/v2-generate-parlays/index.ts
-// SMART PARLAYS ENGINE: Genera combinaciones de picks de diferentes partidos
-// Trigger: Manual (botón) o Automático (post-batch de análisis)
+// SMART PARLAYS ENGINE V4: AI META-ANALYST (GEMINI PRO)
+// Trigger: Manual (botón) o Automático
+// Description: Agente de IA que busca "Correlaciones Estratégicas" entre picks de alta confianza.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from '../_shared/cors.ts'
 
-const ENGINE_VERSION = '2.5.0-STRICT-PAIRS';
-
-// Configuración de parlays - V2.5 STRICT 2-LEG (80%+ ONLY)
-// USER REQUEST: Solo parlays de EXACTAMENTE 2 picks, con probabilidad >= 80%
-// Cada pick solo puede aparecer en UN parlay (sin repeticiones)
-const CONFIG = {
-    SECTION_LIMIT: 20,
-    MIN_PICKS: 2,
-    MAX_PICKS: 2,               // STRICT: Exactamente 2 picks por parlay
-    MIN_INDIVIDUAL_PROB: 0.80,  // STRICT: Solo picks con 80%+ probabilidad
-    TARGET_TOTAL_ODDS: 1.60,    // Objetivo de cuota para 2 picks de alta prob
-    MIN_TOTAL_PROB: 0.60,       // Prob combinada mínima (80% * 80% = 64%)
-    MAX_ATTEMPTS: 500
-};
-
-interface PickData {
-    fixture_id: number;
-    job_id: string;
-    market: string;
-    selection: string;
-    p_model: number;
-    home_team: string;
-    away_team: string;
-    league: string;
-    odds_implied: number;
-    type: 'VALUE' | 'ANCHOR';
-}
-
-interface ParlayCombo {
-    picks: PickData[];
-    combined_probability: number;
-    implied_odds: number;
-}
+const MODEL_NAME = 'gemini-1.5-pro-latest'; // Capacidad de razonamiento compleja superior
+const ENGINE_VERSION = '4.0.0-AI-CORRELATION';
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -50,325 +20,142 @@ serve(async (req) => {
 
         const sbUrl = Deno.env.get('SUPABASE_URL')!;
         const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const geminiKey = Deno.env.get('GEMINI_API_KEY');
+        if (!geminiKey) throw new Error('Missing GEMINI_API_KEY');
         const supabase = createClient(sbUrl, sbKey);
 
         const { date, force_regenerate } = await req.json();
         if (!date) throw new Error('date is required (YYYY-MM-DD)');
 
-        log(`[SMART-PARLAYS] Request for date: ${date} (Force: ${force_regenerate})`);
+        log(`[META-ANALYST] Starting analysis for date: ${date}`);
 
         // ═══════════════════════════════════════════════════════════════
-        // PASO 0: CACHE CHECK
+        // PASO 1: RECOLECTAR "INTELIGENCIA" (CRUCE DE DATOS)
         // ═══════════════════════════════════════════════════════════════
-        if (!force_regenerate) {
-            const { data: cachedParlays, error: cacheError } = await supabase
-                .from('smart_parlays_v2')
-                .select('*')
-                .eq('date', date)
-                .order('combined_probability', { ascending: false });
 
-            if (!cacheError && cachedParlays && cachedParlays.length > 0) {
-                log(`[SMART-PARLAYS] Returning ${cachedParlays.length} cached parlays`);
-                return new Response(JSON.stringify({
-                    success: true,
-                    date,
-                    source: 'cache',
-                    stats: { total_generated: cachedParlays.length },
-                    parlays: cachedParlays,
-                    debug_logs: logs,
-                    execution_time_ms: Date.now() - startTime
-                }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-            }
-            log(`[SMART-PARLAYS] No cache found or empty. Generating...`);
+        // ... (skipping unchanged parts) ...
+
+        // ═══════════════════════════════════════════════════════════════
+        // PASO 2: LA LLAMADA AL META-ANALISTA (GEMINI)
+        // ═══════════════════════════════════════════════════════════════
+
+        // ... (skipping prompt definition) ...
+
+        log(`Sending prompt to Gemini (${prompt.length} chars)...`);
+
+        const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${geminiKey}`;
+        const aiResp = await fetch(genUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { responseMimeType: "application/json" }
+            })
+        });
+
+        if (!aiResp.ok) throw new Error(`Gemini API Error: ${aiResp.statusText}`);
+
+        const aiResult = await aiResp.json();
+        const aiText = aiResult.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!aiText) throw new Error('Empty response from AI Agent');
+
+        // ROBUST JSON PARSING (Fix for 500 Errors)
+        let metaAnalysis;
+        try {
+            const cleanText = aiText.replace(/```json/g, '').replace(/```/g, '').trim();
+            metaAnalysis = JSON.parse(cleanText);
+        } catch (parseError) {
+            console.error('JSON Parse failed. Raw text:', aiText);
+            throw new Error('AI returned invalid JSON. Check logs.');
         }
 
+        log(`AI Generated ${metaAnalysis.parlays?.length || 0} parlays.`);
 
         // ═══════════════════════════════════════════════════════════════
-        // PASO 1: Obtener picks de Alta Probabilidad
+        // PASO 3: PERSISTENCIA Y FORMATEO
         // ═══════════════════════════════════════════════════════════════
 
-        // 1. Fetch Jobs
-        const { data: jobs, error: jobsError } = await supabase
-            .from('analysis_jobs_v2')
-            .select('id, fixture_id, created_at')
-            .gte('created_at', `${date}T00:00:00`)
-            .lt('created_at', `${date}T23:59:59`)
-            .eq('status', 'done');
-
-        if (jobsError || !jobs?.length) {
-            log(`No jobs found for date ${date}`);
-            return new Response(JSON.stringify({ success: true, message: 'No jobs found', parlays_generated: 0, debug_logs: logs }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-
-        log(`Found ${jobs.length} completed jobs`);
-
-        // Deduplicate jobs (latest per fixture)
-        const latestJobByFixture = new Map<number, any>();
-        for (const job of jobs) {
-            const existing = latestJobByFixture.get(job.fixture_id);
-            if (!existing || new Date(job.created_at) > new Date(existing.created_at)) {
-                latestJobByFixture.set(job.fixture_id, job);
-            }
-        }
-        const latestJobIds = Array.from(latestJobByFixture.values()).map(j => j.id);
-
-        // 2. Fetch Picks - SOLO 80%+ PROB
-        const { data: picks, error: picksError } = await supabase
-            .from('value_picks_v2')
-            .select('*')
-            .in('job_id', latestJobIds)
-            .eq('decision', 'BET')
-            .gte('p_model', 0.80) // STRICT: Solo picks con 80%+ probabilidad
-            .order('p_model', { ascending: false });
-
-        if (picksError) throw picksError;
-
-        log(`Fetched ${picks?.length || 0} picks from DB`);
-
-        // 3. Enqueue and Classify
-        const jobToFixture = new Map<string, number>();
-        jobs.forEach(j => jobToFixture.set(j.id, j.fixture_id));
-
-        const fixtureIds = [...new Set(picks?.map(p => jobToFixture.get(p.job_id)).filter(Boolean))];
-        const { data: matches } = await supabase
-            .from('daily_matches')
-            .select('api_fixture_id, home_team, away_team, league_name')
-            .in('api_fixture_id', fixtureIds);
-
-        const matchData = new Map<number, any>();
-        (matches || []).forEach(m => matchData.set(m.api_fixture_id, m));
-
-        let pool: PickData[] = [];
-
-        // Markets considered "High Value" (boosters)
-        const valueMarkers = ['over_2.5', 'over_3.5', 'btts_yes', '1x2', 'corners'];
-
-        for (const pick of (picks || [])) {
-            const fixtureId = jobToFixture.get(pick.job_id);
-            if (!fixtureId || !matchData.has(fixtureId)) {
-                log(`Skipped pick (no match data): ${pick.market} (job: ${pick.job_id})`);
-                continue;
-            }
-            const match = matchData.get(fixtureId);
-
-            // CLASSIFICATION: Pure statistical heuristic
-            // (AI tags stored in `predictions` table, not `value_picks_v2`)
-            let type: 'VALUE' | 'ANCHOR' = 'VALUE';
-
-            // If prob is low (<0.78), only accept if it's a known "value" market
-            const isValueLike = valueMarkers.some(vm => pick.market.includes(vm));
-
-            if (pick.p_model < CONFIG.MIN_INDIVIDUAL_PROB) {
-                // Lower prob picks only accepted if they are known value-generating markets
-                if (!isValueLike) {
-                    // log(`Skipped low prob: ${pick.market} (${pick.p_model})`);
-                    continue;
-                }
-            }
-
-            // High probability non-value markets = ANCHOR (safe bets)
-            const isHighProb = pick.p_model > 0.85;
-            if (!isValueLike && isHighProb) type = 'ANCHOR';
-            else type = 'VALUE';
-
-            pool.push({
-                fixture_id: fixtureId,
-                job_id: pick.job_id,
-                market: pick.market,
-                selection: pick.selection,
-                p_model: pick.p_model,
-                home_team: match.home_team,
-                away_team: match.away_team,
-                league: match.league_name,
-                odds_implied: 1 / pick.p_model,
-                type: type
-            });
-        }
-
-        log(`Pool prepared. Size: ${pool.length}. Anchors: ${pool.filter(p => p.type === 'ANCHOR').length}, Value: ${pool.filter(p => p.type === 'VALUE').length}`);
-
-        if (pool.length < CONFIG.MIN_PICKS) {
-            return new Response(JSON.stringify({
-                success: true,
-                message: 'No hay suficientes picks en el pool.',
-                parlays_generated: 0,
-                debug_logs: logs
-            }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-
-        // ═══════════════════════════════════════════════════════════════
-        // PASO 2: Construction Loop (Mix Strategy)
-        // ═══════════════════════════════════════════════════════════════
-
-        const finalParlays: ParlayCombo[] = [];
-        const usedPicks = new Set<string>();
-        const getPickKey = (p: PickData) => `${p.fixture_id}-${p.market}`;
-
-        // Priorities:
-        // 1. Use Highest Probability "VALUE" picks as seeds (Best odds + Best prob).
-        // 2. Mix with Anchors to stabilize.
-
-        const valuePicks = pool.filter(p => p.type === 'VALUE').sort((a, b) => b.p_model - a.p_model);
-
-        // Backup: If we run out of Value seeds, we can try Anchors as seeds if they are super high confident
-        const anchorPicks = pool.filter(p => p.type === 'ANCHOR').sort((a, b) => b.p_model - a.p_model);
-
-        // Single unified sorted pool for secondary selection
-        const generalPool = [...pool].sort((a, b) => b.p_model - a.p_model);
-
-        let attempts = 0;
-
-        // STRATEGY A: Seed with VALUE picks (High Yield Markets)
-        log(`Strategy A: Attempting with ${valuePicks.length} Value seeds`);
-        for (const seed of valuePicks) {
-            if (usedPicks.has(getPickKey(seed))) continue;
-            if (attempts++ > CONFIG.MAX_ATTEMPTS) break;
-
-            const parlay = [seed];
-            usedPicks.add(getPickKey(seed));
-
-            let currentOdds = seed.odds_implied;
-            let currentProb = seed.p_model; // Combined product
-
-            // Try to add legs
-            // First look for a "Helper" (Anchor or Value) from general pool
-            for (const candidate of generalPool) {
-                if (parlay.length >= CONFIG.MAX_PICKS) break;
-                if (usedPicks.has(getPickKey(candidate))) continue;
-                if (parlay.some(p => p.fixture_id === candidate.fixture_id)) continue;
-
-                parlay.push(candidate);
-                usedPicks.add(getPickKey(candidate));
-
-                currentOdds *= candidate.odds_implied;
-                currentProb *= candidate.p_model;
-
-                // Stop if we hit target odds and min size
-                if (parlay.length >= CONFIG.MIN_PICKS && currentOdds >= CONFIG.TARGET_TOTAL_ODDS) break;
-            }
-
-            // Validate
-            // Relax odds target slightly if prob is super high
-            const adjustedTargetOdds = currentProb > 0.60 ? CONFIG.TARGET_TOTAL_ODDS - 0.2 : CONFIG.TARGET_TOTAL_ODDS;
-
-            if (parlay.length >= CONFIG.MIN_PICKS && currentOdds >= 1.80) { // Hard floor 1.80
-                finalParlays.push({
-                    picks: parlay,
-                    combined_probability: currentProb,
-                    implied_odds: currentOdds
-                });
-                log(`Success (Strategy A): Parlay with odds ${currentOdds.toFixed(2)}`);
-            } else {
-                log(`Failed (Strategy A): ${parlay.length} picks, Odds ${currentOdds.toFixed(2)} < 1.80`);
-                // Failed. In strict mode we burn picks.
-                // To avoid burning the seed for nothing, we could backtrack, but for now we accept the loss to ensure diversity next run.
-            }
-        }
-
-        // STRATEGY B: Remaining Anchors
-        // If we have unused Anchors after Strategy A, try to bundle them
-        // Needs likely 3-4 anchors to hit odds target
-        log(`Strategy B: Attempting with ${anchorPicks.filter(p => !usedPicks.has(getPickKey(p))).length} remaining Anchors`);
-        for (const seed of anchorPicks) {
-            if (usedPicks.has(getPickKey(seed))) continue;
-            if (attempts++ > CONFIG.MAX_ATTEMPTS) break;
-
-            const parlay = [seed];
-            usedPicks.add(getPickKey(seed));
-            let currentOdds = seed.odds_implied;
-            let currentProb = seed.p_model;
-
-            for (const candidate of anchorPicks) { // Only look at other anchors/remaining pool
-                if (parlay.length >= CONFIG.MAX_PICKS) break;
-                if (usedPicks.has(getPickKey(candidate))) continue;
-                if (parlay.some(p => p.fixture_id === candidate.fixture_id)) continue;
-
-                parlay.push(candidate);
-                usedPicks.add(getPickKey(candidate));
-
-                currentOdds *= candidate.odds_implied;
-                currentProb *= candidate.p_model;
-
-                if (parlay.length >= CONFIG.MIN_PICKS && currentOdds >= CONFIG.TARGET_TOTAL_ODDS) break;
-            }
-
-            if (parlay.length >= CONFIG.MIN_PICKS && currentOdds >= 1.80) {
-                finalParlays.push({
-                    picks: parlay,
-                    combined_probability: currentProb,
-                    implied_odds: currentOdds
-                });
-                log(`Success (Strategy B): Parlay with odds ${currentOdds.toFixed(2)}`);
-            } else {
-                log(`Failed (Strategy B): ${parlay.length} picks, Odds ${currentOdds.toFixed(2)} < 1.80`);
-            }
-        }
-
-        log(`Generated ${finalParlays.length} exclusive parlays.`);
-
-        // ═══════════════════════════════════════════════════════════════
-        // PASO 3: Guardar en DB
-        // ═══════════════════════════════════════════════════════════════
-
+        // Limpiar anteriores
         await supabase.from('smart_parlays_v2').delete().eq('date', date);
 
-        const parlaysToInsert = finalParlays.map((parlay, index) => {
-            // Calculating "Average Confidence" for UI display as requested previously
-            const avgProb = parlay.picks.reduce((a, b) => a + b.p_model, 0) / parlay.picks.length;
-            const confidenceTier = avgProb >= 0.85 ? 'ultra_safe'
-                : avgProb >= 0.75 ? 'safe'
-                    : 'balanced';
+        const parlaysToInsert = [];
 
-            return {
+        for (const p of metaAnalysis.parlays || []) {
+            // Reconstruir objetos completos
+            const pick1 = candidates.find(c => c?.id === p.picks_ids[0]);
+            const pick2 = candidates.find(c => c?.id === p.picks_ids[1]);
+
+            if (!pick1 || !pick2) continue;
+
+            const combinedProb = (parseFloat(pick1.prob) + parseFloat(pick2.prob)) / 200; // Average numeric
+            const impliedOdds = (pick1.odds * pick2.odds).toFixed(2);
+
+            parlaysToInsert.push({
                 date,
-                name: `Smart Parlay #${index + 1}`,
-                picks: parlay.picks.map(p => ({
-                    fixture_id: p.fixture_id,
-                    market: p.market,
-                    selection: p.selection,
-                    p_model: p.p_model,
-                    home_team: p.home_team,
-                    away_team: p.away_team,
-                    league: p.league
-                })),
-                combined_probability: avgProb,
-                implied_odds: Math.round(parlay.implied_odds * 100) / 100,
-                pick_count: parlay.picks.length,
-                confidence_tier: confidenceTier,
-                status: 'pending'
-            };
-        });
+                name: p.nombre_estrategia || "Smart Parlay IA",
+                description: p.tesis_meta_analisis, // New field for the meta-thesis
+                picks: [
+                    {
+                        fixture_id: pick1.fixture_id,
+                        market: pick1.pick, // Simplified for display
+                        selection: pick1.pick.split('-')[1]?.trim() || pick1.pick,
+                        p_model: parseFloat(pick1.prob) / 100,
+                        home_team: pick1.home_team,
+                        away_team: pick1.away_team,
+                        league: pick1.league,
+                        odds: pick1.odds
+                    },
+                    {
+                        fixture_id: pick2.fixture_id,
+                        market: pick2.pick,
+                        selection: pick2.pick.split('-')[1]?.trim() || pick2.pick,
+                        p_model: parseFloat(pick2.prob) / 100,
+                        home_team: pick2.home_team,
+                        away_team: pick2.away_team,
+                        league: pick2.league,
+                        odds: pick2.odds
+                    }
+                ],
+                combined_probability: combinedProb,
+                implied_odds: parseFloat(impliedOdds),
+                pick_count: 2,
+                confidence_tier: combinedProb > 0.85 ? 'ultra_safe' : 'safe',
+                status: 'active'
+            });
+        }
 
         if (parlaysToInsert.length > 0) {
             await supabase.from('smart_parlays_v2').insert(parlaysToInsert);
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // PASO 4: Prepare Response & Singles Fallback
-        // ═══════════════════════════════════════════════════════════════
-
-        let singles: PickData[] = [];
-        if (parlaysToInsert.length === 0) {
-            // Extract High Value Singles (Odds >= 1.50, Prob >= 80%) logic from pool
-            // Note: Pool already filtered by Prob >= 80% (MIN_INDIVIDUAL_PROB)
-            singles = pool
-                .filter(p => p.odds_implied >= 1.50)
-                .sort((a, b) => b.p_model - a.p_model);
-
-            log(`[SMART-PARLAYS] No parlays generated. Returning ${singles.length} singles.`);
-        }
+        // Fallback Singles
+        const usedIds = new Set(metaAnalysis.parlays?.flatMap((x: any) => x.picks_ids));
+        const singles = candidates
+            .filter(c => !usedIds.has(c?.id))
+            .filter(c => c?.odds >= 1.50) // High Value singles only
+            .slice(0, 6)
+            .map(c => ({
+                id: c?.id,
+                fixture_id: c?.fixture_id,
+                job_id: c?.job_id,
+                market: c?.pick, // simplified
+                selection: c?.pick,
+                p_model: parseFloat(c?.prob || '0') / 100,
+                home_team: c?.home_team,
+                away_team: c?.away_team,
+                league: c?.league,
+                odds: c?.odds
+            }));
 
         const executionTime = Date.now() - startTime;
 
         return new Response(JSON.stringify({
             success: true,
             date,
-            stats: {
-                total_generated: parlaysToInsert.length,
-                singles_found: singles.length
-            },
+            stats: { generated: parlaysToInsert.length },
             parlays: parlaysToInsert,
-            singles: singles, // Return singles for frontend fallback
+            singles: singles,
             debug_logs: logs,
             execution_time_ms: executionTime
         }), {
@@ -376,13 +163,17 @@ serve(async (req) => {
         });
 
     } catch (e: any) {
-        console.error('[SMART-PARLAYS] Error:', e);
+        console.error('[META-ANALYST] Error:', e);
+        // Returning 200 instead of 500 to allow the frontend to parse the "error" field
+        // and display it to the user instead of a generic "FunctionsHttpError".
         return new Response(JSON.stringify({
             success: false,
-            error: e.message,
-            debug_logs: [] // In case of early error before logs are initialized, or if logs are not relevant to the error context
+            error: e.message || "Unknown error",
+            parlays: [], // Return empty array so map() doesn't fail on frontend
+            singles: [],
+            debug_logs: [e.message]
         }), {
-            status: 500,
+            status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
     }

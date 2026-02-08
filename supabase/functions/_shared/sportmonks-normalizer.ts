@@ -90,21 +90,29 @@ export function normalizeFixture(fixture: any): NormalizedPayload['match'] {
 
 /**
  * Normalize match history (last N fixtures)
+ * CRITICAL FIX: SportMonks scores array has SEPARATE entries for home/away with description='CURRENT'
  */
 export function normalizeMatchHistory(fixtures: any[], teamId: number): any[] {
     return fixtures.map((f: any) => {
         const home = f.participants?.find((p: any) => p.meta?.location === 'home');
         const away = f.participants?.find((p: any) => p.meta?.location === 'away');
-        const homeScore = f.scores?.find((s: any) => s.description === 'CURRENT')?.score?.participant === 'home'
-            ? f.scores?.find((s: any) => s.description === 'CURRENT')?.score?.goals
-            : f.scores?.[0]?.score?.home || 0;
-        const awayScore = f.scores?.find((s: any) => s.description === 'CURRENT')?.score?.participant === 'away'
-            ? f.scores?.find((s: any) => s.description === 'CURRENT')?.score?.goals
-            : f.scores?.[0]?.score?.away || 0;
+
+        // FIXED: Find CURRENT scores for EACH participant separately
+        // SportMonks has TWO entries with description='CURRENT' - one for home, one for away
+        const homeScoreEntry = f.scores?.find((s: any) =>
+            s.description === 'CURRENT' && s.score?.participant === 'home'
+        );
+        const awayScoreEntry = f.scores?.find((s: any) =>
+            s.description === 'CURRENT' && s.score?.participant === 'away'
+        );
+
+        // Get goals, fallback to 0 if not found
+        const homeScore = homeScoreEntry?.score?.goals ?? 0;
+        const awayScore = awayScoreEntry?.score?.goals ?? 0;
 
         return {
             fixture_id: f.id,
-            date: f.starting_at?.split('T')[0] || '',
+            date: f.starting_at || '',
             home_team: home?.name || 'Home',
             away_team: away?.name || 'Away',
             home_id: home?.id || 0,
@@ -117,19 +125,31 @@ export function normalizeMatchHistory(fixtures: any[], teamId: number): any[] {
     });
 }
 
+
 /**
  * Normalize DEEP match history for V4 Mastermind Engine
  * Extracts detailed stats like possession, shots, corners, formations
+ * V5 UPGRADE: Adds was_home, opponent_name, and opponent stats for correct venue identification
  */
 export function normalizeDetailedMatchHistory(fixtures: any[], teamId: number): any[] {
     return fixtures.map((f: any) => {
         // Basic Info
         const basic = normalizeMatchHistory([f], teamId)[0];
-        const isHome = f.participants?.find((p: any) => p.id === teamId)?.meta?.location === 'home';
+
+        // Determine if this team was HOME or AWAY in this specific match
+        const home = f.participants?.find((p: any) => p.meta?.location === 'home');
+        const away = f.participants?.find((p: any) => p.meta?.location === 'away');
+        const homeId = home?.id || 0;
+        const awayId = away?.id || 0;
+
+        // CRITICAL: was_home indicates if the team we're analyzing was the HOST in this match
+        const wasHome = teamId === homeId;
+        const opponentId = wasHome ? awayId : homeId;
+        const opponentName = wasHome ? (away?.name || 'Away Team') : (home?.name || 'Home Team');
 
         // Extract Formations
         const myFormation = f.formations?.find((lm: any) => lm.participant_id === teamId)?.formation || 'Unknown';
-        const opponentFormation = f.formations?.find((lm: any) => lm.participant_id !== teamId)?.formation || 'Unknown';
+        const opponentFormation = f.formations?.find((lm: any) => lm.participant_id === opponentId)?.formation || 'Unknown';
 
         // Extract Stats (Possession, Shots, Corners, Fouls, Cards)
         const findStat = (typeId: number, team: number) => {
@@ -137,21 +157,62 @@ export function normalizeDetailedMatchHistory(fixtures: any[], teamId: number): 
             return stat?.data?.value || 0;
         };
 
-        // SportMonks Type IDs (approximate common ones, check docs if needed)
-        // 45=Possession, 57=YellowCards, 83=Cornes, 56=Fouls, 42=ShotsTotal, 86=ShotsOnTarget
+        // Extract Events (Goal Timings)
+        const getGoalTimings = (team: number) => {
+            return f.events
+                ?.filter((e: any) => e.participant_id === team && (e.type?.name === 'Goal' || e.type_id === 14)) // 14=Goal
+                .map((e: any) => e.minute + (e.extra_minute ? `+${e.extra_minute}` : ''))
+                .join(', ') || '';
+        };
+
+        // Extract Referee
+        const referee = f.referees?.[0]?.common_name || 'Unknown';
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // SPORTMONKS v3 OFFICIAL TYPE IDs (from docs.sportmonks.com)
+        // ═══════════════════════════════════════════════════════════════════════
+        // 34 = Corners
+        // 41 = Shots Off Target
+        // 42 = Shots Total (on target + off target + blocked)
+        // 43 = Attacks
+        // 44 = Dangerous Attacks
+        // 45 = Ball Possession (%)
+        // 51 = Offsides
+        // 52 = Goals
+        // 55 = Free Kicks
+        // 56 = Fouls
+        // 57 = Saves (Goalkeeper)
+        // 58 = Shots Blocked
+        // 83 = Red Cards
+        // 84 = Yellow Cards
+        // 86 = Shots On Target (commonly used but check API)
+        // ═══════════════════════════════════════════════════════════════════════
 
         return {
             ...basic,
+            // NEW FIELDS for correct venue identification
+            was_home: wasHome,
+            opponent_name: opponentName,
+            opponent_id: opponentId,
             details: {
                 formation_used: myFormation,
                 opponent_formation: opponentFormation,
+                // FIXED: Correct type_ids from SportMonks v3 documentation
                 possession: findStat(45, teamId),
                 shots_total: findStat(42, teamId),
-                shots_on_target: findStat(86, teamId),
-                corners: findStat(83, teamId),
-                yellow_cards: findStat(57, teamId),
-                red_cards: f.statistics?.find((s: any) => s.participant_id === teamId && s.type_id === 58)?.data?.value || 0, // 58=RedCaard
-                fouls: findStat(56, teamId)
+                shots_on_target: findStat(86, teamId), // Or could be derived: shots_total - shots_off - blocked
+                corners: findStat(34, teamId),         // FIXED: Was 83, should be 34
+                saves: findStat(57, teamId),           // FIXED: Was 34, should be 57
+                yellow_cards: findStat(84, teamId),    // FIXED: Was 57, should be 84
+                red_cards: f.statistics?.find((s: any) => s.participant_id === teamId && s.type_id === 83)?.data?.value || 0, // FIXED: Was 58, should be 83
+                fouls: findStat(56, teamId),
+                goal_timings: getGoalTimings(teamId),
+                referee: referee,
+                // Opponent stats for deeper analysis
+                opponent_shots: findStat(42, opponentId),
+                opponent_shots_on_target: findStat(86, opponentId),
+                opponent_corners: findStat(34, opponentId),   // FIXED
+                opponent_possession: findStat(45, opponentId)
             }
         };
     });
@@ -159,29 +220,68 @@ export function normalizeDetailedMatchHistory(fixtures: any[], teamId: number): 
 
 /**
  * Normalize H2H fixtures
+ * V5 Upgrade: Now returns FULL detailed stats, same as history
+ * V6 FIX: Correct score extraction and type_ids
  */
 export function normalizeH2H(fixtures: any[]): any[] {
+    // For H2H, we might want to see stats for BOTH teams, but normalizeDetailedMatchHistory focuses on ONE team.
+    // So we map it differently. We want a neutral detailed view.
+
     return fixtures.map((f: any) => {
         const home = f.participants?.find((p: any) => p.meta?.location === 'home');
         const away = f.participants?.find((p: any) => p.meta?.location === 'away');
+        const homeId = home?.id;
+        const awayId = away?.id;
 
-        // Extract scores
-        let homeScore = 0, awayScore = 0;
-        if (f.scores) {
-            const currentScore = f.scores.find((s: any) => s.description === 'CURRENT');
-            if (currentScore) {
-                homeScore = currentScore.score?.home || 0;
-                awayScore = currentScore.score?.away || 0;
-            }
-        }
+        // FIXED: Find CURRENT scores for EACH participant separately
+        const homeScoreEntry = f.scores?.find((s: any) =>
+            s.description === 'CURRENT' && s.score?.participant === 'home'
+        );
+        const awayScoreEntry = f.scores?.find((s: any) =>
+            s.description === 'CURRENT' && s.score?.participant === 'away'
+        );
+        const homeScore = homeScoreEntry?.score?.goals ?? 0;
+        const awayScore = awayScoreEntry?.score?.goals ?? 0;
+
+        // Reuse the extraction logic for both sides
+        const findStat = (typeId: number, team: number) => {
+            const stat = f.statistics?.find((s: any) => s.participant_id === team && s.type_id === typeId);
+            return stat?.data?.value || 0;
+        };
+
+        const getGoalTimings = (team: number) => {
+            return f.events
+                ?.filter((e: any) => e.participant_id === team && (e.type?.name === 'Goal' || e.type_id === 14))
+                .map((e: any) => e.minute + (e.extra_minute ? `+${e.extra_minute}` : ''))
+                .join(', ') || '';
+        };
 
         return {
             fixture_id: f.id,
-            date: f.starting_at?.split('T')[0] || '',
+            date: f.starting_at || '',
             home_team: home?.name || 'Home',
             away_team: away?.name || 'Away',
             score_home: homeScore,
-            score_away: awayScore
+            score_away: awayScore,
+
+            // Rich Stats for H2H - FIXED type_ids
+            stats: {
+                home: {
+                    shots: findStat(42, homeId),
+                    shots_ot: findStat(86, homeId),
+                    corners: findStat(34, homeId),               // FIXED: Was 83
+                    cards: findStat(84, homeId) + findStat(83, homeId), // Yellow(84) + Red(83)
+                    goals_at: getGoalTimings(homeId)
+                },
+                away: {
+                    shots: findStat(42, awayId),
+                    shots_ot: findStat(86, awayId),
+                    corners: findStat(34, awayId),               // FIXED: Was 83
+                    cards: findStat(84, awayId) + findStat(83, awayId), // FIXED
+                    goals_at: getGoalTimings(awayId)
+                }
+            },
+            referee: f.referees?.[0]?.common_name || 'Unknown'
         };
     });
 }

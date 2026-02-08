@@ -180,6 +180,7 @@ export async function getFixtureComplete(fixtureId: number): Promise<any | null>
             'weatherReport',
             'league',
             'season',
+            'state',
             'round'
         ],
         {}
@@ -194,16 +195,22 @@ export async function getFixtureComplete(fixtureId: number): Promise<any | null>
 export async function getTeamFixtures(
     teamId: number,
     last: number = 40,
-    includes: string[] = ['participants', 'scores', 'venue', 'league']
+    includes: string[] = ['participants', 'scores', 'venue', 'league', 'statistics', 'events', 'lineups', 'referees', 'formations']
 ): Promise<any[]> {
+    // V3 API requires explicit date range for team fixtures
+    const end = new Date();
+    const start = new Date();
+    start.setFullYear(start.getFullYear() - 2); // Look back 2 years to ensure we get 40 matches
+
+    const startStr = start.toISOString().split('T')[0];
+    const endStr = end.toISOString().split('T')[0];
+
     return await fetchSportMonks<any[]>(
-        `/fixtures`,
+        `/fixtures/between/${startStr}/${endStr}/${teamId}`,
         includes,
         {
-            'participant_id': teamId.toString(),
             'per_page': last.toString(),
-            'order': 'starting_at',
-            'sort': 'desc'
+            'order': 'desc' // Newest first
         }
     ) || [];
 }
@@ -214,7 +221,7 @@ export async function getTeamFixtures(
 export async function getH2H(teamId1: number, teamId2: number): Promise<any[]> {
     return await fetchSportMonks<any[]>(
         `/fixtures/head-to-head/${teamId1}/${teamId2}`,
-        ['participants', 'scores'],
+        ['participants', 'scores', 'statistics', 'events', 'lineups', 'referees'],
         { 'per_page': '20' }
     ) || [];
 }

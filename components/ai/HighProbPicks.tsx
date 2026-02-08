@@ -53,16 +53,21 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
             });
 
             if (fnError) throw fnError;
-            if (!data.success) throw new Error(data.message || 'Error generating parlays');
+            if (!data.success) {
+                // EXPOSE BACKEND ERROR TO UI FOR DEBUGGING
+                const backendError = data.error || 'Error generating parlays';
+                const debugInfo = data.debug_logs ? data.debug_logs.join('\n') : '';
+                throw new Error(`${backendError}\n\nDEBUG LOGS:\n${debugInfo}`);
+            }
 
             console.log('[SmartParlays] Response:', data.stats);
 
             setParlays(data.parlays || []);
-            setSingles(data.singles || []); // Backend now returns singles if parlays are empty
+            setSingles(data.singles || []);
 
         } catch (err: any) {
             console.error('[SmartParlays] Error:', err);
-            setError(err.message);
+            setError(typeof err === 'string' ? err : err.message || JSON.stringify(err));
         } finally {
             setIsLoading(false);
         }

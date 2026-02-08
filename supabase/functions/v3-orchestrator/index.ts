@@ -38,8 +38,8 @@ serve(async (req) => {
         // ═══════════════════════════════════════════════════════════════
         // MOTOR A: ETL (Sin cambios - Extrae todos los datos)
         // ═══════════════════════════════════════════════════════════════
-        console.log('[V3-ORCHESTRATOR] Motor A: ETL...');
-        const motorARes = await fetch(`${baseUrl}/v2-create-job`, {
+        console.log('[V3-ORCHESTRATOR] Motor A: ETL (SportMonks)...');
+        const motorARes = await fetch(`${baseUrl}/v2-create-job-sportmonks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
             body: JSON.stringify({ fixture_id })

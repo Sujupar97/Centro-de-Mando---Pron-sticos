@@ -1,5 +1,5 @@
 import { supabase } from './supabaseService';
-import { AnalysisJob, AnalysisRun, VisualAnalysisResult, DashboardAnalysisJSON, JobProgress } from '../types';
+import { AnalysisJob, AnalysisRun, VisualAnalysisResult, DashboardAnalysisJSON, JobProgress, DetallePrediccion } from '../types';
 import { fetchFixturesList } from './liveDataService';
 
 export interface PerformanceStats {
@@ -36,100 +36,198 @@ const adaptV3ToFrontend = (rawData: any): DashboardAnalysisJSON => {
     if (!rawData) return rawData;
 
     // Helper: Convertir string o array a objeto {titulo, bullets}
-    const toSection = (data: any, defaultTitle: string): { titulo: string; bullets: string[] } | null => {
-        if (!data) return null;
+    const toSection = (data: any, defaultTitle: string): { titulo: string; bullets: string[] } => {
+        if (!data) return { titulo: defaultTitle, bullets: [] };
+
         if (typeof data === 'string') {
             return { titulo: defaultTitle, bullets: [data] };
         }
         if (Array.isArray(data)) {
-            return { titulo: defaultTitle, bullets: data };
+            return { titulo: defaultTitle, bullets: data.filter(x => x && typeof x === 'string') };
         }
-        if (typeof data === 'object' && (data.titulo || data.bullets)) {
-            return data;
+        if (typeof data === 'object') {
+            return {
+                titulo: data.titulo || defaultTitle,
+                bullets: Array.isArray(data.bullets) ? data.bullets :
+                    (typeof data.descripcion === 'string' ? [data.descripcion] : [])
+            };
         }
-        return null;
+        return { titulo: defaultTitle, bullets: [] };
     };
 
-    const ad = rawData.analisis_detallado || {};
+    // Estrategia de Extracción de Datos (Data Scavenging)
+    const deepContext = rawData.analisis_detallado || rawData.analisis_profundo || {};
+    const contextComp = deepContext.contexto_competitivo || {};
+    const tactic = deepContext.analisis_tactico || deepContext.estilo_y_tactica || {};
+    const exec = rawData.resumen_ejecutivo || {};
+    const veredict = rawData.veredicto_analista || {};
 
-    // Construir analisis_detallado adaptado
-    const adaptedAnalisisDetallado = rawData.analisis_detallado ? {
-        // Mantener campos existentes que ya tienen formato correcto
-        ...rawData.analisis_detallado,
+    // 1. Construir Resumen Ejecutivo
+    const frasePrincipal = exec.titular || exec.frase_principal || exec.veredicto || veredict.razon_principal || "Análisis de Inteligencia Finalizado";
+    const puntosClave = exec.puntos_clave || exec.bullets || exec.picks_principales || [];
 
-        // Contexto Competitivo: prioridad a objeto existente, luego string
+    // 2. Construir Análisis Detallado (Garantizar que NO sea null)
+    const analisisDetallado = {
         contexto_competitivo: toSection(
-            ad.contexto_competitivo,
-            'Contexto Competitivo'
-        ) || (ad.enfoque_local || ad.enfoque_visitante ? {
-            titulo: 'Contexto del Partido',
-            bullets: [
-                ad.enfoque_local ? `🏠 Local: ${ad.enfoque_local}` : null,
-                ad.enfoque_visitante ? `✈️ Visitante: ${ad.enfoque_visitante}` : null,
-                ad.matchup_clave ? `⚔️ Matchup Clave: ${ad.matchup_clave}` : null
-            ].filter(Boolean) as string[]
-        } : null),
-
-        // Estilo y Táctica
+            deepContext.contexto_competitivo || rawData.analisis_detallado?.contexto_competitivo,
+            'Contexto del Partido'
+        ),
         estilo_y_tactica: toSection(
-            ad.estilo_y_tactica || ad.analisis_tactico,
+            tactic,
             'Análisis Táctico'
-        ) || (ad.formacion_esperada_local || ad.formacion_esperada_visitante ? {
-            titulo: 'Formaciones y Táctica',
-            bullets: [
-                ad.formacion_esperada_local ? `Local: ${ad.formacion_esperada_local}` : null,
-                ad.formacion_esperada_visitante ? `Visitante: ${ad.formacion_esperada_visitante}` : null
-            ].filter(Boolean) as string[]
-        } : null),
-
-        // Análisis Táctico Formaciones (jugadores clave)
+        ),
         analisis_tactico_formaciones: toSection(
-            ad.analisis_tactico_formaciones,
+            deepContext.analisis_tactico_formaciones || deepContext.jugadores_clave,
             'Jugadores Clave'
-        ) || (ad.jugador_clave_local || ad.jugador_clave_visitante ? {
-            titulo: 'Jugadores a Observar',
-            bullets: [
-                ad.jugador_clave_local ? `⭐ Local: ${ad.jugador_clave_local}` : null,
-                ad.jugador_clave_visitante ? `⭐ Visitante: ${ad.jugador_clave_visitante}` : null
-            ].filter(Boolean) as string[]
-        } : null),
+        ),
+        escenarios_de_partido: deepContext.escenarios_de_partido || deepContext.analisis_escenarios || null,
+        factor_psicologico: deepContext.factor_psicologico || null
+    };
 
-        // Escenarios de partido
-        escenarios_de_partido: ad.analisis_escenarios || ad.escenarios_de_partido || null
-    } : null;
+    // Fallback Inteligente: Si análisis detallado está vacío, usar puntos clave
+    if (analisisDetallado.contexto_competitivo.bullets.length === 0 && puntosClave.length > 0) {
+        analisisDetallado.contexto_competitivo.bullets = [puntosClave[0]];
+        if (puntosClave.length > 1) {
+            analisisDetallado.estilo_y_tactica.bullets = puntosClave.slice(1);
+        }
+    }
 
-    // Construir objeto adaptado final
+    // 3. Fallback para Estilo y Táctica si aún está vacío
+    if (analisisDetallado.estilo_y_tactica.bullets.length === 0) {
+        if (deepContext.matchup_tactico) {
+            analisisDetallado.estilo_y_tactica.bullets.push(deepContext.matchup_tactico);
+        }
+        if (deepContext.clave_del_partido) {
+            analisisDetallado.estilo_y_tactica.bullets.push(deepContext.clave_del_partido);
+        }
+        // Fallback for AI Hallucinations (factor_clave)
+        if (deepContext.factor_clave) {
+            analisisDetallado.estilo_y_tactica.bullets.push(`Clave: ${deepContext.factor_clave}`);
+        }
+    }
+
+    // 3.1 Fallback para Contexto (si falta contexto_competitivo)
+    if (analisisDetallado.contexto_competitivo.bullets.length === 0) {
+        if (deepContext.factor_psicologico?.analisis) {
+            analisisDetallado.contexto_competitivo.bullets.push(deepContext.factor_psicologico.analisis);
+        }
+    }
+
+    // 4. Construir Veredicto Analista
+    const veredictoAnalista = {
+        decision: veredict.decision || exec.veredicto || 'OBSERVAR',
+        nivel_confianza: veredict.nivel_confianza || exec.confianza_global || 'MEDIA',
+        probabilidad: veredict.probabilidad || (rawData.predicciones_finales?.detalle?.[0]?.probabilidad_estimado_porcentaje) || 50,
+        titulo_accion: veredict.titulo_accion || (exec.veredicto === 'APOSTAR' ? 'OPORTUNIDAD DETECTADA' : 'ANÁLISIS COMPLETADO'),
+        razon_principal: veredict.razon_principal || frasePrincipal,
+        riesgo_principal: veredict.riesgo_principal || rawData.advertencias?.riesgos?.[0] || 'Sin riesgos críticos detectados',
+        seleccion_clave: veredict.seleccion_clave || rawData.predicciones_finales?.detalle?.[0]?.seleccion || 'N/A'
+    };
+
+    // 5. Construir Predicciones con Mapeo Seguro
+    let rawPreds = rawData.predicciones_finales?.detalle || rawData.pronosticos || [];
+
+    // 5.1 Rescue logic for 'probabilidades_derbix' (Frontend Side Polyfill)
+    const probSource = rawData.probabilidades_derbix || rawData.probabilities || rawData.probabilidades;
+    if (rawPreds.length === 0 && probSource) {
+        console.log('[ADAPTER] Rescuing predictions from probabilidades_derbix:', probSource);
+        const keys = Object.keys(probSource);
+        keys.forEach((k, idx) => {
+            const key = k.toLowerCase();
+            const valStr = String(probSource[k]).replace('%', '');
+            const val = parseFloat(valStr);
+
+            let label = "Mercado Especial";
+            let seleccion = k;
+
+            if (key.includes('home') || key.includes('local')) { label = 'Ganador del Partido (1X2)'; seleccion = rawData.header_partido?.titulo?.split(' vs ')[0] || 'Local'; }
+            else if (key.includes('away') || key.includes('visit')) { label = 'Ganador del Partido (1X2)'; seleccion = rawData.header_partido?.titulo?.split(' vs ')[1] || 'Visita'; }
+            else if (key.includes('draw') || key.includes('empate')) { label = 'Ganador del Partido (1X2)'; seleccion = "Empate"; }
+            else if (key.includes('btts') || key.includes('ambos')) { label = 'Ambos Equipos Anotan'; seleccion = "Sí"; }
+            else if (key.includes('over')) { label = 'Total de Goles'; seleccion = "Más de 2.5"; }
+            else if (key.includes('under')) { label = 'Total de Goles'; seleccion = "Menos de 2.5"; }
+
+            if (!isNaN(val) && val > 45) {
+                rawPreds.push({
+                    id: idx + 999,
+                    mercado: label,
+                    seleccion: seleccion,
+                    probabilidad_estimado_porcentaje: val,
+                    justificacion_detallada: {
+                        base_estadistica: ["Probabilidad calculada por modelo."],
+                        contexto_competitivo: ["Oportunidad detectada en análisis profundo."],
+                        conclusion: "Valor matemático identificado."
+                    },
+                    odds: null
+                });
+            }
+        });
+    }
+
+    const mappedPreds: DetallePrediccion[] = rawPreds.map((p: any, idx: number) => {
+        // ═══════════════════════════════════════════════════════════════
+        // UNIVERSAL FIELD NORMALIZER (Handles AI field name variations)
+        // ═══════════════════════════════════════════════════════════════
+
+        // 1. Parse probability from ANY possible field name
+        const probRaw = p.probabilidad_estimado_porcentaje
+            || p.probabilidad_calculada_porcentaje
+            || p.probabilidad_derbix
+            || p.probabilidad_implicita
+            || p.probabilidad
+            || p.probability
+            || "50%";
+        const prob = typeof probRaw === 'string'
+            ? parseFloat(probRaw.replace('%', '').replace('+', ''))
+            : probRaw;
+
+        // 2. Parse edge from ANY possible field name
+        const edgeRaw = p.edge || p.edge_porcentaje || p.edge_calculado || "0%";
+        const edge = typeof edgeRaw === 'string'
+            ? parseFloat(edgeRaw.replace('%', '').replace('+', ''))
+            : edgeRaw;
+
+        // 3. Parse odds from ANY possible field name
+        const odds = p.odds || p.cuota_actual || p.cuota_estimada || p.cuota_referencia || null;
+
+        // 4. Parse justification from ANY possible field name
+        const justRaw = p.razonamiento || p.justificacion_detallada?.base_estadistica?.[0] || p.justificacion?.estadistica || "Análisis IA completado";
+        const justText = typeof justRaw === 'string' ? justRaw : (Array.isArray(justRaw) ? justRaw[0] : JSON.stringify(justRaw));
+
+        return {
+            id: p.id || idx,
+            mercado: p.mercado || "Mercado Principal",
+            seleccion: p.seleccion || "Selección",
+            probabilidad_estimado_porcentaje: prob || 50,
+            edge: edge || null,
+            odds: odds,
+            justificacion_detallada: {
+                base_estadistica: p.justificacion_detallada?.base_estadistica || (justText ? [justText.substring(0, 200)] : []),
+                contexto_competitivo: p.justificacion_detallada?.contexto_competitivo || [p.nivel_confianza || p.tipo || "Análisis Profundo"],
+                conclusion: p.justificacion_detallada?.conclusion || (justText && justText.length > 200 ? justText.substring(200) : "Valor matemático identificado.")
+            }
+        };
+    });
+
     const adapted: DashboardAnalysisJSON = {
         ...rawData,
-
-        // Resumen Ejecutivo adaptado
-        resumen_ejecutivo: rawData.resumen_ejecutivo ? {
-            frase_principal: rawData.resumen_ejecutivo.titular ||
-                rawData.resumen_ejecutivo.frase_principal ||
-                rawData.resumen_ejecutivo.veredicto ||
-                "Análisis de Inteligencia Completado",
-            puntos_clave: rawData.resumen_ejecutivo.bullets ||
-                rawData.resumen_ejecutivo.puntos_clave ||
-                (rawData.resumen_ejecutivo.picks_principales ?
-                    rawData.resumen_ejecutivo.picks_principales.map((p: any) =>
-                        typeof p === 'string' ? p : `${p.mercado}: ${p.seleccion}`
-                    ) : [])
-        } : {
-            frase_principal: "Informe de Inteligencia Generado",
-            puntos_clave: []
+        resumen_ejecutivo: {
+            frase_principal: frasePrincipal,
+            puntos_clave: puntosClave.map((p: any) => typeof p === 'string' ? p : `${p.mercado || ''}: ${p.seleccion || ''}`)
         },
-
-        // Análisis Detallado adaptado
-        analisis_detallado: adaptedAnalisisDetallado,
-
-        // Header del partido (asegurar que exista)
+        analisis_detallado: analisisDetallado,
+        veredicto_analista: veredictoAnalista,
+        predicciones_finales: {
+            titulo: "Predicciones del Modelo",
+            detalle: mappedPreds
+        },
         header_partido: rawData.header_partido || {
-            titulo: "Partido",
-            subtitulo: ""
+            titulo: "Análisis de Partido",
+            subtitulo: new Date().toLocaleDateString()
         }
     };
 
-    console.log('[ADAPTER] V3 data adaptado para Frontend');
+    console.log('[ADAPTER] V3 data adaptado y saneado para Frontend');
     return adapted;
 };
 
@@ -361,14 +459,73 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                     return {
                         analysisText: adaptedData.resumen_ejecutivo?.frase_principal || "Análisis V3 completado.",
                         dashboardData: adaptedData,
-                        analysisRun: undefined
+                        analysisRun: undefined,
+                        payload: v2Report.input_payload // Map payload explicitly from reports_v2
                     };
                 }
             }
 
+            // Fallback: Check if input_payload is in the root of v2Report (where we added it)
+            const inputPayload = v2Report.input_payload;
+
             // Fallback: Construir dashboardData directamente del V3 report_packet
             console.log(`[analysisService] V3 building dashboardData from report_packet`);
-            const betPicks = report.pronosticos || [];
+
+            // ═══════════════════════════════════════════════════════════════
+            // DEEP PROBABILITY EXTRACTOR (Route B Fix)
+            // ═══════════════════════════════════════════════════════════════
+            let betPicks = report.pronosticos || [];
+
+            // Rescue from probabilidades_derbix if pronosticos is empty
+            const probSource = report.probabilidades_derbix || report.probabilities || report.probabilidades;
+            if (betPicks.length === 0 && probSource) {
+                console.log('[analysisService] 🚨 Rescuing picks from probabilidades_derbix:', Object.keys(probSource));
+                Object.keys(probSource).forEach((key, idx) => {
+                    const val = parseFloat(String(probSource[key]).replace('%', ''));
+                    if (!isNaN(val) && val > 0) {
+                        let mercado = "Mercado Especial";
+                        let seleccion = key;
+                        const lowerKey = key.toLowerCase();
+
+                        if (lowerKey.includes('home') || lowerKey.includes('local')) {
+                            mercado = 'Ganador del Partido (1X2)';
+                            seleccion = report.header_partido?.titulo?.split(' vs ')[0] || 'Local';
+                        } else if (lowerKey.includes('away') || lowerKey.includes('visit')) {
+                            mercado = 'Ganador del Partido (1X2)';
+                            seleccion = report.header_partido?.titulo?.split(' vs ')[1] || 'Visita';
+                        } else if (lowerKey.includes('draw') || lowerKey.includes('empate')) {
+                            mercado = 'Ganador del Partido (1X2)';
+                            seleccion = 'Empate';
+                        } else if (lowerKey.includes('btts') || lowerKey.includes('ambos')) {
+                            mercado = 'Ambos Equipos Anotan (BTTS)';
+                            seleccion = 'Sí';
+                        } else if (lowerKey.includes('over')) {
+                            mercado = 'Total de Goles (Over/Under)';
+                            seleccion = 'Más de 2.5 Goles';
+                        } else if (lowerKey.includes('under')) {
+                            mercado = 'Total de Goles (Over/Under)';
+                            seleccion = 'Menos de 2.5 Goles';
+                        }
+
+                        betPicks.push({
+                            mercado,
+                            seleccion,
+                            probabilidad_calculada_porcentaje: val,
+                            cuota_actual: null,
+                            edge_porcentaje: 0,
+                            justificacion: {
+                                estadistica: "Probabilidad calculada por modelo Derbix.",
+                                contexto: "Análisis profundo completado.",
+                                tactica: "Valor matemático identificado."
+                            }
+                        });
+                    }
+                });
+                console.log(`[analysisService] ✅ Rescued ${betPicks.length} picks from probabilidades_derbix`);
+            }
+
+            // Log final pick count for debugging
+            console.log(`[analysisService] Final betPicks count: ${betPicks.length}`);
 
             return {
                 analysisText: report.resumen_ejecutivo?.titular || "Análisis V3 completado.",
@@ -383,50 +540,102 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                         seleccion_clave: betPicks[0]?.seleccion || 'N/A'
                     },
                     resumen_ejecutivo: {
-                        frase_principal: report.resumen_ejecutivo?.titular || '',
+                        frase_principal: report.resumen_ejecutivo?.titular ||
+                            report.resumen_ejecutivo?.frase_principal ||
+                            report.conclusion_final?.titular ||
+                            `Análisis completado - ${betPicks.length} predicciones`,
                         puntos_clave: [
                             report.analisis_profundo?.contexto_competitivo?.situacion_local,
                             report.analisis_profundo?.contexto_competitivo?.situacion_visitante,
-                            report.analisis_profundo?.contexto_competitivo?.implicaciones_partido
-                        ].filter(Boolean)
+                            report.analisis_profundo?.contexto_competitivo?.implicaciones_partido,
+                            // Fallback: Rescue from factor_psicologico
+                            report.analisis_profundo?.factor_psicologico?.presion_local,
+                            report.analisis_profundo?.factor_psicologico?.temperatura_mental,
+                            // Fallback: Rescue from lectura_de_mercado
+                            report.analisis_profundo?.lectura_de_mercado?.ineficiencia_detectada
+                        ].filter(Boolean).slice(0, 4) // Limit to 4 points
                     },
                     analisis_detallado: {
                         contexto_competitivo: {
                             titulo: 'Lo Que Se Juegan',
                             bullets: [
                                 report.analisis_profundo?.contexto_competitivo?.situacion_local,
-                                report.analisis_profundo?.contexto_competitivo?.situacion_visitante
+                                report.analisis_profundo?.contexto_competitivo?.situacion_visitante,
+                                // Fallback: Rescue from factor_psicologico
+                                report.analisis_profundo?.factor_psicologico?.presion_local,
+                                report.analisis_profundo?.factor_psicologico?.presion_visitante,
+                                report.analisis_profundo?.factor_psicologico?.temperatura_mental
                             ].filter(Boolean)
                         },
-                        analisis_tactico_formaciones: {
+                        estilo_y_tactica: {
                             titulo: 'Análisis Táctico Profundo',
                             bullets: [
                                 report.analisis_profundo?.analisis_tactico?.enfoque_local,
                                 report.analisis_profundo?.analisis_tactico?.enfoque_visitante,
-                                report.analisis_profundo?.analisis_tactico?.matchup_clave
+                                report.analisis_profundo?.analisis_tactico?.matchup_clave,
+                                // Fallback: Rescue from hallucinated keys
+                                report.analisis_profundo?.factor_clave,
+                                report.analisis_profundo?.clave_del_partido,
+                                // NEW: AI's actual structure (matchup_tactico is an OBJECT not a string)
+                                report.analisis_profundo?.matchup_tactico?.detalle,
+                                report.analisis_profundo?.matchup_tactico?.clave_del_partido,
+                                report.analisis_profundo?.matchup_tactico?.estilo
                             ].filter(Boolean)
                         },
                         analisis_escenarios: {
                             titulo: 'Escenarios Proyectados',
                             bullets: [
                                 report.escenarios_proyectados?.escenario_mas_probable?.descripcion,
-                                report.escenarios_proyectados?.escenario_alternativo?.descripcion
+                                report.escenarios_proyectados?.escenario_alternativo?.descripcion,
+                                // Fallback: Rescue from lectura_de_mercado
+                                report.analisis_profundo?.lectura_de_mercado?.analisis_cuotas,
+                                report.analisis_profundo?.lectura_de_mercado?.ineficiencia_detectada
                             ].filter(Boolean)
                         }
                     },
                     predicciones_finales: {
-                        detalle: betPicks.map((p: any) => ({
-                            mercado: p.mercado,
-                            seleccion: p.seleccion,
-                            probabilidad_estimado_porcentaje: p.probabilidad_calculada_porcentaje || 50,
-                            edge: p.edge_porcentaje || null,
-                            odds: p.cuota_actual || null,
-                            justificacion_detallada: {
-                                base_estadistica: p.justificacion?.estadistica || [],
-                                contexto_competitivo: [p.justificacion?.contexto, p.justificacion?.mercado].filter(Boolean),
-                                conclusion: p.justificacion?.tactica || 'Análisis V3 completado.'
-                            }
-                        }))
+                        detalle: betPicks.map((p: any, idx: number) => {
+                            // ═══════════════════════════════════════════════════════════════
+                            // UNIVERSAL FIELD NORMALIZER (Handles AI field name variations)
+                            // ═══════════════════════════════════════════════════════════════
+
+                            // Parse probability from any of the possible field names
+                            const probRaw = p.probabilidad_calculada_porcentaje
+                                || p.probabilidad_derbix
+                                || p.probabilidad
+                                || p.probability
+                                || "50%";
+                            const prob = typeof probRaw === 'string'
+                                ? parseFloat(probRaw.replace('%', '').replace('+', ''))
+                                : probRaw;
+
+                            // Parse edge from any of the possible field names
+                            const edgeRaw = p.edge_porcentaje || p.edge_calculado || p.edge || "0%";
+                            const edge = typeof edgeRaw === 'string'
+                                ? parseFloat(edgeRaw.replace('%', '').replace('+', ''))
+                                : edgeRaw;
+
+                            // Parse odds from any of the possible field names
+                            const odds = p.cuota_actual || p.cuota_referencia || p.odds || null;
+
+                            // Parse justification from any of the possible field names
+                            const justRaw = p.razonamiento || p.justificacion?.estadistica || p.justificacion || "Análisis IA completado";
+                            const justText = typeof justRaw === 'string' ? justRaw : JSON.stringify(justRaw);
+
+                            return {
+                                id: idx,
+                                mercado: p.mercado || "Mercado Especial",
+                                seleccion: p.seleccion || "Selección",
+                                probabilidad_estimado_porcentaje: prob || 50,
+                                edge: edge || null,
+                                odds: odds,
+                                justificacion_detallada: {
+                                    base_estadistica: [justText.substring(0, 200)],
+                                    contexto_competitivo: [p.tipo || "Análisis Profundo"],
+                                    conclusion: justText.length > 200 ? justText.substring(200) : 'Valor matemático identificado.'
+                                }
+                            };
+                        })
                     },
                     analisis_mercados_calculados: {
                         descripcion: "Análisis IA V3 - Motor Puro",
@@ -848,6 +1057,8 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                 fixture_id: v2Job?.fixture_id,
                 report_pre_jsonb: report,
                 summary_pre_text: reportV2.resumen_ejecutivo?.titular,
+                // DEBUG: Include etl_context for raw data inspection
+                etl_context: v2Job?.etl_context,
                 predictions: betPicks.map((p: any) => ({
                     id: p.id,
                     market: p.market,
@@ -979,7 +1190,8 @@ export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<V
             return {
                 analysisText: adaptedDashboardData.resumen_ejecutivo?.frase_principal || "Análisis V3 completado.",
                 dashboardData: adaptedDashboardData,
-                analysisRun: undefined
+                analysisRun: undefined,
+                payload: result.dashboardData.payload // Fix: Pass payload explicitely
             };
         }
 

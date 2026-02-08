@@ -81,6 +81,47 @@ serve(async (req) => {
         console.log(`[v2-create-job-sportmonks] Teams: ${homeTeam.name} vs ${awayTeam.name}`);
 
         // ═══════════════════════════════════════════════════════════════
+        // CRITICAL DATA QUALITY CHECK (State-Aware)
+        // ═══════════════════════════════════════════════════════════════
+        const hasStats = fixtureData.statistics && fixtureData.statistics.length > 0;
+        const hasLineups = fixtureData.lineups && fixtureData.lineups.length > 0;
+
+        // Check Match State (NS, LIVE, FT, etc.)
+        const stateCode = fixtureData.state?.state;
+        const isLiveOrFinished = ['LIVE', 'FT', 'AET', 'FT_PEN'].includes(stateCode);
+
+        console.log(`[v2-create-job-sportmonks] State: ${stateCode} (Live/Fin: ${isLiveOrFinished}) | Stats: ${hasStats} | Lineups: ${hasLineups}`);
+
+        // LOGIC:
+        // 1. If Pre-Match (NS), we ALLOW clean slate (we rely on History).
+        // 2. If Live/Finished, we EXPECT stats or lineups. If both missing -> Abort.
+
+        if (isLiveOrFinished && !hasStats && !hasLineups) {
+            console.warn(`[v2-create-job-sportmonks] ⚠️ INSUFFICIENT DATA for ${stateCode} match. Aborting.`);
+
+            await supabase
+                .from('analysis_jobs_v2')
+                .update({
+                    status: 'failed', // FIXED: Use 'failed' (valid enum) instead of 'insufficient_data'
+                    error_log: 'Aborted: Match is LIVE/FT but missing stats & lineups.'
+                })
+                .eq('id', jobId);
+
+            return new Response(JSON.stringify({
+                success: false,
+                error: 'INSUFFICIENT_DATA: Match is active/done but has no data.',
+                job_id: jobId,
+                status: 'failed'
+            }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        // For NS (Not Started), we proceed even if !hasStats (normal).
+
+
+        // ═══════════════════════════════════════════════════════════════
         // STAGE 2: FETCH ADDITIONAL DATA (parallel)
         // ═══════════════════════════════════════════════════════════════
         console.log('[v2-create-job-sportmonks] Stage 2: Fetching additional data (Deep Dive V4)...');
@@ -191,14 +232,22 @@ serve(async (req) => {
         // ═══════════════════════════════════════════════════════════════
         console.log('[v2-create-job-sportmonks] Stage 4: Updating job and calling analyzer...');
 
-        await supabase
+        const { error: updateError } = await supabase
             .from('analysis_jobs_v2')
             .update({
-                status: 'analyzing',
-                data_coverage: coverage,
-                coverage_pct: Math.round(coverageScore * 100)
+                status: 'interpret', // Valid status: pending, etl, features, interpret, done, failed
+                // Use correct column name: data_coverage_score (not data_coverage or coverage_pct)
+                data_coverage_score: Math.round(coverageScore * 100),
+                etl_context: normalizedPayload // SAVE CONTEXT for debugging & re-runs
             })
             .eq('id', jobId);
+
+        if (updateError) {
+            console.error('[v2-create-job-sportmonks] CRITICAL: Failed to save etl_context!', JSON.stringify(updateError));
+        } else {
+            console.log('[v2-create-job-sportmonks] etl_context saved successfully. Keys:', Object.keys(normalizedPayload).join(', '));
+            console.log('[v2-create-job-sportmonks] Payload size:', JSON.stringify(normalizedPayload).length, 'chars');
+        }
 
         // Call v3-ai-analyzer using SERVICE ROLE KEY via FETCH
         // DEBUG: Hardcoding key because Deno.env.get seems to be failing or returning invalid key
@@ -259,7 +308,8 @@ serve(async (req) => {
             duration_ms: duration,
             data_source: 'SportMonks',
             predictions_available: !!predictions,
-            value_bets_count: valueBets.length
+            value_bets_count: valueBets.length,
+            payload: normalizedPayload
         }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
