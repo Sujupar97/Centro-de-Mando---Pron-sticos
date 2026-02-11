@@ -1,177 +1,143 @@
+
 // supabase/functions/v2-generate-parlays/index.ts
-// SMART PARLAYS ENGINE V4: AI META-ANALYST (GEMINI PRO)
+// OPPORTUNITIES ENGINE V5: HIGH PROBABILITY SINGLES ONLY
 // Trigger: Manual (botón) o Automático
-// Description: Agente de IA que busca "Correlaciones Estratégicas" entre picks de alta confianza.
+// Description: Retorna proyecciones individuales con probabilidad > 70%.
+// NOTE: "Smart Parlays" logic has been DEPRECATED and REMOVED as per user request.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from '../_shared/cors.ts'
 
-const MODEL_NAME = 'gemini-1.5-pro-latest'; // Capacidad de razonamiento compleja superior
-const ENGINE_VERSION = '4.0.0-AI-CORRELATION';
-
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-    const startTime = Date.now();
+
+    const logs: string[] = [];
+    const log = (msg: string) => { console.log(msg); logs.push(msg); };
 
     try {
-        const logs: string[] = [];
-        const log = (msg: string) => { console.log(msg); logs.push(msg); };
-
         const sbUrl = Deno.env.get('SUPABASE_URL')!;
         const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-        const geminiKey = Deno.env.get('GEMINI_API_KEY');
-        if (!geminiKey) throw new Error('Missing GEMINI_API_KEY');
         const supabase = createClient(sbUrl, sbKey);
 
-        const { date, force_regenerate } = await req.json();
+        const { date } = await req.json();
         if (!date) throw new Error('date is required (YYYY-MM-DD)');
 
-        log(`[META-ANALYST] Starting analysis for date: ${date}`);
+        log(`[OPPORTUNITIES-V5] Fetching high probability picks (>70%) for date: ${date}`);
 
-        // ═══════════════════════════════════════════════════════════════
-        // PASO 1: RECOLECTAR "INTELIGENCIA" (CRUCE DE DATOS)
-        // ═══════════════════════════════════════════════════════════════
+        // 1. Obtener Matches VALIDOS y EN FECHA (daily_matches)
+        const { data: validMatches, error: matchesError } = await supabase
+            .from('daily_matches')
+            .select('api_fixture_id, home_team, away_team, league_name, match_time, home_team_logo, away_team_logo')
+            .gte('match_time', `${date}T00:00:00`)
+            .lt('match_time', `${date}T23:59:59`);
 
-        // ... (skipping unchanged parts) ...
+        if (matchesError) throw matchesError;
 
-        // ═══════════════════════════════════════════════════════════════
-        // PASO 2: LA LLAMADA AL META-ANALISTA (GEMINI)
-        // ═══════════════════════════════════════════════════════════════
-
-        // ... (skipping prompt definition) ...
-
-        log(`Sending prompt to Gemini (${prompt.length} chars)...`);
-
-        const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${geminiKey}`;
-        const aiResp = await fetch(genUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { responseMimeType: "application/json" }
-            })
-        });
-
-        if (!aiResp.ok) throw new Error(`Gemini API Error: ${aiResp.statusText}`);
-
-        const aiResult = await aiResp.json();
-        const aiText = aiResult.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (!aiText) throw new Error('Empty response from AI Agent');
-
-        // ROBUST JSON PARSING (Fix for 500 Errors)
-        let metaAnalysis;
-        try {
-            const cleanText = aiText.replace(/```json/g, '').replace(/```/g, '').trim();
-            metaAnalysis = JSON.parse(cleanText);
-        } catch (parseError) {
-            console.error('JSON Parse failed. Raw text:', aiText);
-            throw new Error('AI returned invalid JSON. Check logs.');
+        if (!validMatches || validMatches.length === 0) {
+            log(`[OPPORTUNITIES-V5] No matches found for date ${date}`);
+            return new Response(JSON.stringify({ success: true, message: 'No hay partidos programados.', parlays: [], singles: [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
-        log(`AI Generated ${metaAnalysis.parlays?.length || 0} parlays.`);
+        const validFixtureIds = validMatches.map(m => m.api_fixture_id);
 
-        // ═══════════════════════════════════════════════════════════════
-        // PASO 3: PERSISTENCIA Y FORMATEO
-        // ═══════════════════════════════════════════════════════════════
+        // 2. Obtener Picks Candidatos (>70% Prob)
+        // STRICT USER REQUIREMENT: > 70% Only.
+        const { data: picks, error: picksError } = await supabase
+            .from('value_picks_v2')
+            .select('*')
+            .in('fixture_id', validFixtureIds)
+            .gte('p_model', 0.70) // STRICT FILTER >= 70%
+            .order('p_model', { ascending: false });
 
-        // Limpiar anteriores
-        await supabase.from('smart_parlays_v2').delete().eq('date', date);
+        if (picksError) throw picksError;
 
-        const parlaysToInsert = [];
-
-        for (const p of metaAnalysis.parlays || []) {
-            // Reconstruir objetos completos
-            const pick1 = candidates.find(c => c?.id === p.picks_ids[0]);
-            const pick2 = candidates.find(c => c?.id === p.picks_ids[1]);
-
-            if (!pick1 || !pick2) continue;
-
-            const combinedProb = (parseFloat(pick1.prob) + parseFloat(pick2.prob)) / 200; // Average numeric
-            const impliedOdds = (pick1.odds * pick2.odds).toFixed(2);
-
-            parlaysToInsert.push({
-                date,
-                name: p.nombre_estrategia || "Smart Parlay IA",
-                description: p.tesis_meta_analisis, // New field for the meta-thesis
-                picks: [
-                    {
-                        fixture_id: pick1.fixture_id,
-                        market: pick1.pick, // Simplified for display
-                        selection: pick1.pick.split('-')[1]?.trim() || pick1.pick,
-                        p_model: parseFloat(pick1.prob) / 100,
-                        home_team: pick1.home_team,
-                        away_team: pick1.away_team,
-                        league: pick1.league,
-                        odds: pick1.odds
-                    },
-                    {
-                        fixture_id: pick2.fixture_id,
-                        market: pick2.pick,
-                        selection: pick2.pick.split('-')[1]?.trim() || pick2.pick,
-                        p_model: parseFloat(pick2.prob) / 100,
-                        home_team: pick2.home_team,
-                        away_team: pick2.away_team,
-                        league: pick2.league,
-                        odds: pick2.odds
-                    }
-                ],
-                combined_probability: combinedProb,
-                implied_odds: parseFloat(impliedOdds),
-                pick_count: 2,
-                confidence_tier: combinedProb > 0.85 ? 'ultra_safe' : 'safe',
-                status: 'active'
-            });
+        if (!picks || picks.length === 0) {
+            const msg = 'No hay picks >70% para esta fecha.';
+            log(`[OPPORTUNITIES-V5] ${msg}`);
+            return new Response(JSON.stringify({
+                success: true,
+                message: msg,
+                parlays: [],
+                singles: [], // Empty
+                debug_logs: logs
+            }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
-        if (parlaysToInsert.length > 0) {
-            await supabase.from('smart_parlays_v2').insert(parlaysToInsert);
-        }
+        log(`[OPPORTUNITIES-V5] Found ${picks.length} picks > 70%.`);
 
-        // Fallback Singles
-        const usedIds = new Set(metaAnalysis.parlays?.flatMap((x: any) => x.picks_ids));
-        const singles = candidates
-            .filter(c => !usedIds.has(c?.id))
-            .filter(c => c?.odds >= 1.50) // High Value singles only
-            .slice(0, 6)
-            .map(c => ({
-                id: c?.id,
-                fixture_id: c?.fixture_id,
-                job_id: c?.job_id,
-                market: c?.pick, // simplified
-                selection: c?.pick,
-                p_model: parseFloat(c?.prob || '0') / 100,
-                home_team: c?.home_team,
-                away_team: c?.away_team,
-                league: c?.league,
-                odds: c?.odds
-            }));
+        // 3. Hydrate with Report Data (Tesis, etc.)
+        const jobIds = [...new Set(picks.map(p => p.job_id))];
+        const { data: reports } = await supabase
+            .from('reports_v2')
+            .select('job_id, report_packet')
+            .in('job_id', jobIds);
 
-        const executionTime = Date.now() - startTime;
+        const singles = picks.map(p => {
+            const report = reports?.find(r => r.job_id === p.job_id);
+            const fixture = validMatches.find(m => String(m.api_fixture_id) === String(p.fixture_id));
+
+            if (!fixture) return null;
+
+            // Extract Thesis/Reasoning
+            let thesis = "Análisis estadístico estándar.";
+            let matchup = "No especificado.";
+
+            if (report && report.report_packet) {
+                const analysis = typeof report.report_packet === 'string'
+                    ? JSON.parse(report.report_packet)
+                    : report.report_packet;
+
+                thesis = analysis?.razonamiento_central?.tesis_principal
+                    || analysis?.analisis_profundo?.factor_psicologico
+                    || thesis;
+
+                matchup = analysis?.analisis_profundo?.matchup_clave || matchup;
+            }
+
+            const home = typeof fixture.home_team === 'object' ? fixture.home_team?.name || 'Local' : fixture.home_team;
+            const away = typeof fixture.away_team === 'object' ? fixture.away_team?.name || 'Away' : fixture.away_team;
+            const leagueRaw = fixture.league_name;
+            const league = typeof leagueRaw === 'object' ? leagueRaw?.name || 'Liga' : leagueRaw;
+
+            return {
+                id: p.id,
+                fixture_id: p.fixture_id,
+                job_id: p.job_id,
+                market: p.market,
+                selection: p.selection,
+                p_model: p.p_model,
+                home_team: home,
+                away_team: away,
+                league: league,
+                odds: p.odds,
+                logo_home: fixture.home_team_logo,
+                logo_away: fixture.away_team_logo,
+                // Extra metadata for UI if needed in future, but keeping clean for now
+                tesis: thesis,
+                tactica: matchup
+            };
+        }).filter(Boolean);
 
         return new Response(JSON.stringify({
             success: true,
             date,
-            stats: { generated: parlaysToInsert.length },
-            parlays: parlaysToInsert,
+            stats: { generated: 0, singles: singles.length },
+            parlays: [], // ALWAYS EMPTY
             singles: singles,
-            debug_logs: logs,
-            execution_time_ms: executionTime
+            debug_logs: logs
         }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
 
     } catch (e: any) {
-        console.error('[META-ANALYST] Error:', e);
-        // Returning 200 instead of 500 to allow the frontend to parse the "error" field
-        // and display it to the user instead of a generic "FunctionsHttpError".
+        console.error('[OPPORTUNITIES-V5] Error:', e);
         return new Response(JSON.stringify({
             success: false,
             error: e.message || "Unknown error",
-            parlays: [], // Return empty array so map() doesn't fail on frontend
+            parlays: [],
             singles: [],
-            debug_logs: [e.message]
+            debug_logs: [e.message, ...logs]
         }), {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }

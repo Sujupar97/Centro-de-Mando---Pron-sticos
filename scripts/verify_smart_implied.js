@@ -12,16 +12,15 @@ if (!supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-async function verifyOdds(date) {
+async function verifyImplied(date) {
     console.log(`Checking picks for ${date}...`);
 
-    // get high prob picks
+    // get high prob picks, WITHOUT odds_implied
     const { data: picks, error } = await supabase
         .from('value_picks_v2')
-        .select('id, fixture_id, market, selection, odds, odds_implied, p_model, decision')
+        .select('id, fixture_id, market, selection, odds, p_model, decision')
         .eq('decision', 'BET')
         .gte('p_model', 0.80)
-        // No odds filter here, just like in the update
         .limit(20);
 
     if (error) {
@@ -33,20 +32,23 @@ async function verifyOdds(date) {
 
     picks.forEach(p => {
         const rawOdds = p.odds;
-        const implied = p.odds_implied;
-        const validRaw = rawOdds > 1.01;
-        const validImplied = implied > 1.01;
+        let final = rawOdds;
+        let status = "MARKET";
 
-        let final = 0;
-        if (validRaw) final = rawOdds;
-        else if (validImplied) final = implied;
+        if (!final || final <= 1.01) {
+            // calculation logic
+            if (p.p_model > 0) {
+                final = parseFloat((1 / p.p_model).toFixed(2));
+                status = "CALCULATED";
+            } else {
+                final = 0;
+                status = "INVALID";
+            }
+        }
 
-        const status = final > 0 ? "VALID" : "INVALID";
-        const source = validRaw ? "MARKET" : (validImplied ? "IMPLIED" : "NONE");
-
-        console.log(`Pick ${p.id.slice(0, 8)}: Odds=${rawOdds}, Implied=${implied} -> Final=${final} (${status} via ${source})`);
+        console.log(`Pick ${p.id.slice(0, 8)}: Market=${rawOdds}, P_Model=${p.p_model} -> Final=${final} (${status})`);
     });
 }
 
 const targetDate = process.argv[2] || '2026-02-08';
-verifyOdds(targetDate);
+verifyImplied(targetDate);

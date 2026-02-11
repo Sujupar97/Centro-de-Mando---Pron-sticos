@@ -352,18 +352,21 @@ REGLAS DE ORO (A CUMPLIR O SERÁS APAGADO):
    - Si los datos son contradictorios, la decisión sabia es "NO_BET". La preservación del capital es tan importante como la ganancia.
 
 8. NIVEL DE CONFIANZA & PROBABILIDAD (Confidence Scoring - CUALITATIVO):
-   - IMPORTANTE: Para asignar >80%, NO BASTA con tener "más tiros" o "más posesión".
-   - Rango 80-89% (ALTA - Tactical Edge): Requiere identificar una VENTAJA TÁCTICA O PSICOLÓGICA ESPECÍFICA.
-     * Ejemplo Válido: "El equipo local es letal al contragolpe y el visitante deja espacios atrás por sus laterales ofensivos".
-     * Ejemplo Válido: "El visitante tiene baja moral tras perder el derbi y el local necesita ganar para entrar a copa".
-     * Ejemplo INVÁLIDO: "El local ha ganado 4 de sus últimos 5 partidos". (Eso es estadística, no análisis táctico).
-   - Rango 90-99% (MUY ALTA - Banker): Dominio total + Alineación Estelar + Rival con bajas clave o sin incentivos.
-   - Rango 70-79% (MEDIA-ALTA): Edge estadístico sólido, pero sin un "Matchup" táctico determinante.
-   - Rango 60-69% (MEDIA): Valor por cuota, riesgo calculado.
+   - IMPORTANTE: Buscamos VALOR REAL, no perfección.
+   - Rango 80-89% (ALTA - Statistical/Tactical Dominance):
+     * **NUEVA REGLA DE ORO:** Si un equipo tiene una **DOMINANCIA ESTADÍSTICA CLARA** (ej: Gana >80% de locales recientes, H2H >70% victorias), **ASIGNA >80%**.
+     * NO tengas miedo de dar confianza ALTA si los números son contundentes, aunque no haya una razón táctica compleja.
+     * Ejemplo Válido: "El local ha ganado 4 de sus últimos 5 partidos y el visitante pierde siempre fuera. Es una máquina de ganar." (ESTO ES VÁLIDO PARA >80%).
+     * Ejemplo Válido: "Ventaja táctica clara + Motivación alta".
+   - Rango 90-99% (MUY ALTA - Banker): Dominio total absoluto.
+   - Rango 70-79% (MEDIA-ALTA): Edge estadístico sólido.
+
+   **CONFIDENCE BOOST:** Si detectas 3 o más factores alineados (Forma + H2H + Motivación), **SUMA +5%** a tu probabilidad base. ¡Queremos encontrar las joyas ocultas!
 
    ESTRATEGIA DE OPORTUNIDADES MAESTRAS (SMART PARLAYS):
-   - Tu análisis será insumo para un "Meta-Analista".
-   - Asegúrate de que tu "razonamiento_central" explique CLARAMENTE el "Por qué" estratégico para que pueda ser correlacionado con otros partidos.
+   - Tu análisis será insumo para un sistema de selección riguroso.
+   - Si el pick es bueno (>75%), véndelo con convicción en tu conclusión.
+
 ♟️ MÓDULO DE ANÁLISIS TÁCTICO AVANZADO (TACTICAL ENGINE)
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -806,18 +809,118 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
 
         if (reportError) console.error('[V3-AI-ANALYZER] Error saving reports_v2:', reportError);
 
-        // 2. Sync to 'analisis' table (Legacy/Dashboard Cache)
+
+        // ═══════════════════════════════════════════════════════════════
+        // V5 PERMANENT FIX: ID RESOLUTION & PICKS SYNC
+        // ═══════════════════════════════════════════════════════════════
+
+        let finalFixtureId = fixture_id;
+
+        // Helper: Normalize for matching
+        const normalizeTeam = (n: string) => n.toLowerCase().replace(/fc|cf|sc|sporting|club|athletic|atletico|real|inter|ac|as/g, '').replace(/[^a-z0-9]/g, '').trim();
+
+        // 1. Try to resolve correct Daily Match ID
+        const { data: directMatch } = await supabase
+            .from('daily_matches')
+            .select('api_fixture_id, id')
+            .eq('api_fixture_id', fixture_id)
+            .maybeSingle();
+
+        if (directMatch) {
+            finalFixtureId = directMatch.api_fixture_id;
+        } else {
+            console.log(`[V3-FIX] ID ${fixture_id} not found in daily_matches. Attempting fuzzy name match...`);
+            // Search by date window (today +/- 2 days) and names
+            const today = new Date().toISOString().split('T')[0];
+            const homeNorm = normalizeTeam(homeTeam);
+            const awayNorm = normalizeTeam(awayTeam);
+
+            const { data: candidates } = await supabase
+                .from('daily_matches')
+                .select('api_fixture_id, home_team, away_team, match_date')
+                .gte('match_date', new Date(Date.now() - 86400000 * 2).toISOString()) // look back 2 days
+                .lte('match_date', new Date(Date.now() + 86400000 * 5).toISOString()); // look ahead 5 days
+
+            if (candidates) {
+                const best = candidates.find(c => {
+                    const h = normalizeTeam(c.home_team);
+                    const a = normalizeTeam(c.away_team);
+                    // Match if home and away are present in standard names or swapped (rare)
+                    return (h.includes(homeNorm) || homeNorm.includes(h)) &&
+                        (a.includes(awayNorm) || awayNorm.includes(a));
+                });
+
+                if (best) {
+                    console.log(`[V3-FIX] Resolved ${fixture_id} -> ${best.api_fixture_id} (${best.home_team} vs ${best.away_team})`);
+                    finalFixtureId = best.api_fixture_id;
+                } else {
+                    console.warn(`[V3-FIX] Failed to resolve ID for ${homeTeam} vs ${awayTeam}. Using original.`);
+                }
+            }
+        }
+
+        // 2. Insert Picks to value_picks_v2
+        if (betPicks.length > 0) {
+            console.log(`[V3-FIX] Syncing ${betPicks.length} picks to value_picks_v2 for ID ${finalFixtureId}`);
+
+            // Map confidence string to integer
+            const mapConf = (str: string) => {
+                if (!str) return 5;
+                const s = str.toUpperCase();
+                if (s.includes('MUY ALTA')) return 9;
+                if (s.includes('ALTA')) return 8;
+                if (s.includes('MEDIA')) return 6;
+                return 5;
+            };
+
+            const picksPayload = betPicks.map((p: any) => {
+                let prob = p.probabilidad_calculada_porcentaje || 50;
+                if (prob > 1) prob = prob / 100;
+
+                // Strict Enum Mapping
+                let decision = 'AVOID';
+                const d = (p.decision || '').toUpperCase();
+                // Basic rules: High prob or explicit BET
+                if (d === 'BET' || d === 'APOSTAR' || prob >= 0.70) {
+                    decision = 'BET';
+                }
+
+                return {
+                    job_id: job_id,
+                    fixture_id: finalFixtureId,
+                    market: p.mercado || "Mercado General",
+                    selection: p.seleccion || "Selección",
+                    p_model: prob,
+                    decision: decision,
+                    confidence: mapConf(p.nivel_confianza || p.confianza),
+                    engine_version: "V4-MASTERMIND",
+                    odds: p.cuota_actual || null,
+                    created_at: new Date().toISOString()
+                };
+            });
+
+            // Delete old picks for this fixture (prevent stale data)
+            await supabase.from('value_picks_v2').delete().eq('fixture_id', finalFixtureId);
+
+            // Insert new
+            const { error: pickErr } = await supabase.from('value_picks_v2').insert(picksPayload);
+            if (pickErr) console.error(`[V3-FIX] Error inserting picks: ${pickErr.message}`);
+            else console.log(`[V3-FIX] Successfully inserted picks.`);
+        }
+
+        // 3. Update Sync to 'analisis' using FINAL ID
         await supabase
             .from('analisis')
             .delete()
-            .eq('partido_id', fixture_id);
+            .eq('partido_id', finalFixtureId); // Use corrected ID
 
         await supabase
             .from('analisis')
             .insert({
-                partido_id: fixture_id,
+                partido_id: finalFixtureId, // Use corrected ID
                 resultado_analisis: { dashboardData }
             });
+
 
         // Update job to done
         await supabase
