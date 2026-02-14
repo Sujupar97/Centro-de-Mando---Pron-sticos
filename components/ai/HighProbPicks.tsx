@@ -1,6 +1,6 @@
 
 // components/ai/HighProbPicks.tsx
-// Componente para mostrar Oportunidades (Picks Individuales > 70%)
+// Componente para mostrar Oportunidades (Picks Individuales >= 80% con cuota real)
 // Updated: Removed Smart Parlays logic as per user request.
 
 import React, { useState, useEffect } from 'react';
@@ -32,6 +32,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
     const [singles, setSingles] = useState<HighProbPick[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [showLowOdds, setShowLowOdds] = useState(false);
 
     const loadPicks = async (forceRegenerate = false) => {
         setIsLoading(true);
@@ -65,6 +66,13 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
         loadPicks(false);
     }, [date]);
 
+    // Filtering Logic
+    const mainPicks = singles.filter(p => (p.odds || 0) >= 1.40);
+    const lowOddsPicks = singles.filter(p => (p.odds || 0) < 1.40);
+    
+    // Display Logic
+    const displayPicks = showLowOdds ? [...mainPicks, ...lowOddsPicks] : mainPicks;
+
     // Helpers UI
     const translateMarket = (market: string): string => {
         const translations: Record<string, string> = {
@@ -86,28 +94,44 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
     };
 
     if (isLoading) return <LoadingState />;
-    if (error) return <ErrorState error={error} onRetry={loadPicks} />;
+    if (error) return <ErrorState error={error} onRetry={() => loadPicks(true)} />;
 
     return (
         <div className="space-y-8">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                     <div className="p-3 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl shadow-lg shadow-blue-500/20">
                         <ChartBarIcon className="w-6 h-6 text-white" />
                     </div>
                     <div>
                         <h3 className="text-2xl font-bold text-white tracking-tight">Oportunidades de Valor</h3>
-                        <p className="text-sm text-slate-400">Picks Individuales (Prob {'>'} 70%)</p>
+                        <p className="text-sm text-slate-400">Picks Individuales (Prob {'\u2265'} 80%)</p>
                     </div>
                 </div>
-                <button onClick={() => loadPicks(true)} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors" title="Actualizar Oportunidades">
-                    <ArrowPathIcon className="w-5 h-5" />
-                </button>
+                
+                <div className="flex items-center gap-2">
+                    {lowOddsPicks.length > 0 && (
+                        <button 
+                            onClick={() => setShowLowOdds(!showLowOdds)}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
+                                showLowOdds 
+                                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50' 
+                                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                            }`}
+                        >
+                            {showLowOdds ? 'Ocultar' : 'Ver'} Cuotas Bajas ({lowOddsPicks.length})
+                        </button>
+                    )}
+                    
+                    <button onClick={() => loadPicks(true)} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors" title="Actualizar Oportunidades">
+                        <ArrowPathIcon className="w-5 h-5" />
+                    </button>
+                </div>
             </div>
 
-            {singles.length > 0 ? (
+            {displayPicks.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {singles.map((pick) => (
+                    {displayPicks.map((pick) => (
                         <SinglePickCard
                             key={pick.id}
                             pick={pick}
@@ -149,7 +173,7 @@ const EmptyState: React.FC<{ onRetry: () => void }> = ({ onRetry }) => (
         </div>
         <h3 className="text-xl font-bold text-white mb-2">Sin Oportunidades Claras</h3>
         <p className="text-slate-400 max-w-md mb-6 leading-relaxed">
-            No encontramos picks con <span className="text-amber-400 font-bold">Probabilidad {'>'} 70%</span> para esta fecha.
+            No encontramos picks con <span className="text-amber-400 font-bold">Probabilidad {'\u2265'} 80%</span> para esta fecha.
             Intenta revisar otras jornadas.
         </p>
         <button onClick={onRetry} className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white font-bold rounded-xl hover:bg-brand/80 transition-all shadow-lg hover:shadow-brand/20">
