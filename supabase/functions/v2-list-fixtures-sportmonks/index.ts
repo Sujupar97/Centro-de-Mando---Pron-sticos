@@ -39,7 +39,7 @@ serve(async (req) => {
                 .filter((g: any) => g.fixture?.id && g.teams?.home?.name && g.teams?.away?.name)
                 .map((g: any) => ({
                     api_fixture_id: g.fixture.id, // SportMonks ID
-                    league_id: g.league?.id || 0,
+                    league_id: null, // NULL to avoid FK violation (SportMonks league IDs ≠ allowed_leagues)
                     league_name: g.league?.name || 'Unknown',
                     home_team: g.teams.home.name,
                     home_team_logo: g.teams.home.logo || '',
@@ -54,9 +54,10 @@ serve(async (req) => {
                 }));
 
             if (dailyMatchRows.length > 0) {
+                // CRITICAL: DB constraint is UNIQUE(api_fixture_id, match_date) - must use composite key
                 const { error: upsertError } = await supabase
                     .from('daily_matches')
-                    .upsert(dailyMatchRows, { onConflict: 'api_fixture_id' });
+                    .upsert(dailyMatchRows, { onConflict: 'api_fixture_id,match_date' });
 
                 if (upsertError) {
                     console.error(`[v2-list-fixtures-sportmonks] daily_matches upsert error:`, upsertError.message);

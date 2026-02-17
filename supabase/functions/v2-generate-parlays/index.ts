@@ -39,11 +39,58 @@ serve(async (req) => {
             return jsonResponse({ success: true, message: 'No hay partidos programados.', parlays: [], singles: [], stats: { matches: 0 }, debug_logs: logs });
         }
 
-        const fixtureIds = dailyMatches.map((m: any) => m.api_fixture_id);
+        let fixtureIds = dailyMatches.map((m: any) => m.api_fixture_id);
         const dailyByFixture = new Map<number, any>();
         dailyMatches.forEach((m: any) => dailyByFixture.set(m.api_fixture_id, m));
 
-        log(`[OPP-V8.1] ${dailyMatches.length} daily matches, fixture_ids: [${fixtureIds.slice(0, 5).join(',')}${fixtureIds.length > 5 ? '...' : ''}]`);
+        log(`[OPP-V8.1] ${dailyMatches.length} daily matches from DB`);
+
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 1.5: Find ALL completed analyses for this date
+        // daily_matches may have dual IDs (SportMonks + API-Football) or
+        // may be missing SportMonks entries. Query jobs by created_at date
+        // to find any analyses not linked to daily_matches fixture_ids.
+        // ═══════════════════════════════════════════════════════════════
+        const { data: allDoneJobs } = await supabase
+            .from('analysis_jobs_v2')
+            .select('id, fixture_id, status, created_at')
+            .eq('status', 'done')
+            .gte('created_at', `${date}T00:00:00`)
+            .lt('created_at', `${date}T23:59:59+05:00`); // +5h buffer for Colombia timezone
+
+        if (allDoneJobs && allDoneJobs.length > 0) {
+            const jobFixtureIds = allDoneJobs.map((j: any) => j.fixture_id);
+            const missingIds = jobFixtureIds.filter((id: number) => !fixtureIds.includes(id));
+
+            if (missingIds.length > 0) {
+                log(`[OPP-V8.1] Found ${missingIds.length} analyses with fixture_ids NOT in daily_matches. Adding...`);
+
+                // Try to get team info from daily_matches for these IDs
+                const { data: extraMatches } = await supabase
+                    .from('daily_matches')
+                    .select('api_fixture_id, home_team, away_team, league_name, match_time, home_team_logo, away_team_logo')
+                    .in('api_fixture_id', missingIds);
+
+                if (extraMatches) {
+                    extraMatches.forEach((m: any) => {
+                        if (!dailyByFixture.has(m.api_fixture_id)) {
+                            dailyByFixture.set(m.api_fixture_id, m);
+                            fixtureIds.push(m.api_fixture_id);
+                        }
+                    });
+                    log(`[OPP-V8.1] Added ${extraMatches.length} extra matches from alternate IDs`);
+                }
+
+                // For IDs not even in daily_matches, try team names from reports_v2
+                const stillMissing = missingIds.filter((id: number) => !dailyByFixture.has(id));
+                if (stillMissing.length > 0) {
+                    fixtureIds.push(...stillMissing);
+                    log(`[OPP-V8.1] ${stillMissing.length} IDs have no daily_match entry (will extract team info from report)`);
+                }
+            }
+        }
+
+        log(`[OPP-V8.1] Total search IDs: ${fixtureIds.length} (daily_matches + jobs by date)`);
 
         // ═══════════════════════════════════════════════════════════════
         // STEP 2: DIRECT DATA ACCESS - Skip jobs table entirely
@@ -92,24 +139,29 @@ serve(async (req) => {
             .in('fixture_id', fixtureIds)
             .order('created_at', { ascending: false });
 
-        // 2D: FALLBACK - If no reports found by fixture_id, try via job_id
-        // This covers historical reports saved with the original (unresolved) fixture_id
-        if ((!reports || reports.length === 0) && jobs && jobs.length > 0) {
-            // Only use the LATEST job per fixture to avoid stale data
+        // 2D: FALLBACK - If fewer reports than done jobs, try via job_id
+        const doneJobCount = allDoneJobs?.length || (jobs || []).filter((j: any) => j.status === 'done').length;
+        if ((reports?.length || 0) < doneJobCount && (allDoneJobs || jobs) ) {
+            const jobSource = allDoneJobs || (jobs || []).filter((j: any) => j.status === 'done');
             const latestJobPerFixture = new Map<number, string>();
-            jobs.forEach((j: any) => {
+            jobSource.forEach((j: any) => {
                 if (!latestJobPerFixture.has(j.fixture_id)) latestJobPerFixture.set(j.fixture_id, j.id);
             });
             const jobIds = Array.from(latestJobPerFixture.values());
-            log(`[OPP-V8.1] No reports by fixture_id. Trying fallback via ${jobIds.length} latest job_ids...`);
+            log(`[OPP-V8.1] Only ${reports?.length || 0} reports for ${doneJobCount} done jobs. Trying fallback via ${jobIds.length} job_ids...`);
             const { data: reportsByJob } = await supabase
                 .from('reports_v2')
                 .select('job_id, fixture_id, report_packet, created_at')
                 .in('job_id', jobIds)
                 .order('created_at', { ascending: false });
             if (reportsByJob && reportsByJob.length > 0) {
-                reports = reportsByJob;
-                log(`[OPP-V8.1] Fallback SUCCESS: found ${reports.length} reports via job_id`);
+                // Merge: add any reports not already found
+                const existingJobIds = new Set((reports || []).map((r: any) => r.job_id));
+                const newReports = reportsByJob.filter((r: any) => !existingJobIds.has(r.job_id));
+                if (newReports.length > 0) {
+                    reports = [...(reports || []), ...newReports];
+                    log(`[OPP-V8.1] Fallback: added ${newReports.length} extra reports via job_id (total: ${reports.length})`);
+                }
             }
         }
 
@@ -146,9 +198,32 @@ serve(async (req) => {
                         if (dailyMatch) resolvedFixtureId = jobFixtureId;
                     }
                 }
+                // Last resort: extract team info from report_packet itself
                 if (!dailyMatch) {
-                    log(`[OPP-V8.1] Report fixture_id ${report.fixture_id} not found in daily_matches`);
-                    continue;
+                    let packet: any;
+                    try {
+                        packet = typeof report.report_packet === 'string'
+                            ? JSON.parse(report.report_packet)
+                            : report.report_packet;
+                    } catch { packet = null; }
+
+                    const titulo = packet?.header_partido?.titulo || packet?.meta?.match_title || '';
+                    const parts = titulo.split(' vs ');
+                    if (parts.length === 2) {
+                        dailyMatch = {
+                            api_fixture_id: report.fixture_id,
+                            home_team: parts[0].trim(),
+                            away_team: parts[1].trim(),
+                            league_name: packet?.meta?.league_name || 'Unknown',
+                            home_team_logo: '',
+                            away_team_logo: ''
+                        };
+                        dailyByFixture.set(report.fixture_id, dailyMatch);
+                        log(`[OPP-V8.1] Extracted team info from report: ${dailyMatch.home_team} vs ${dailyMatch.away_team}`);
+                    } else {
+                        log(`[OPP-V8.1] Report fixture_id ${report.fixture_id} - no team info available, skipping`);
+                        continue;
+                    }
                 }
 
                 let packet: any;
