@@ -33,10 +33,13 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showLowOdds, setShowLowOdds] = useState(false);
+    const [infoMessage, setInfoMessage] = useState<string | null>(null);
+    const [inProgress, setInProgress] = useState(0);
 
     const loadPicks = async (forceRegenerate = false) => {
         setIsLoading(true);
         setError(null);
+        setInfoMessage(null);
 
         try {
             console.log(`[HighProbPicks] Requesting picks for date: ${date} (Force: ${forceRegenerate})`);
@@ -53,6 +56,12 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
 
             console.log('[HighProbPicks] Response:', data.stats);
             setSingles(data.singles || []);
+            setInProgress(data.stats?.in_progress || 0);
+
+            // Show info message if no picks but analysis exists or is in progress
+            if ((!data.singles || data.singles.length === 0) && data.message) {
+                setInfoMessage(data.message);
+            }
 
         } catch (err: any) {
             console.error('[HighProbPicks] Error:', err);
@@ -66,9 +75,9 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
         loadPicks(false);
     }, [date]);
 
-    // Filtering Logic
-    const mainPicks = singles.filter(p => (p.odds || 0) >= 1.40);
-    const lowOddsPicks = singles.filter(p => (p.odds || 0) < 1.40);
+    // Filtering Logic: picks with odds >= 1.40 are "main", odds < 1.40 OR no odds are "low/complementary"
+    const mainPicks = singles.filter(p => p.odds && p.odds >= 1.40);
+    const lowOddsPicks = singles.filter(p => !p.odds || p.odds < 1.40);
     
     // Display Logic
     const displayPicks = showLowOdds ? [...mainPicks, ...lowOddsPicks] : mainPicks;
@@ -141,7 +150,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
                     ))}
                 </div>
             ) : (
-                <EmptyState onRetry={() => loadPicks(true)} />
+                <EmptyState onRetry={() => loadPicks(true)} message={infoMessage} inProgress={inProgress} />
             )}
         </div>
     );
@@ -166,18 +175,25 @@ const ErrorState: React.FC<{ error: string, onRetry: () => void }> = ({ error, o
     </div>
 );
 
-const EmptyState: React.FC<{ onRetry: () => void }> = ({ onRetry }) => (
+const EmptyState: React.FC<{ onRetry: () => void; message?: string | null; inProgress?: number }> = ({ onRetry, message, inProgress }) => (
     <div className="flex flex-col items-center justify-center py-20 text-center">
         <div className="w-24 h-24 bg-slate-800/50 rounded-full flex items-center justify-center mb-6 border border-white/5">
-            <TrophyIcon className="w-12 h-12 text-slate-600" />
+            {inProgress && inProgress > 0 ? (
+                <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+                <TrophyIcon className="w-12 h-12 text-slate-600" />
+            )}
         </div>
-        <h3 className="text-xl font-bold text-white mb-2">Sin Oportunidades Claras</h3>
+        <h3 className="text-xl font-bold text-white mb-2">
+            {inProgress && inProgress > 0 ? 'Análisis en Progreso...' : 'Sin Oportunidades Claras'}
+        </h3>
         <p className="text-slate-400 max-w-md mb-6 leading-relaxed">
-            No encontramos picks con <span className="text-amber-400 font-bold">Probabilidad {'\u2265'} 80%</span> para esta fecha.
-            Intenta revisar otras jornadas.
+            {message || (
+                <>No encontramos picks con <span className="text-amber-400 font-bold">Probabilidad {'\u2265'} 80%</span> para esta fecha. Intenta revisar otras jornadas.</>
+            )}
         </p>
         <button onClick={onRetry} className="flex items-center gap-2 px-5 py-2.5 bg-brand text-white font-bold rounded-xl hover:bg-brand/80 transition-all shadow-lg hover:shadow-brand/20">
-            <ArrowPathIcon className="w-4 h-4" /> Actualizar
+            <ArrowPathIcon className="w-4 h-4" /> {inProgress && inProgress > 0 ? 'Verificar de Nuevo' : 'Actualizar'}
         </button>
     </div>
 );
@@ -210,8 +226,10 @@ const SinglePickCard: React.FC<{
                     <p className="text-white font-bold text-sm">{pick.selection}</p>
                 </div>
                 <div className="text-right">
-                    <span className="block text-xl font-black text-amber-400">@{pick.odds ? pick.odds.toFixed(2) : '-.--'}</span>
-                    <span className="text-[10px] text-slate-500 uppercase">Cuota</span>
+                    <span className={`block text-xl font-black ${pick.odds ? 'text-amber-400' : 'text-slate-500'}`}>
+                        {pick.odds ? `@${pick.odds.toFixed(2)}` : 'Sin cuota'}
+                    </span>
+                    <span className="text-[10px] text-slate-500 uppercase">{pick.odds ? 'Cuota' : 'Estimada'}</span>
                 </div>
             </div>
 

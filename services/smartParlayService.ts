@@ -50,7 +50,7 @@ export async function generateSmartParlays(date: string): Promise<GenerateParlay
     try {
         console.log(`[SmartParlays] Generating for date: ${date}`);
 
-        const { data, error } = await supabase.functions.invoke('v2-generate-parlays', {
+        const { data, error } = await supabase.functions.invoke('v3-smart-parlays', {
             body: { date }
         });
 
@@ -60,6 +60,24 @@ export async function generateSmartParlays(date: string): Promise<GenerateParlay
         }
 
         console.log('[SmartParlays] Result:', data);
+
+        // Adapter for v3 which returns the object directly
+        if (data && data.id) {
+            return {
+                success: true,
+                date: date,
+                stats: {
+                    jobs_found: 0, // Not returned by v3 yet
+                    picks_found: 0,
+                    picks_enriched: 0,
+                    parlays_2_picks: 0,
+                    parlays_3_picks: 1, // We generated 1
+                    total_generated: 1
+                },
+                parlays: [data]
+            };
+        }
+
         return data as GenerateParlaysResult;
 
     } catch (e: any) {

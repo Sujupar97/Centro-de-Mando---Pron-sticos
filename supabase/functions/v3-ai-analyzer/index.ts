@@ -7,8 +7,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import JSON5 from "https://esm.sh/json5@2.2.3"
 import { corsHeaders } from '../_shared/cors.ts'
 
-const ENGINE_VERSION = '3.0.0';
-const PROMPT_VERSION = '3.0.0';
+const ENGINE_VERSION = '8.0.0';
+const PROMPT_VERSION = '8.0.0';
 
 // Lista completa de mercados a evaluar
 const MARKETS_CATALOG = `
@@ -149,7 +149,7 @@ serve(async (req) => {
 
     const startTime = Date.now();
     const GEMINI_MODEL = 'gemini-3-pro-preview';
-    const ENGINE_VERSION = 'V4-MASTERMIND';
+    const ENGINE_VERSION = 'V8-MASTERMIND';
 
     try {
         const { job_id, fixture_id, payload } = await req.json();
@@ -182,10 +182,8 @@ serve(async (req) => {
         const awayTeam = match.teams?.away?.name || 'Visitante';
         const leagueName = match.competition?.name || 'Liga';
 
-        // V6 UPGRADE: Format matches separated by venue (HOME vs AWAY)
-        // Uses was_home field from normalizeDetailedMatchHistory
+        // V8 UPGRADE: Format matches with events (minute-by-minute)
         const formatMatchForPrompt = (m: any, index: number) => {
-            // Determine correct result from team's perspective
             const teamWon = m.was_home
                 ? m.score_home > m.score_away
                 : m.score_away > m.score_home;
@@ -193,39 +191,51 @@ serve(async (req) => {
                 ? m.score_home < m.score_away
                 : m.score_away < m.score_home;
             const resultText = teamWon ? '✓ VICTORIA' : teamLost ? '✗ DERROTA' : '= EMPATE';
+            const venueTag = m.was_home ? '(LOCAL)' : '(VISITANTE)';
 
-            // Score from team's perspective
             const teamGoals = m.was_home ? m.score_home : m.score_away;
             const oppGoals = m.was_home ? m.score_away : m.score_home;
 
             const d = m.details || {};
             const statsLine = `   📊 Stats: ${d.possession || '?'}% Pos | ${d.shots_on_target || 0}/${d.shots_total || 0} Tiros | ${d.corners || 0} Corners | ${d.saves || 0} Atajadas`;
             const oppStatsLine = `   📊 Rival: ${d.opponent_possession || '?'}% Pos | ${d.opponent_shots_on_target || 0}/${d.opponent_shots || 0} Tiros | ${d.opponent_corners || 0} Corners`;
-            const cardsLine = `   🟨 Disciplina: ${d.yellow_cards || 0} Amarillas | ${d.red_cards || 0} Rojas | ${d.fouls || 0} Faltas`;
-            const eventsLine = d.goal_timings ? `   ⚽ Minutos de gol: ${d.goal_timings}` : '';
+            const cardsLine = `   🟨 Disciplina: ${d.yellow_cards || 0} Amarillas | ${d.red_cards || 0} Rojas | ${d.fouls || 0} Faltas | ${d.free_kicks || 0} T.Libres`;
             const formLine = `   🎯 Formación: ${d.formation_used || '?'} (vs ${d.opponent_formation || '?'})`;
 
+            // V8: Half-time score
+            const htLine = (d.ht_score_team !== null && d.ht_score_team !== undefined)
+                ? `   ⏱️ 1er Tiempo: ${d.ht_score_team}-${d.ht_score_opponent}`
+                : '';
+
+            // V8: Detailed events
+            let eventsBlock = '';
+            if (d.events && Array.isArray(d.events) && d.events.length > 0) {
+                const eventLines = d.events.slice(0, 8).map((e: any) => {
+                    const icon = e.type === 'Goal' ? '⚽' : e.type === 'Yellow Card' ? '🟨' : e.type === 'Red Card' ? '🟥' : e.type === 'Substitution' ? '🔄' : '📌';
+                    return `      ${e.minute}' ${icon} ${e.type} - ${e.player}${e.detail ? ` (${e.detail})` : ''}${e.related_player ? ` ← ${e.related_player}` : ''}`;
+                }).join('\n');
+                eventsBlock = `   ⚡ Eventos:\n${eventLines}`;
+            } else if (d.goal_timings) {
+                eventsBlock = `   ⚽ Minutos de gol: ${d.goal_timings}`;
+            }
+
             const lines = [
-                `${index + 1}. ${m.date} vs ${m.opponent_name || m.away_team}: ${teamGoals}-${oppGoals} ${resultText}`,
+                `${index + 1}. ${m.date} vs ${m.opponent_name || m.away_team}: ${teamGoals}-${oppGoals} ${resultText} ${venueTag}`,
                 statsLine,
                 oppStatsLine,
                 cardsLine,
                 formLine
             ];
-            if (eventsLine) lines.push(eventsLine);
+            if (htLine) lines.push(htLine);
+            if (eventsBlock) lines.push(eventsBlock);
 
             return lines.join('\n');
         };
 
-        const formatDeepStatsByVenue = (matches: any[], teamName: string) => {
-            if (!matches || matches.length === 0) return 'Sin datos detallados disponibles.';
+        // V8: Format venue-specific stats with summary
+        const formatVenueSection = (matches: any[], label: string) => {
+            if (!matches || matches.length === 0) return `${label}: Sin datos disponibles.\n`;
 
-            // Separate by venue
-            const homeMatches = matches.filter((m: any) => m.was_home === true);
-            const awayMatches = matches.filter((m: any) => m.was_home === false);
-
-            // Calculate venue stats
-            // Calculate venue stats - GLOBAL vs RECENT
             const calcStats = (arr: any[]) => {
                 const wins = arr.filter(m => (m.was_home ? m.score_home > m.score_away : m.score_away > m.score_home)).length;
                 const draws = arr.filter(m => m.score_home === m.score_away).length;
@@ -235,26 +245,46 @@ serve(async (req) => {
                 return { wins, draws, losses, goalsFor, goalsAgainst, total: arr.length };
             };
 
-            const globalStats = calcStats(matches);
-
-            // RECENT FORM (Last 6 matches only)
-            const recentMatches = matches.slice(0, 6);
-            const recentStats = calcStats(recentMatches);
-
-            let output = '';
-
-            // Header with Global & Recent stats
-            output += `\n📊 ESTADÍSTICAS GLOBALES (${matches.length} partidos): ${globalStats.wins}V-${globalStats.draws}E-${globalStats.losses}D | GF:${globalStats.goalsFor} GA:${globalStats.goalsAgainst}`;
-            output += `\n🔥 FORMA RECIENTE (Últimos 6): ${recentStats.wins}V-${recentStats.draws}E-${recentStats.losses}D | GF:${recentStats.goalsFor} GA:${recentStats.goalsAgainst}\n`;
-
-            // List matches (Show last 10)
-            output += matches.slice(0, 10).map((m, i) => formatMatchForPrompt(m, i)).join('\n\n');
-
+            const stats = calcStats(matches);
+            let output = `\n${label} (${matches.length} partidos): ${stats.wins}V-${stats.draws}E-${stats.losses}D | GF:${stats.goalsFor} GA:${stats.goalsAgainst} | Prom: ${(stats.goalsFor / matches.length).toFixed(1)} GF/p, ${(stats.goalsAgainst / matches.length).toFixed(1)} GA/p\n\n`;
+            output += matches.map((m, i) => formatMatchForPrompt(m, i)).join('\n\n');
             return output;
         };
 
-        const deepHome = `\n📍 ARSENAL (LOCAL)\n` + formatDeepStatsByVenue(datasets.home_team_last40?.all?.filter((m: any) => m.was_home === true) || [], homeTeam);
-        const deepAway = `\n✈️ ${awayTeam} (VISITANTE)\n` + formatDeepStatsByVenue(datasets.away_team_last40?.all?.filter((m: any) => m.was_home === false) || [], awayTeam);
+        // V8: Format general form (simple, lightweight)
+        const formatGeneralForm = (form: any[]) => {
+            if (!form || form.length === 0) return 'Sin forma general disponible.';
+            const formString = form.slice(0, 30).map(m => m.result).join('');
+            const wins = form.filter(m => m.result === 'W').length;
+            const draws = form.filter(m => m.result === 'D').length;
+            const losses = form.filter(m => m.result === 'L').length;
+            return `Forma (${form.length}p): ${formString} | ${wins}W-${draws}D-${losses}L\n` +
+                form.slice(0, 10).map(m => `  ${m.date} ${m.was_home ? '🏠' : '✈️'} vs ${m.opponent}: ${m.score} ${m.result}${m.formation ? ` (${m.formation})` : ''}`).join('\n');
+        };
+
+        // V8: Use new structured datasets (home_team / away_team with as_home/as_away)
+        const homeData = datasets.home_team || {};
+        const awayData = datasets.away_team || {};
+
+        // Fallback to old format if V8 structure not present
+        const homeAsHome = homeData.as_home || datasets.home_team_last40?.all?.filter((m: any) => m.was_home === true) || [];
+        const homeAsAway = homeData.as_away || datasets.home_team_last40?.all?.filter((m: any) => m.was_home === false) || [];
+        const awayAsHome = awayData.as_home || datasets.away_team_last40?.all?.filter((m: any) => m.was_home === true) || [];
+        const awayAsAway = awayData.as_away || datasets.away_team_last40?.all?.filter((m: any) => m.was_home === false) || [];
+
+        const deepHome = `\n📍 ${homeTeam} COMO LOCAL:\n` + formatVenueSection(homeAsHome, `📍 Como LOCAL`) +
+            `\n\n✈️ ${homeTeam} COMO VISITANTE:\n` + formatVenueSection(homeAsAway, `✈️ Como VISITANTE`) +
+            (homeData.general_form ? `\n\n📋 FORMA GENERAL ${homeTeam}:\n` + formatGeneralForm(homeData.general_form) : '');
+
+        const deepAway = `\n📍 ${awayTeam} COMO LOCAL:\n` + formatVenueSection(awayAsHome, `📍 Como LOCAL`) +
+            `\n\n✈️ ${awayTeam} COMO VISITANTE:\n` + formatVenueSection(awayAsAway, `✈️ Como VISITANTE`) +
+            (awayData.general_form ? `\n\n📋 FORMA GENERAL ${awayTeam}:\n` + formatGeneralForm(awayData.general_form) : '');
+
+        // V8: External context from Perplexity
+        const externalContext = payload.external_context;
+        const externalContextText = externalContext
+            ? `\n>>> CONTEXTO EXTERNO (Noticias Recientes - Últimos 7 días)\n${externalContext.raw_text || 'Sin contexto externo disponible.'}\n${externalContext.citations?.length ? `\nFuentes: ${externalContext.citations.join(', ')}` : ''}`
+            : '\n>>> CONTEXTO EXTERNO: No disponible (Perplexity no configurado o sin resultados).';
 
         // H2H Rich Format
         const h2hText = datasets.h2h?.map((m: any) => {
@@ -275,6 +305,7 @@ serve(async (req) => {
             oddsText += fmtSection('PRINCIPALES (1X2, DC)', odds.MAIN);
             oddsText += fmtSection('GOLES (O/U)', odds.GOALS);
             oddsText += fmtSection('EQUIPOS (BTTS, Team Score)', odds.TEAMS);
+            oddsText += fmtSection('🎯 MERCADOS COMBINADOS (Result+BTTS, Result+O/U, HT/FT)', odds.COMBOS);
             oddsText += fmtSection('POR MITADES', odds.HALVES);
             oddsText += fmtSection('CORNERS', odds.CORNERS);
             oddsText += fmtSection('OTROS (ASIATICOS/ESPECIALES)', odds.OTHERS); // Include ALL odds
@@ -284,130 +315,248 @@ serve(async (req) => {
             oddsText = 'SIN CUOTAS VIVAS (USAR FALLBACK)';
         }
 
-        // CONSTRUIR EL SUPER-PROMPT V4 (MASTERMIND)
+        // CONSTRUIR EL SUPER-PROMPT V8 (MASTERMIND + EVENTS + CONTEXT)
         // ═══════════════════════════════════════════════════════════════
         const prompt = `
 ════════════════════════════════════════════════════════════════════════════════
-🧠 SISTEMA DERBIX V5 [MASTERMIND EDITION] - MOTOR DE ANÁLISIS DE ÉLITE
+🧠 SISTEMA DERBIX V8 [DUAL INTELLIGENCE + EVENTS + CONTEXT] - MOTOR DE ANÁLISIS DE ÉLITE
 Modelo: ${GEMINI_MODEL}
 Fecha Sistema: ${new Date().toISOString().split('T')[0]}
 ════════════════════════════════════════════════════════════════════════════════
 
 ERES LA MENTE MAESTRA DE DERBIX.
-No eres un simple asistente. Eres un estratega deportivo de clase mundial, un matemático experto en probabilidades y un psicólogo deportivo, todo en uno. Tu objetivo no es "acertar", es DESTRUIR el mercado encontrando ineficiencias matemáticas en las cuotas.
+No eres un simple asistente. Eres un estratega deportivo de clase mundial que combina MATEMÁTICAS con INTELIGENCIA DE PARTIDO. Tu objetivo: encontrar ineficiencias en las cuotas que los números solos NO pueden detectar.
+
+⚠️ PRINCIPIO FUNDAMENTAL V6 — LA REGLA DEL 50/50:
+Tu análisis se divide en DOS PILARES con IGUAL PESO:
+
+┌─────────────────────────────────┬─────────────────────────────────┐
+│  📊 PILAR A: INTELIGENCIA       │  🧠 PILAR B: INTELIGENCIA       │
+│     ESTADÍSTICA (50%)           │     DE PARTIDO (50%)           │
+│                                 │                                 │
+│  Forma reciente, H2H,          │  Contexto competitivo, táctica, │
+│  correlaciones, cuotas          │  psicología, escenarios,       │
+│                                 │  factores invisibles           │
+└─────────────────────────────────┴─────────────────────────────────┘
+
+Los NÚMEROS son solo MITAD de la historia. Un equipo que ganó 5/5 puede
+perder si: viene de viaje intercontinental, juega con suplentes porque
+tiene final de Copa en 3 días, cambió de DT hace 1 semana, o el rival
+tiene paternidad psicológica histórica sobre ellos.
 
 CONSTANTES DE OPERACIÓN:
-- CUOTA_MINIMA_ACEPTABLE = 1.40
-- ESTRATEGIA_RIESGO = "Calculada"
-- IMPORTANTE: PRIORIDAD EXTREMA A LA RECENCIA (Últimos 30-45 días)
-- DEFINICIÓN DE EDGE: "Valor/Edge" = (Tu Probabilidad Estimada % - Probabilidad Implícita del Mercado %).
+- PESO_ESTADISTICO = 50%
+- PESO_INTELIGENCIA_PARTIDO = 50%
+- DEFINICIÓN DE EDGE: (Tu Probabilidad % - Probabilidad Implícita del Mercado %).
+
+SISTEMA DE CUOTAS ESCALONADAS (reemplaza el mínimo fijo):
+┌──────────────┬──────────────┬──────────────────┬─────────────────────────────────┐
+│ Tipo         │ Cuota Mínima │ Confianza Mínima │ Uso                             │
+├──────────────┼──────────────┼──────────────────┼─────────────────────────────────┤
+│ 🔒 BANKER    │ 1.20         │ 85%+             │ Pick seguro, ideal para parlays │
+│ 📊 ESTÁNDAR  │ 1.40         │ 75%+             │ Pick normal con edge claro      │
+│ 💎 VALOR     │ 1.60+        │ 70%+             │ Alta cuota con ineficiencia      │
+│ 🎯 COMBO     │ 1.50+        │ 80%+             │ Mercado combinado               │
+└──────────────┴──────────────┴──────────────────┴─────────────────────────────────┘
+- IMPORTANTE: Un pick BANKER (cuota 1.20-1.39) ES VÁLIDO si la confianza es ≥85%.
+  Ejemplo: "Double Chance: Home/Draw" @ 1.22 con 88% confianza = PICK BANKER VÁLIDO.
+- NO descartes picks de alta probabilidad solo porque la cuota es baja.
 
 REGLAS DE ORO (A CUMPLIR O SERÁS APAGADO):
-1. **NO INVENTES DATOS**. Usa SOLO la información proporcionada en el bloque de contexto. Si no hay datos de corners, NO menciones corners.
-2. **TEMPORALIDAD ESTRICTA**: Revisa SIEMPRE la fecha de los partidos. 
-   - Un partido de hace 3 meses NO define la forma actual.
-   - Si citas un partido antiguo (más de 45 días), DEBES mencionar la fecha explícitamente (ej: "En Noviembre...").
-   - La sección "FORMA RECIENTE" (últimos 6 partidos) es la sagrada escritura de la forma actual.
-3. **PESO DE LA EVIDENCIA**:
-   - Forma Reciente (últimos 5 partidos) > Forma Global (últimos 40).
-   - H2H Reciente (últimos 2 años) > H2H Antiguo.
-4. **LENGUAJE PREISO Y AGRESIVO**: Habla como un apostador profesional ("Shark"). Usa términos como "Ineficiencia de mercado", "Valor esperado positivo", "Trampa de las bookies".
-5. **JUSTIFICACIÓN TÁCTICA**: No digas "van a ganar". Di "El bloque bajo del equipo A anula la velocidad de los extremos del equipo B".
+1. **NO INVENTES DATOS**. Usa SOLO la información proporcionada. Si no hay datos de corners, NO menciones corners.
+2. **TEMPORALIDAD ESTRICTA**: Un partido de hace 3 meses NO define la forma actual.
+3. **EQUILIBRIO OBLIGATORIO**: Tu razonamiento DEBE contener argumentos de AMBOS pilares. Un análisis puramente estadístico es INCOMPLETO e INACEPTABLE.
+4. **LENGUAJE DE SHARK**: Usa términos como "Ineficiencia de mercado", "Valor esperado positivo", "Trampa de las bookies".
+5. **JUSTIFICACIÓN DUAL**: No digas "van a ganar porque ganaron 5 de 5". Di "La dominancia estadística (5/5) se refuerza con la urgencia de clasificar + la ventaja táctica del bloque bajo contra el rival ofensivo".
 
 ════════════════════════════════════════════════════════════════════════════════
-🧬 METODOLOGÍA DERBIX EXTENDIDA (PROTOCOLO DE EJECUCIÓN OBLIGATORIO)
+📊 PILAR A: INTELIGENCIA ESTADÍSTICA (50% del análisis)
 ════════════════════════════════════════════════════════════════════════════════
 
-1. ABSORCIÓN TOTAL (Deep Ingest):
-   - CRÚZALO TODO: Tienes acceso a TIROS, ATAJADAS, CORNERS, TARJETAS y MINUTOS DE GOLES. ÚSALOS.
-   - Si un equipo gana pero el portero hizo 12 atajadas (Ver Stats), fue suerte, no dominancia.
-   - Analiza los "Goal Timings": ¿Marcan siempre en el 2do tiempo? Busca valor en "Gol en 2da Mitad".
+1. ABSORCIÓN DE DATOS (Deep Ingest):
+   - CRÚZALO TODO: TIROS, ATAJADAS, CORNERS, TARJETAS, MINUTOS DE GOLES.
+   - Si un equipo gana pero el portero hizo 12 atajadas, fue SUERTE, no dominancia. Eso BAJA tu confianza.
+   - "Goal Timings": ¿Marcan siempre en el 2do tiempo? → Valor en "Gol en 2da Mitad".
 
-2. CORRELACIÓN MULTIVARIABLE (The Invisible Link):
-   - Busca patrones de "Causa-Efecto".
-   - Ejemplo: "Cuando el Equipo A juega contra defensas de 5 hombres (5-3-2), su promedio de gol baja un 40%".
-   - Correlaciona el Árbitro con el estilo de juego: (Árbitro estricto + Equipos agresivos = Alta prob. de Roja).
+2. CORRELACIÓN MULTIVARIABLE:
+   - Busca patrones "Causa-Efecto".
+   - Ej: "Contra defensas de 5 (5-3-2), su promedio de gol baja un 40%".
+   - Árbitro + Estilo: Árbitro estricto + Equipos agresivos = Alta prob. Roja.
 
-3. ANÁLISIS DE CORNERS (Dead Ball Intelligence):
-   - Los corners son consecuencia directa de: (Tiros a Puerta + Posesión en Campo Rival + Despejes del Rival).
-   - Equipos que buscan línea de fondo (Formación con extremos abiertos) generan más corners que equipos que juegan por el centro.
-   - Si el "Underdog" juega a la contra, suele conceder muchos corners.
+3. CORNERS & BALÓN PARADO:
+   - Corners = f(Tiros a Puerta + Posesión en Campo Rival + Despejes del Rival).
+   - Formación con Extremos Abiertos → más corners. Equipo defensivo → concede corners.
 
-4. ANÁLISIS ARBITRAL & DISCIPLINARIO (The Law):
-   - Revisa el Árbitro asignado (si está en la data) y cruza con las "Faltas Promedio" de los equipos.
-   - Partido "Derbi" o "H2H Caliente" (ver historial de rojas) + Árbitro Tarjetero = Alta probabilidad de Over Tarjetas / Roja.
+4. ANÁLISIS DISCIPLINARIO:
+   - Revisá el Árbitro asignado + "Faltas Promedio" de los equipos.
+   - Derby/H2H Caliente + Árbitro Tarjetero = Over Tarjetas.
 
-5. CONTEXTO 360º (Más allá del número):
-   - Factor Fatiga: Calcula días de descanso. ¿Vienen de viaje largo?
-   - Factor Necesidad: ¿Un empate les sirve? (Si el empate sirve a ambos, el "Biscotto" es una posibilidad real).
-   - Factor Clima / Cancha: (Si hay datos) ¿Lluvia torrencial favorece al equipo físico sobre el técnico?
+5. ANÁLISIS DE CUOTAS (Value Hunting):
+   - EXAMÍNALAS TODAS. No solo "Ganador del Partido".
+   - Si hay valor en "Over 1.5 Goles Local" o "Handicap Asiático", ELÍGELO.
+   - Calcula la "Probabilidad Real Derbix" vs la Implícita del Mercado.
 
-6. ANÁLISIS DE CUOTAS (Value Hunting):
-   - Se te han proveído TODAS las cuotas disponibles. EXAMÍNALAS TODAS.
-   - No te limites a Ganador del Partido. Si el valor está en "Over 1.5 Goles Local" o "Handicap Asiático", ELÍGELO.
-   - TU TRABAJO es calcular la "Probabilidad Real Derbix" y compararla.
-
-7. DECISIÓN BINARIA:
-   - Apuesta o No Apuesta. No hay términos medios.
-   - Si los datos son contradictorios, la decisión sabia es "NO_BET". La preservación del capital es tan importante como la ganancia.
-
-8. NIVEL DE CONFIANZA & PROBABILIDAD (Confidence Scoring - CUALITATIVO):
-   - IMPORTANTE: Buscamos VALOR REAL, no perfección.
-   - Rango 80-89% (ALTA - Statistical/Tactical Dominance):
-     * **NUEVA REGLA DE ORO:** Si un equipo tiene una **DOMINANCIA ESTADÍSTICA CLARA** (ej: Gana >80% de locales recientes, H2H >70% victorias), **ASIGNA >80%**.
-     * NO tengas miedo de dar confianza ALTA si los números son contundentes, aunque no haya una razón táctica compleja.
-     * Ejemplo Válido: "El local ha ganado 4 de sus últimos 5 partidos y el visitante pierde siempre fuera. Es una máquina de ganar." (ESTO ES VÁLIDO PARA >80%).
-     * Ejemplo Válido: "Ventaja táctica clara + Motivación alta".
-   - Rango 90-99% (MUY ALTA - Banker): Dominio total absoluto.
-   - Rango 70-79% (MEDIA-ALTA): Edge estadístico sólido.
-
-   **CONFIDENCE BOOST:** Si detectas 3 o más factores alineados (Forma + H2H + Motivación), **SUMA +5%** a tu probabilidad base. ¡Queremos encontrar las joyas ocultas!
-
-   ESTRATEGIA DE OPORTUNIDADES MAESTRAS (SMART PARLAYS):
-   - Tu análisis será insumo para un sistema de selección riguroso.
-   - Si el pick es bueno (>75%), véndelo con convicción en tu conclusión.
-
-♟️ MÓDULO DE ANÁLISIS TÁCTICO AVANZADO (TACTICAL ENGINE)
-════════════════════════════════════════════════════════════════════════════════
-
-TU MISIÓN: Predecir el flujo del juego basado en el choque de sistemas.
-
-INPUTS:
-(Analiza las formaciones históricas proveídas abajo)
-
-EJECUCIÓN:
-1. "Mirror Analysis": Busca en el historial de los últimos 20 partidos detallados. ¿Cómo le fue cuando enfrentó a equipos que usaron formaciones similares al rival de hoy?
-2. Identifica el "Matchup Clave":
-   - ¿Bandas vs Centro? (Ej: 4-3-3 vs 4-4-2 Rombo) -> El 4-3-3 atacará por fuera. ¿Tienen buenos laterales?
-   - ¿Juego Aéreo? -> Si un equipo centra mucho (ver stats corners/crosses) y el otro concede mucho por aire.
-3. Detecta "Estilos Asimétricos":
-   - Posesión vs Contra. Si el visitante juega a la contra y el local deja espacios atrás (ver stats tiros concedidos), aumenta la probabilidad de "Ambos Anotan".
+Después de analizar el Pilar A, asigna un SCORE ESTADÍSTICO (0-100) a tu nivel 
+de confianza basado EXCLUSIVAMENTE en los datos duros.
 
 ════════════════════════════════════════════════════════════════════════════════
-🧠 MÓDULO DE PSICOLOGÍA DEPORTIVA
+🧠 PILAR B: INTELIGENCIA DE PARTIDO (50% del análisis)
 ════════════════════════════════════════════════════════════════════════════════
 
-Evalúa la "Temperatura Mental" del partido:
-1. PRESIÓN: ¿Quién tiene miedo a perder? El miedo paraliza o vuelve a los equipos conservadores (Under de goles).
-2. MOTIVACIÓN: ¿Hay "Venganza" pendiente (H2H previo)? ¿Efecto "Nuevo Entrenador"?
-3. RELAJACIÓN: ¿Es un partido intrascendente para alguno? (Riesgo de rotaciones o baja intensidad).
+ESTE PILAR ES TAN IMPORTANTE COMO LOS NÚMEROS. Aquí descubres lo que las
+estadísticas NO pueden decirte: el CONTEXTO que hace único a ESTE partido.
+
+♟️ B1. ANÁLISIS TÁCTICO PROFUNDO (Choque de Sistemas):
+   - "Mirror Analysis": ¿Cómo le fue vs formaciones similares al rival de hoy?
+   - MATCHUP CLAVE: ¿Bandas vs Centro? ¿Posesión vs Contraataque?
+     Si el visitante juega a la contra y el local deja espacios atrás → "Ambos Anotan".
+   - ¿Quién controla el mediocampo? El equipo que controle el medio suele controlar el partido.
+   - ¿Juego Aéreo? Si un equipo centra mucho + el rival es bajo → Ventaja en balón parado.
+   - ¿El DT es conservador o agresivo? Esto define si el partido será abierto o cerrado.
+
+🧠 B2. PSICOLOGÍA DEPORTIVA (Temperatura Mental):
+   Evalúa la mentalidad de CADA equipo:
+   - PRESIÓN: ¿Quién tiene miedo de perder? El miedo paraliza → Under de goles.
+   - MOTIVACIÓN: ¿Se juegan algo? ¿Hay "Venganza" por H2H? ¿Efecto "Nuevo DT" (luna de miel)?
+   - RELAJACIÓN: ¿Es un partido intrascendente? → Rotaciones, baja intensidad.
+   - MOMENTUM: ¿Racha positiva (confianza alta) o racha negativa (caos, presión interna)?
+   - FACTOR VESTUARIO: ¿Hay conflictos internos? ¿Traspasos polémicos? ¿Lesión de líder?
+   - DERBY/CLÁSICO: Los Derbies rompen TODA estadística. Aquí manda la emoción, 
+     no la tabla. Un equipo último puede ganarle al líder en un Derby.
+
+🏟️ B3. CONTEXTO COMPETITIVO (¿QUÉ SE JUEGAN?):
+   - ¿Qué TORNEO es? (Liga vs Copa vs Amistoso vs Clasificatoria)
+   - ¿Qué FASE? (Inicio de temporada, mitad, definición, eliminatoria)
+   - ¿Necesitan puntos URGENTEMENTE? (Zona de descenso, zona de clasificación)
+   - ¿El empate les sirve a AMBOS? → "Biscotto" (partido pactado).
+   - ¿Tienen otro partido IMPORTANTE en 3-4 días? → Rotaciones probables.
+   - ¿Vienen de viaje largo/intercontinental? → Factor Fatiga.
+
+🔮 B4. ESCENARIOS DEL PARTIDO (Proyecciones):
+   Construye 3 escenarios:
+   - ESCENARIO OPTIMISTA (para el favorito): ¿Cómo luce si todo sale bien?
+   - ESCENARIO BASE (lo más probable): ¿Cuál es el desarrollo más realista?
+   - ESCENARIO ALTERNATIVO (la sorpresa): ¿Qué podría romper la estadística?
+   ¿Cuál de los 3 es MÁS PROBABLE? Usa esto para afinar tu probabilidad.
+
+⚡ B5. FACTORES INVISIBLES (Lo que los números NO dicen):
+   - ¿Debutará un jugador clave? ¿Regresa alguien de lesión?  
+   - ¿Hay un récord o racha histórica en juego (motivación extra)?
+   - ¿Hay factor climático extremo? (Lluvia → equipo físico > equipo técnico)
+   - ¿Es un horario inusual? (Partidos a las 12pm vs 9pm cambian intensidad)
+
+Después de analizar el Pilar B, asigna un SCORE DE INTELIGENCIA DE PARTIDO (0-100)
+a tu nivel de confianza basado EXCLUSIVAMENTE en el contexto del partido.
+
+════════════════════════════════════════════════════════════════════════════════
+⚖️ CÁLCULO DE CONFIANZA FINAL (FÓRMULA DUAL OBLIGATORIA)
+════════════════════════════════════════════════════════════════════════════════
+
+CONFIANZA FINAL = (Score Estadístico × 0.50) + (Score Inteligencia Partido × 0.50)
+
+┌──────────┬──────────────────────────────────────────────────────────────────┐
+│ 85-95%   │ Stats sólidas Y contexto alineado (motivación alta, táctica     │
+│ (ÉLITE)  │ favorable, sin factores de riesgo). AMBOS pilares fuertes.     │
+├──────────┼──────────────────────────────────────────────────────────────────┤
+│ 80-84%   │ Un pilar dominante (>85) + el otro pilar sólido (>75).          │
+│ (ALTA)   │ Ej: Stats brutales + contexto aceptable, O contexto perfecto   │
+│          │ + stats decentes.                                               │
+├──────────┼──────────────────────────────────────────────────────────────────┤
+│ 75-79%   │ Una pata fuerte con la otra aceptable. Edge claro pero con      │
+│ (MEDIA+) │ algún factor de riesgo identificado.                            │
+├──────────┼──────────────────────────────────────────────────────────────────┤
+│ 70-74%   │ Señales mixtas. Edge identificado pero con incertidumbre.       │
+│ (MEDIA)  │                                                                  │
+├──────────┼──────────────────────────────────────────────────────────────────┤
+│ <70%     │ Contradicciones serias entre pilares → NO_BET recomendado.      │
+│ (BAJA)   │                                                                  │
+└──────────┴──────────────────────────────────────────────────────────────────┘
+
+⚠️ REGLA CRÍTICA V6:
+- Stats SOLAS ya no son suficientes para >80%. Necesitas TAMBIÉN contexto favorable.
+- Contexto SOLO tampoco es suficiente para >80%. Necesitas TAMBIÉN stats.
+- PERO: Si el contexto CONTRADICE las stats (ej: stats geniales pero juegan 
+  con suplentes porque tienen final de Copa en 3 días), REDUCE la confianza 10-15%.
+- BONUS +5%: Si 4+ factores se alinean (stats + H2H + motivación + táctica + contexto).
+
+═══ ANÁLISIS DE EVENTOS MINUTO A MINUTO (NUEVO V8) ═══
+
+Cada partido del historial incluye EVENTOS DETALLADOS (goles, tarjetas, sustituciones).
+EXPLÓTALOS para detectar patrones temporales:
+
+1. PATRONES DE GOLES POR TIEMPO:
+   - ¿El equipo marca más en 1er o 2do tiempo? → Valor en mercados de "Gol en 1er/2do Tiempo"
+   - Si marca consistentemente antes del min 15 → "Arrancadores rápidos" → valor en "1er Gol: Local/Visitante"
+   - Si concede después del min 75 → "Vulnerabilidad tardía" → valor en "Gol en 2do Tiempo"
+
+2. PATRONES DE TARJETAS:
+   - ¿Equipos agresivos en primeros 30 min? → Over Tarjetas 1er Tiempo
+   - ¿Acumulan faltas? → Árbitro estricto + equipos agresivos = Over Tarjetas
+
+3. PATRONES DE SUSTITUCIONES:
+   - ¿DT hace cambios temprano (min 45-60)? → Equipo reactivo
+   - ¿Cambios tardíos (min 80+)? → Equipo que gestiona ventaja
+
+4. HALF-TIME ANALYSIS:
+   - Usa los scores de 1er tiempo para determinar: ¿Quién domina la primera mitad?
+   - Si un equipo gana el 1er tiempo en 7/10 partidos → Valor en "HT Result"
+
+OPORTUNIDADES OCULTAS QUE LOS NÚMEROS NO VEN:
+- Un equipo con stats mediocres pero que se está jugando la vida (descenso) puede 
+  ser una JOYA OCULTA si las bookies no lo reflejan en la cuota.
+- Un equipo en gran forma estadística pero relajado (ya clasificado, sin nada que 
+  jugar) es una TRAMPA → busca "Under" o "BTTS No".
+
+════════════════════════════════════════════════════════════════════════════════
+🎯 CAZA DE OPORTUNIDADES 80%+ (MÓDULO DE MÁXIMA PRIORIDAD)
+════════════════════════════════════════════════════════════════════════════════
+
+TU MISIÓN PRINCIPAL: Encontrar AL MENOS 1 pick con ≥80% de confianza por partido.
+Sigue esta jerarquía de búsqueda:
+
+1. MERCADOS COMBINADOS (Sección "MERCADOS COMBINADOS" en las cuotas):
+   Estos ya tienen la cuota calculada por la casa de apuestas. Ejemplos:
+   - "Home Win & Over 1.5" @ 1.80 → Si ambas condiciones son probables, confianza alta.
+   - "Home Win & BTTS Yes" @ 2.50 → Cuota atractiva si el local gana pero también concede.
+   - "Home/Draw & Under 3.5" @ 1.45 → Cuota baja pero confianza muy alta.
+   PRIORIZA estos mercados para tus picks de alta confianza.
+
+2. PICKS BANKER (Cuota ≥1.20, Confianza ≥85%):
+   Busca en mercados de alta probabilidad:
+   - "Double Chance" (1X o X2) → Cubres 2 de 3 resultados.
+   - "Over 0.5 Goals" o "Over 1.5 Goals" → Casi seguro en muchos partidos.
+   - "Home Team to Score: Yes" → En partidos donde el local es claramente superior.
+   Marca estos como tipo_pick: "banker".
+
+3. ⚠️ GESTIÓN DE CUOTAS BAJAS (<1.40)
+   Si encuentras un pick con confianza >80% pero cuota <1.40 (ej: 1.25):
+   PRIMERO: Intenta buscar un "SOCIO" para combinarlo y superar 1.40.
+   - Ejemplo: "Gana Local" (1.25) combinada con "Over 1.5" (1.22) = Combo @ 1.52.
+   
+   SEGUNDO: Si NO es posible crear un combo seguro:
+   - REPORTA el pick individual PERO márcalo explícitamente como "banker".
+   - NO lo descartes si la confianza es muy alta (>85%).
+   - PERO SIEMPRE prioriza buscar la combinación primero.
+
+   Tu objetivo es ofrecer valor (>1.40), pero no ocultar ganadores seguros.
+
+NOTA: Si después de buscar en las 3 capas aún no encuentras un pick ≥80%,
+tu pick más alto DEBE ser reportado con su confianza REAL, no inflada.
 
 ════════════════════════════════════════════════════════════════════════════════
 🚨 INSTRUCCIONES DE EMERGENCIA Y FALLBACKS
 ════════════════════════════════════════════════════════════════════════════════
 
 Si faltan datos de cuotas (Bookmaker Odds Missing):
-1. NO TE DETENGAS.
-2. Actúa como el "Oddsmaker". Genera TUS PROPIAS CUOTAS JUSTAS basadas en tu probabilidad.
-3. Sugiere los mercados, pero advierte: "Cuota de Mercado Referencial No Disponible - Entrar si paga más de X.XX".
+1. NO TE DETENGAS. Genera TUS PROPIAS CUOTAS JUSTAS basadas en tu probabilidad.
+2. Advierte: "Cuota de Mercado Referencial No Disponible - Entrar si paga más de X.XX".
 
 Si faltan alineaciones confirmadas:
-1. Asume la alineación más probable basada en los últimos 3 partidos.
-2. Aumenta ligeramente el factor de riesgo en tu conclusión.
+1. Asume la más probable basada en los últimos 3 partidos.
+2. Aumenta ligeramente el factor de riesgo.
 
-Si no hay NINGUNA estadística ni historial reciente disponible (Input vacío):
-1. NO INVENTES DATOS.
-2. Responde con un JSON donde "veredicto": "NO_BET" y "riesgo_principal": "Falta TOTAL de Datos".
+Si no hay NINGUNA estadística ni historial:
+1. NO INVENTES DATOS. "veredicto": "NO_BET", "riesgo_principal": "Falta TOTAL de Datos".
 
 ════════════════════════════════════════════════════════════════════════════════
 DATOS DEL PARTIDO (DEEP DIVE INPUT)
@@ -442,6 +591,8 @@ ${h2hText}
 >>> CUOTAS DE MERCADO (Referencia):
 ${oddsText}
 
+${externalContextText}
+
 ════════════════════════════════════════════════════════════════════════════════
 FORMATO DE SALIDA (JSON)
 ════════════════════════════════════════════════════════════════════════════════
@@ -451,36 +602,68 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
 {
     "meta": { "modelo": "${GEMINI_MODEL}", "version": "${ENGINE_VERSION}" },
     "resumen_ejecutivo": {
-        "titular": "Titular de alto impacto (ej: 'Valor detectado en victoria local')",
+        "titular": "Titular de alto impacto (ej: 'Dominancia total del local reforzada por final de temporada')",
         "veredicto": "APOSTAR" | "NO_BET" | "OBSERVAR",
         "confianza_global": "ALTA" | "MEDIA" | "BAJA",
         "picks_principales": ["Pick 1", "Pick 2"]
     },
+    "scores_duales": {
+        "score_estadistico": 82,
+        "score_inteligencia_partido": 78,
+        "confianza_final_calculada": 80,
+        "justificacion_balance": "Breve explicación de cómo los 2 pilares se combinaron para dar este score."
+    },
     "analisis_profundo": {
-        "razonamiento_central": "TEXTO DETALLADO (mínimo 150 palabras) explicando LA TESIS DE INVERSIÓN. ¿Por qué estos picks? Conecta los puntos entre la data dura, el factor táctico y el psicológico. NO repitas estadísticas obvias, explica el 'POR QUÉ'.",
-        "matchup_tactico": "Breve análisis del choque de estilos (ej: Contraataque vs Posesión).",
-        "factor_psicologico": "Análisis de motivación, presión y urgencia de los equipos."
+        "razonamiento_central": "TEXTO DETALLADO (mínimo 200 palabras) explicando LA TESIS DE INVERSIÓN. DEBE incluir argumentos de AMBOS PILARES. Conecta la data dura con el factor táctico, psicológico y competitivo. NO repitas estadísticas obvias, explica el 'POR QUÉ' profundo.",
+        "matchup_tactico": "Análisis del choque de sistemas (formaciones, estilos, quién controla el medio).",
+        "factor_psicologico": "Análisis detallado de motivación, presión, urgencia, y mentalidad de cada equipo.",
+        "contexto_competitivo": "¿Qué se juegan? ¿Fase del torneo? ¿Rotaciones esperadas?"
     },
     "pronosticos": [
         {
             "mercado": "Ej: Ganador del Partido (1X2)",
             "seleccion": "Ej: Manchester City",
-            "probabilidad_calculada_porcentaje": 65,
-            "probabilidad_implicita_porcentaje": 55,
-            "edge_porcentaje": 10,
-            "cuota_actual": 1.80,
+            "probabilidad_calculada_porcentaje": 82,
+            "probabilidad_implicita_porcentaje": 65,
+            "edge_porcentaje": 17,
+            "cuota_actual": 1.54,
             "confianza": "ALTA",
+            "tipo_pick": "standard",
             "justificacion": {
-                "estadistica": "Dato clave...",
-                "contexto": "Contexto clave...",
-                "tactica": "Razón táctica...",
-                "mercado": "Ineficiencia detectada..."
-            }
+                "estadistica": "Dato estadístico clave que soporta esta selección...",
+                "contexto_partido": "Factor de ESTE partido que refuerza o debilita la selección...",
+                "tactica": "Razón táctica específica...",
+                "mercado": "Ineficiencia detectada en la cuota..."
+            },
+            "stake_recomendado": "3% bankroll (basado en confianza y cuota)"
         }
     ],
+    "patrones_detectados": {
+        "goles_por_tiempo": {
+            "home_1er_tiempo_pct": 60,
+            "home_2do_tiempo_pct": 40,
+            "away_1er_tiempo_pct": 45,
+            "away_2do_tiempo_pct": 55,
+            "insight": "Local marca mayoritariamente en 1er tiempo, visitante es equipo de 2do tiempo"
+        },
+        "formacion_rendimiento": {
+            "home_formacion_usual": "4-3-3",
+            "home_win_pct_con_formacion": 75,
+            "away_formacion_usual": "4-4-2",
+            "away_win_pct_con_formacion": 40,
+            "insight": "Local con 4-3-3 es muy efectivo, visitante con 4-4-2 fuera es débil"
+        },
+        "disciplina": {
+            "home_avg_tarjetas": 2.1,
+            "away_avg_tarjetas": 2.5,
+            "insight": "Partido con potencial de Over 4.5 Tarjetas"
+        }
+    },
+    "contexto_externo_resumen": "Resumen de 2-3 frases del contexto externo más relevante (noticias, declaraciones, etc.)",
     "factores_riesgo": {
         "riesgo_principal": "El mayor peligro es...",
-        "nivel_incertidumbre": "BAJO" | "MEDIO" | "ALTO"
+        "nivel_incertidumbre": "BAJO" | "MEDIO" | "ALTO",
+        "factores_que_podrian_romper_la_estadistica": "Qué podría causar una SORPRESA que los números no predicen."
     },
     "datos_modelo": {
         "goles_esperados_partido": 2.8,
@@ -488,12 +671,13 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
         "probabilidad_btts_porcentaje": 60
     },
     "mercados_evaluados": {
-        "con_valor_detectado": 1,
+        "con_valor_detectado": 2,
         "total_analizados": 60
     },
     "escenarios_proyectados": {
-        "escenario_base": "Lo más probable...",
-        "escenario_alternativo": "Si pasa X..."
+        "escenario_optimista": "Si todo sale bien para el favorito...",
+        "escenario_base": "Lo más probable que ocurra...",
+        "escenario_alternativo": "La sorpresa posible y por qué podría darse..."
     }
 }
 `;
@@ -658,6 +842,11 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                 analysisResult.pronosticos = analysisResult.pronosticos.map((p: any) => {
                     const prob = p.probabilidad_calculada_porcentaje || p.probabilidad || p.probability || p.confidence_score || p.probabilidad_estimada || 50;
                     const edge = p.edge_porcentaje || p.edge || p.valor || 0;
+
+                    // ROBUST ODDS EXTRACTION
+                    const rawOdds = p.cuota_actual || p.cuota || p.odds || p.odd || p.price || 1.0;
+                    const odds = typeof rawOdds === 'string' ? parseFloat(rawOdds) : rawOdds;
+
                     return {
                         ...p,
                         mercado: p.mercado || "Mercado Principal",
@@ -665,7 +854,7 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                         probabilidad_calculada_porcentaje: typeof prob === 'string' ? parseFloat(prob.replace('%', '')) : prob,
                         probabilidad_implicita_porcentaje: p.probabilidad_implicita_porcentaje || 50,
                         edge_porcentaje: typeof edge === 'string' ? parseFloat(edge) : edge,
-                        cuota_actual: p.cuota_actual || 1.0,
+                        cuota_actual: odds,
                         justificacion: p.justificacion || p.justificacion_detallada || { estadistica: "N/A", tactica: "N/A" }
                     };
                 });
@@ -691,17 +880,7 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
 
         // SAVE RESULTS
         // ═══════════════════════════════════════════════════════════════
-
-        // Save to reports_v2
-        await supabase
-            .from('reports_v2')
-            .upsert({
-                job_id,
-                fixture_id,
-                report_packet: analysisResult,
-                input_payload: payload,
-                prompt_version: PROMPT_VERSION
-            }, { onConflict: 'job_id' });
+        // NOTE: reports_v2 save moved below after finalFixtureId resolution
 
         // Map to legacy format for frontend compatibility
         const betPicks = analysisResult.pronosticos || [];
@@ -717,7 +896,7 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
             debug_info: {
                 books_found: 1, // Normalized to single view
                 best_bookie: 'SportMonks Aggregated',
-                markets_count: (odds?.MAIN?.length || 0) + (odds?.GOALS?.length || 0) + (odds?.TEAMS?.length || 0)
+                markets_count: (odds?.MAIN?.length || 0) + (odds?.GOALS?.length || 0) + (odds?.TEAMS?.length || 0) + (odds?.COMBOS?.length || 0)
             },
             veredicto_analista: {
                 decision: analysisResult.resumen_ejecutivo.veredicto || 'OBSERVAR',
@@ -733,11 +912,12 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                 frase_principal: tit, // EXPLICIT for adapter
                 puntos_clave: analysisResult.resumen_ejecutivo.picks_principales, // Adapter checks this too
                 bullets: [
-                    analysisResult.analisis_profundo?.contexto_competitivo?.situacion_local,
-                    analysisResult.analisis_profundo?.contexto_competitivo?.situacion_visitante,
-                    analysisResult.analisis_profundo?.contexto_competitivo?.implicaciones_partido
+                    analysisResult.analisis_profundo?.contexto_competitivo,
+                    analysisResult.analisis_profundo?.factor_psicologico
                 ].filter(Boolean)
             },
+            // V6: Expose dual scores for transparency
+            scores_duales: analysisResult.scores_duales || null,
             predicciones_finales: {
                 titulo: "Pronósticos del Motor IA V3",
                 detalle: betPicks.map(normalizePrediction)
@@ -768,6 +948,12 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                     titulo: "Escenarios de Partido",
                     escenarios: [
                         {
+                            nombre: "Escenario Optimista",
+                            descripcion: analysisResult.escenarios_proyectados?.escenario_optimista || "Todo sale bien para el favorito.",
+                            probabilidad_aproximada: "Media-Alta",
+                            implicacion_apuestas: "Pick principal con máximo stake"
+                        },
+                        {
                             nombre: "Escenario Base",
                             descripcion: analysisResult.escenarios_proyectados?.escenario_base || "Escenario estándar previsto.",
                             probabilidad_aproximada: "Alta",
@@ -776,42 +962,25 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                         {
                             nombre: "Escenario Alternativo",
                             descripcion: analysisResult.escenarios_proyectados?.escenario_alternativo || "Escenario de riesgo.",
-                            probabilidad_aproximada: "Media",
+                            probabilidad_aproximada: "Baja",
                             implicacion_apuestas: "Cubrir o reducir stake"
                         }
                     ]
                 }
             } : null,
+            // V8: New fields from enhanced analysis
+            patrones_detectados: analysisResult.patrones_detectados || null,
+            contexto_externo_resumen: analysisResult.contexto_externo_resumen || null,
             v3_source: true,
             job_id: job_id,
             generated_at: new Date().toISOString(),
             payload: payload // EXPOSE RAW PAYLOAD TO FRONTEND FOR DEBUG VIEW
         };
 
-        // Update job with total_tokens used cost tracking
-        // (Optional: Implement cost tracking logic here)
-
-        // 1. Save FULL simplified report to reports_v2
-        await supabase
-            .from('reports_v2')
-            .delete()
-            .eq('job_id', job_id);
-
-        const { error: reportError } = await supabase
-            .from('reports_v2')
-            .insert({
-                job_id: job_id,
-                fixture_id: fixture_id,
-                report_packet: analysisResult,
-                prompt_version: 'V3-PROMPT-1.0', // Required field
-                created_at: new Date().toISOString()
-            });
-
-        if (reportError) console.error('[V3-AI-ANALYZER] Error saving reports_v2:', reportError);
-
-
         // ═══════════════════════════════════════════════════════════════
-        // V5 PERMANENT FIX: ID RESOLUTION & PICKS SYNC
+        // V9 FIX: RESOLVE finalFixtureId BEFORE saving to ANY table
+        // This ensures reports_v2, value_picks_v2, and analisis all use
+        // the same fixture_id that matches daily_matches.api_fixture_id
         // ═══════════════════════════════════════════════════════════════
 
         let finalFixtureId = fixture_id;
@@ -830,22 +999,19 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
             finalFixtureId = directMatch.api_fixture_id;
         } else {
             console.log(`[V3-FIX] ID ${fixture_id} not found in daily_matches. Attempting fuzzy name match...`);
-            // Search by date window (today +/- 2 days) and names
-            const today = new Date().toISOString().split('T')[0];
             const homeNorm = normalizeTeam(homeTeam);
             const awayNorm = normalizeTeam(awayTeam);
 
             const { data: candidates } = await supabase
                 .from('daily_matches')
                 .select('api_fixture_id, home_team, away_team, match_date')
-                .gte('match_date', new Date(Date.now() - 86400000 * 2).toISOString()) // look back 2 days
-                .lte('match_date', new Date(Date.now() + 86400000 * 5).toISOString()); // look ahead 5 days
+                .gte('match_date', new Date(Date.now() - 86400000 * 2).toISOString())
+                .lte('match_date', new Date(Date.now() + 86400000 * 5).toISOString());
 
             if (candidates) {
                 const best = candidates.find(c => {
                     const h = normalizeTeam(c.home_team);
                     const a = normalizeTeam(c.away_team);
-                    // Match if home and away are present in standard names or swapped (rare)
                     return (h.includes(homeNorm) || homeNorm.includes(h)) &&
                         (a.includes(awayNorm) || awayNorm.includes(a));
                 });
@@ -858,6 +1024,43 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                 }
             }
         }
+
+        console.log(`[V3-AI-ANALYZER] Using finalFixtureId=${finalFixtureId} (original=${fixture_id}) for ALL saves`);
+
+        // Sync job fixture_id if it was resolved to a different ID
+        if (finalFixtureId !== fixture_id) {
+            await supabase
+                .from('analysis_jobs_v2')
+                .update({ fixture_id: finalFixtureId })
+                .eq('id', job_id);
+        }
+
+        // Clean up OLD data for this fixture (by both original and resolved IDs)
+        // This runs AFTER successful analysis, so old data is only removed when new data is ready
+        const idsToClean = [finalFixtureId];
+        if (fixture_id !== finalFixtureId) idsToClean.push(fixture_id);
+
+        // Delete old jobs (keep only current)
+        for (const fid of idsToClean) {
+            await supabase.from('analysis_jobs_v2').delete().eq('fixture_id', fid).neq('id', job_id);
+        }
+
+        // Delete ALL old reports for this fixture
+        await supabase.from('reports_v2').delete().in('fixture_id', idsToClean);
+        // Also delete any orphaned reports from old jobs of this fixture
+        await supabase.from('reports_v2').delete().eq('job_id', job_id); // just in case of partial previous save
+
+        const { error: reportError } = await supabase
+            .from('reports_v2')
+            .insert({
+                job_id: job_id,
+                fixture_id: finalFixtureId,
+                report_packet: analysisResult,
+                prompt_version: 'V3-PROMPT-1.0',
+                created_at: new Date().toISOString()
+            });
+
+        if (reportError) console.error('[V3-AI-ANALYZER] Error saving reports_v2:', reportError);
 
         // 2. Insert Picks to value_picks_v2
         if (betPicks.length > 0) {
@@ -893,14 +1096,14 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                     p_model: prob,
                     decision: decision,
                     confidence: mapConf(p.nivel_confianza || p.confianza),
-                    engine_version: "V4-MASTERMIND",
+                    engine_version: "V8-MASTERMIND",
                     odds: p.cuota_actual || null,
                     created_at: new Date().toISOString()
                 };
             });
 
-            // Delete old picks for this fixture (prevent stale data)
-            await supabase.from('value_picks_v2').delete().eq('fixture_id', finalFixtureId);
+            // Delete old picks for this fixture (both original and resolved IDs)
+            await supabase.from('value_picks_v2').delete().in('fixture_id', idsToClean);
 
             // Insert new
             const { error: pickErr } = await supabase.from('value_picks_v2').insert(picksPayload);
@@ -908,11 +1111,10 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
             else console.log(`[V3-FIX] Successfully inserted picks.`);
         }
 
-        // 3. Update Sync to 'analisis' using FINAL ID
-        await supabase
-            .from('analisis')
-            .delete()
-            .eq('partido_id', finalFixtureId); // Use corrected ID
+        // 3. Update Sync to 'analisis' using FINAL ID (clean both IDs)
+        for (const fid of idsToClean) {
+            await supabase.from('analisis').delete().eq('partido_id', fid);
+        }
 
         await supabase
             .from('analisis')
@@ -954,6 +1156,24 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
 
     } catch (e: any) {
         console.error('[V3-AI-ANALYZER] Error:', e);
+
+        // CRITICAL FIX: Update job status to 'failed' so it doesn't stay stuck at 'analyzing'
+        try {
+            const { job_id: failedJobId } = await req.clone().json().catch(() => ({ job_id: null }));
+            if (failedJobId) {
+                const sbUrl = Deno.env.get('SUPABASE_URL')!;
+                const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+                const sbClient = createClient(sbUrl, sbKey);
+                await sbClient
+                    .from('analysis_jobs_v2')
+                    .update({ status: 'failed', error_log: e.message?.substring(0, 500) })
+                    .eq('id', failedJobId);
+                console.log(`[V3-AI-ANALYZER] Job ${failedJobId} marked as failed`);
+            }
+        } catch (updateErr) {
+            console.error('[V3-AI-ANALYZER] Failed to update job status:', updateErr);
+        }
+
         return new Response(JSON.stringify({
             success: false,
             error: e.message,

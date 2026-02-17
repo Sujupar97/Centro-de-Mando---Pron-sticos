@@ -3,12 +3,14 @@ import { DashboardData, League, Game, VisualAnalysisResult, Country, AnalysisJob
 import { fetchFixturesByDate, fetchLiveFixtures } from '../services/liveDataService';
 import { createAnalysisJob, getAnalysisJob, getAnalysisResult, getAnalysisResultByRunId, getAnalysisResultByFixtureId } from '../services/analysisService';
 import { useAnalysisCache } from '../hooks/useAnalysisCache';
-import { BrainIcon, CalendarDaysIcon, CheckCircleIcon, ChevronDownIcon, ChevronUpIcon, SparklesIcon, ArrowPathIcon, ListBulletIcon, TrophyIcon, SignalIcon } from './icons/Icons';
+import { BrainIcon, CalendarDaysIcon, CheckCircleIcon, ChevronDownIcon, ChevronUpIcon, SparklesIcon, ArrowPathIcon, ListBulletIcon, TrophyIcon, SignalIcon, ChartBarIcon } from './icons/Icons';
 import { getCurrentDateInBogota } from '../utils/dateUtils';
 import { AnalysisInProgressModal } from './ai/AnalysisInProgressModal';
 import { AnalysisReportModal } from './ai/AnalysisReportModal';
 import { GameCard as DetailsGameCard } from './live/GameCard';
 import HighProbPicks from './ai/HighProbPicks';
+import SmartParlays from './ai/SmartParlays';
+import ProfitabilityDashboard from './admin/ProfitabilityDashboard';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../services/supabaseService';
 import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
@@ -149,18 +151,24 @@ export const FixturesFeed: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [selectedDate, setSelectedDate] = useState(getCurrentDateInBogota());
-    const [viewMode, setViewMode] = useState<'fixtures' | 'top-picks'>('fixtures');
+    const [viewMode, setViewMode] = useState<'fixtures' | 'top-picks' | 'parlays' | 'profitability'>('fixtures');
 
     // GESTIÓN DE JOBS
     const [activeJobs, setActiveJobs] = useState<Record<number, string>>({});
     const [gameJobStatus, setGameJobStatus] = useState<Record<number, AnalysisJob['status']>>({});
     const [reportsAvailable, setReportsAvailable] = useState<Record<number, boolean>>({});
 
+    // ID MAPPING: SportMonks ID (frontend) ↔ legacy API-Football ID (historical data)
+    // daily-match-scanner (API-Football) is now DISABLED. New data uses SportMonks IDs only.
+    // This mapping exists as a safety net for historical analyses saved with API-Football IDs.
+    const alternateIdsRef = React.useRef<Record<number, number>>({}); // frontendId → legacyDbId
+
     // GESTIÓN DE COLA (BATCH ANALYSIS)
     const [analysisQueue, setAnalysisQueue] = useState<Game[]>([]);
     const [activeBatchJobId, setActiveBatchJobId] = useState<string | null>(null);
     const [processingFixtureId, setProcessingFixtureId] = useState<number | null>(null);
     const isProcessingQueue = React.useRef(false); // Ref guard for sequential processing
+    const pollErrorCount = React.useRef(0); // Consecutive poll errors before skipping
 
     // UI MODALS
     const [currentJob, setCurrentJob] = useState<AnalysisJob | null>(null);
@@ -213,46 +221,109 @@ export const FixturesFeed: React.FC = () => {
                     const newActiveJobs: Record<number, string> = {};
 
                     // ═══════════════════════════════════════════════════════════════
-                    // FIX: Consultar V2 primero para mostrar INFORME correctamente
+                    // ID CROSS-REFERENCE: SportMonks IDs ↔ API-Football IDs
+                    // daily_matches may use API-Football IDs while frontend uses SportMonks IDs.
+                    // Build a mapping so we can find analysis data regardless of which ID system was used.
+                    // ═══════════════════════════════════════════════════════════════
+                    const dbIdToFrontendId: Record<number, number> = {};
+                    const frontendIdToDbId: Record<number, number> = {};
+
+                    const { data: dailyMatches } = await supabase
+                        .from('daily_matches')
+                        .select('api_fixture_id, home_team, away_team')
+                        .eq('match_date', selectedDate);
+
+                    if (dailyMatches && dailyMatches.length > 0) {
+                        const allGames = [
+                            ...result.importantLeagues.flatMap(l => l.games),
+                            ...result.countryLeagues.flatMap(c => c.leagues.flatMap(l => l.games))
+                        ];
+
+                        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+                        for (const dm of dailyMatches) {
+                            // If this daily_matches ID is already in our frontend list, no mapping needed
+                            if (fixtureIds.includes(dm.api_fixture_id)) continue;
+
+                            const dmHome = normalize(dm.home_team);
+                            const dmAway = normalize(dm.away_team);
+
+                            const game = allGames.find(g => {
+                                const gHome = normalize(g.teams.home.name);
+                                const gAway = normalize(g.teams.away.name);
+                                return (gHome.includes(dmHome) || dmHome.includes(gHome)) &&
+                                       (gAway.includes(dmAway) || dmAway.includes(gAway));
+                            });
+
+                            if (game) {
+                                dbIdToFrontendId[dm.api_fixture_id] = game.fixture.id;
+                                frontendIdToDbId[game.fixture.id] = dm.api_fixture_id;
+                            }
+                        }
+
+                        // Store mapping for handleViewReport
+                        alternateIdsRef.current = frontendIdToDbId;
+                        console.log(`[LiveFeed] ID mapping: ${Object.keys(dbIdToFrontendId).length} alternate IDs (SportMonks↔API-Football)`);
+                    }
+
+                    // Combine SportMonks IDs + API-Football IDs for comprehensive queries
+                    const altIds = Object.keys(dbIdToFrontendId).map(Number);
+                    const allSearchIds = [...new Set([...fixtureIds, ...altIds])];
+
+                    // Helper to resolve any ID back to frontend ID
+                    const toFrontendId = (id: number) => dbIdToFrontendId[id] ?? id;
+
+                    // ═══════════════════════════════════════════════════════════════
+                    // Check analysis_jobs_v2 for done/in-progress jobs
                     // ═══════════════════════════════════════════════════════════════
                     const { data: v2Jobs, error: v2Error } = await supabase
                         .from('analysis_jobs_v2')
                         .select('fixture_id, status, id')
-                        .in('fixture_id', fixtureIds)
-                        .eq('status', 'done');
+                        .in('fixture_id', allSearchIds);
 
                     if (!v2Error && v2Jobs) {
                         v2Jobs.forEach(job => {
-                            newReportsAvailable[job.fixture_id] = true;
-                            newActiveJobs[job.fixture_id] = job.id;
-                        });
-                        console.log(`[LiveFeed] V2 Jobs encontrados: ${v2Jobs.length}`);
-                    }
-
-                    // Fallback: Consultar V1 para los que no tienen V2
-                    const { data: existingJobs, error: fetchError } = await supabase
-                        .from('analysis_jobs')
-                        .select('api_fixture_id, status, id')
-                        .in('api_fixture_id', fixtureIds)
-                        .in('status', ['done', 'analyzing', 'queued', 'ingesting', 'data_ready', 'collecting_evidence']);
-
-                    if (fetchError) {
-                        console.error("Error fetching existing V1 jobs:", fetchError);
-                    }
-
-                    if (existingJobs) {
-                        existingJobs.forEach(job => {
-                            // Solo agregar si no hay ya un V2 para este fixture
-                            if (!newActiveJobs[job.api_fixture_id]) {
-                                if (job.status === 'done') {
-                                    newReportsAvailable[job.api_fixture_id] = true;
-                                    newActiveJobs[job.api_fixture_id] = job.id;
-                                } else {
-                                    newGameJobStatus[job.api_fixture_id] = job.status as any;
-                                    newActiveJobs[job.api_fixture_id] = job.id;
-                                }
+                            const fid = toFrontendId(job.fixture_id);
+                            if (job.status === 'done') {
+                                newReportsAvailable[fid] = true;
+                                newActiveJobs[fid] = job.id;
+                            } else if (!newActiveJobs[fid]) {
+                                newGameJobStatus[fid] = job.status as any;
+                                newActiveJobs[fid] = job.id;
                             }
                         });
+                        console.log(`[LiveFeed] V2 Jobs: ${v2Jobs.filter(j => j.status === 'done').length} done, ${v2Jobs.filter(j => j.status !== 'done').length} in-progress`);
+                    }
+
+                    // Check 'analisis' table
+                    const { data: analisisRows } = await supabase
+                        .from('analisis')
+                        .select('partido_id')
+                        .in('partido_id', allSearchIds);
+
+                    if (analisisRows) {
+                        analisisRows.forEach(row => {
+                            const fid = toFrontendId(row.partido_id);
+                            if (!newReportsAvailable[fid]) {
+                                newReportsAvailable[fid] = true;
+                            }
+                        });
+                    }
+
+                    // Check reports_v2 table
+                    const { data: reportsRows } = await supabase
+                        .from('reports_v2')
+                        .select('fixture_id')
+                        .in('fixture_id', allSearchIds);
+
+                    if (reportsRows) {
+                        reportsRows.forEach(row => {
+                            const fid = toFrontendId(row.fixture_id);
+                            if (!newReportsAvailable[fid]) {
+                                newReportsAvailable[fid] = true;
+                            }
+                        });
+                        console.log(`[LiveFeed] reports_v2 check: found ${reportsRows.length} reports`);
                     }
 
                     setReportsAvailable(prev => ({ ...prev, ...newReportsAvailable }));
@@ -334,9 +405,26 @@ export const FixturesFeed: React.FC = () => {
     useEffect(() => {
         if (!activeBatchJobId) return;
 
+        const startTime = Date.now();
+        const MAX_WAIT_MS = 180000; // 3 minutes max per job
+
         const interval = setInterval(async () => {
             try {
+                const elapsed = Date.now() - startTime;
+
+                // Timeout: if job takes >3 min, skip to next
+                if (elapsed > MAX_WAIT_MS) {
+                    console.warn(`[Batch] Job ${activeBatchJobId} timed out after ${Math.round(elapsed/1000)}s. Skipping.`);
+                    pollErrorCount.current = 0;
+                    setActiveBatchJobId(null);
+                    setProcessingFixtureId(null);
+                    setAnalysisQueue(prev => prev.slice(1));
+                    return;
+                }
+
                 const updatedJob = await getAnalysisJob(activeBatchJobId);
+                pollErrorCount.current = 0; // Reset on successful poll
+
                 if (updatedJob) {
                     setGameJobStatus(prev => ({ ...prev, [updatedJob.api_fixture_id]: updatedJob.status }));
 
@@ -352,11 +440,30 @@ export const FixturesFeed: React.FC = () => {
                         setProcessingFixtureId(null);
                         setAnalysisQueue(prev => prev.slice(1));
                     }
+                } else {
+                    // Job not found (deleted?) - skip to next
+                    console.warn(`[Batch] Job ${activeBatchJobId} not found. Skipping.`);
+                    setActiveBatchJobId(null);
+                    setProcessingFixtureId(null);
+                    setAnalysisQueue(prev => prev.slice(1));
                 }
             } catch (e) {
-                console.error("Error polling batch job", e);
+                pollErrorCount.current++;
+                console.error(`[Batch] Poll error #${pollErrorCount.current} for job ${activeBatchJobId}:`, e);
+
+                // After 3 consecutive errors, skip this job to unblock the queue
+                if (pollErrorCount.current >= 3) {
+                    console.warn(`[Batch] ${pollErrorCount.current} consecutive poll errors. Skipping to next job.`);
+                    pollErrorCount.current = 0;
+                    if (processingFixtureId) {
+                        setGameJobStatus(prev => ({ ...prev, [processingFixtureId]: 'failed' }));
+                    }
+                    setActiveBatchJobId(null);
+                    setProcessingFixtureId(null);
+                    setAnalysisQueue(prev => prev.slice(1));
+                }
             }
-        }, 2000);
+        }, 3000); // Poll every 3s instead of 2s (analyzer takes 30-60s anyway)
 
         return () => clearInterval(interval);
     }, [activeBatchJobId]);
@@ -454,12 +561,30 @@ export const FixturesFeed: React.FC = () => {
         let jobId = typeof jobIdOrGameId === 'string' ? jobIdOrGameId : activeJobs[jobIdOrGameId];
         if (!jobId && typeof jobIdOrGameId === 'string') jobId = jobIdOrGameId;
 
-        if (!jobId) return;
+        const fixtureId = gameIdIfAvailable || (typeof jobIdOrGameId === 'number' ? jobIdOrGameId : null);
 
-        const result = await getAnalysisResult(jobId);
+        let result = null;
+
+        // Try by job ID first
+        if (jobId) {
+            result = await getAnalysisResult(jobId);
+        }
+
+        // Fallback: try by fixture ID directly (SportMonks ID)
+        if (!result && fixtureId) {
+            result = await getAnalysisResultByFixtureId(fixtureId);
+        }
+
+        // Fallback: try by alternate ID (API-Football ID from daily_matches)
+        if (!result && fixtureId) {
+            const altId = alternateIdsRef.current[fixtureId];
+            if (altId) {
+                console.log(`[LiveFeed] Trying alternate ID: ${fixtureId} → ${altId}`);
+                result = await getAnalysisResultByFixtureId(altId);
+            }
+        }
+
         if (result) {
-            // Persistir fixture en URL para sobrevivir refresh
-            const fixtureId = gameIdIfAvailable || (typeof jobIdOrGameId === 'number' ? jobIdOrGameId : null);
             if (fixtureId) {
                 window.history.replaceState(null, '', `?report=${fixtureId}`);
             }
@@ -506,11 +631,27 @@ export const FixturesFeed: React.FC = () => {
                             </button>
                             <button
                                 onClick={() => setViewMode('top-picks')}
-                                className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'top-picks' ? 'bg-gradient-to-r from-brand to-emerald-600 text-white shadow-lg shadow-brand/20' : 'text-slate-400 hover:text-white'
+                                className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'top-picks' ? 'bg-gradient-to-r from-brand to-emerald-600 text-white shadow-lg shadow-brand/20' : 'text-slate-400 hover:text-white'
                                     }`}
                             >
                                 <TrophyIcon className="w-5 h-5 mr-2" /> Oportunidades
                             </button>
+                            <button
+                                onClick={() => setViewMode('parlays')}
+                                className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'parlays' ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20' : 'text-slate-400 hover:text-white'
+                                    }`}
+                            >
+                                <SparklesIcon className="w-5 h-5 mr-2" /> Smart Parlays
+                            </button>
+                            {(profile?.role === 'admin' || profile?.role === 'superadmin') && (
+                                <button
+                                    onClick={() => setViewMode('profitability')}
+                                    className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'profitability' ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/20' : 'text-slate-400 hover:text-white'
+                                        }`}
+                                >
+                                    <ChartBarIcon className="w-5 h-5 mr-2" /> ROI
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -521,6 +662,14 @@ export const FixturesFeed: React.FC = () => {
                             date={selectedDate}
                             onViewReport={handleViewReport}
                         />
+                    </div>
+                ) : viewMode === 'parlays' ? (
+                    <div className="animate-fade-in">
+                        <SmartParlays date={selectedDate} />
+                    </div>
+                ) : viewMode === 'profitability' ? (
+                    <div className="glass rounded-2xl p-6 min-h-[500px] animate-fade-in border border-white/5">
+                        <ProfitabilityDashboard />
                     </div>
                 ) : (
                     <>

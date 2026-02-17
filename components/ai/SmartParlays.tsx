@@ -183,7 +183,13 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                     </div>
                                     <div className="flex items-center gap-4">
                                         <div className="text-right">
-                                            <div className="text-white/80 text-sm">Probabilidad Combinada</div>
+                                            <div className="text-white/80 text-sm">Cuota Total</div>
+                                            <div className="text-emerald-400 font-bold text-2xl">
+                                                x{parlay.implied_odds?.toFixed(2) || '---'}
+                                            </div>
+                                        </div>
+                                        <div className="text-right border-l border-white/10 pl-4">
+                                            <div className="text-white/80 text-sm">Probabilidad</div>
                                             <div className="text-white font-bold text-2xl">
                                                 {formatProbability(parlay.combined_probability)}
                                             </div>
@@ -213,13 +219,18 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                             <div className="text-white font-medium">
                                                 {pick.home_team} vs {pick.away_team}
                                             </div>
-                                            <div className="text-emerald-400 text-sm mt-1">
-                                                {translateMarket(pick.market)}
+                                            <div className="text-emerald-400 text-sm mt-1 font-bold">
+                                                {translateMarket(pick.market)}: <span className="text-white">{pick.selection}</span>
                                             </div>
                                         </div>
                                         <div className="text-right ml-4">
-                                            <div className="text-white font-bold">
-                                                {formatProbability(pick.p_model)}
+                                            <div className="flex flex-col items-end">
+                                                <div className="text-white font-bold text-lg">
+                                                    {formatProbability(pick.p_model)}
+                                                </div>
+                                                <div className="text-emerald-400 text-sm font-bold">
+                                                    x{pick.odds?.toFixed(2) || '---'}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

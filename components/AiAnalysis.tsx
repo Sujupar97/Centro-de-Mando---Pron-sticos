@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 // import { ScenarioAnalyzer } from './ai/ScenarioAnalyzer';
 import { ComparativeAnalysis } from './ai/ComparativeAnalysis';
-import { ParlayBuilder } from './ai/ParlayBuilder';
+// import { ParlayBuilder } from './ai/ParlayBuilder';
 import { ApiTestRunner } from './ai/ApiTestRunner';
 import { PerformanceAnalyzer } from './ai/PerformanceAnalyzer';
 import { TableCellsIcon, PuzzlePieceIcon, ListBulletIcon, PresentationChartLineIcon } from './icons/Icons';
@@ -9,19 +9,19 @@ import { TableCellsIcon, PuzzlePieceIcon, ListBulletIcon, PresentationChartLineI
 type AiTab = 'scenario' | 'parlay' | 'performance' | 'compare' | 'test';
 
 const TABS: { id: AiTab, name: string, icon: React.ReactNode }[] = [
-    { id: 'parlay', name: 'Parlay Builder', icon: <PuzzlePieceIcon className="w-4 h-4" /> },
+    // { id: 'parlay', name: 'Parlay Builder', icon: <PuzzlePieceIcon className="w-4 h-4" /> },
     { id: 'performance', name: 'Rendimiento', icon: <PresentationChartLineIcon className="w-4 h-4" /> },
     { id: 'compare', name: 'Comparador', icon: <TableCellsIcon className="w-4 h-4" /> },
     { id: 'test', name: 'API Test', icon: <ListBulletIcon className="w-4 h-4" /> },
 ];
 
 export const AiAnalysis: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<AiTab>('parlay');
+    const [activeTab, setActiveTab] = useState<AiTab>('performance');
 
     const renderContent = () => {
         switch (activeTab) {
             case 'parlay':
-                return <ParlayBuilder />;
+                return null; // <ParlayBuilder />;
             case 'performance':
                 return <PerformanceAnalyzer />;
             case 'compare':

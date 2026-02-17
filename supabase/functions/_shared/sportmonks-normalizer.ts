@@ -165,6 +165,27 @@ export function normalizeDetailedMatchHistory(fixtures: any[], teamId: number): 
                 .join(', ') || '';
         };
 
+        // V8 UPGRADE: Extract ALL events with detail (minute, type, player, detail)
+        const extractDetailedEvents = (team: number) => {
+            if (!f.events || !Array.isArray(f.events)) return [];
+            return f.events
+                .filter((e: any) => e.participant_id === team)
+                .map((e: any) => ({
+                    minute: e.minute + (e.extra_minute ? `+${e.extra_minute}` : ''),
+                    type: e.type?.name || (e.type_id === 14 ? 'Goal' : e.type_id === 18 ? 'Yellow Card' : e.type_id === 20 ? 'Red Card' : e.type_id === 19 ? 'Substitution' : 'Event'),
+                    player: e.player_name || e.player?.common_name || 'Unknown',
+                    detail: e.sub_type_name || e.result || '',
+                    related_player: e.related_player_name || null
+                }))
+                .sort((a: any, b: any) => parseInt(a.minute) - parseInt(b.minute));
+        };
+
+        // V8: Half-time score extraction
+        const htHomeEntry = f.scores?.find((s: any) => s.description === '1ST_HALF' && s.score?.participant === 'home');
+        const htAwayEntry = f.scores?.find((s: any) => s.description === '1ST_HALF' && s.score?.participant === 'away');
+        const htHome = htHomeEntry?.score?.goals ?? null;
+        const htAway = htAwayEntry?.score?.goals ?? null;
+
         // Extract Referee
         const referee = f.referees?.[0]?.common_name || 'Unknown';
 
@@ -200,20 +221,68 @@ export function normalizeDetailedMatchHistory(fixtures: any[], teamId: number): 
                 // FIXED: Correct type_ids from SportMonks v3 documentation
                 possession: findStat(45, teamId),
                 shots_total: findStat(42, teamId),
-                shots_on_target: findStat(86, teamId), // Or could be derived: shots_total - shots_off - blocked
-                corners: findStat(34, teamId),         // FIXED: Was 83, should be 34
-                saves: findStat(57, teamId),           // FIXED: Was 34, should be 57
-                yellow_cards: findStat(84, teamId),    // FIXED: Was 57, should be 84
-                red_cards: f.statistics?.find((s: any) => s.participant_id === teamId && s.type_id === 83)?.data?.value || 0, // FIXED: Was 58, should be 83
+                shots_on_target: findStat(86, teamId),
+                corners: findStat(34, teamId),
+                saves: findStat(57, teamId),
+                yellow_cards: findStat(84, teamId),
+                red_cards: f.statistics?.find((s: any) => s.participant_id === teamId && s.type_id === 83)?.data?.value || 0,
                 fouls: findStat(56, teamId),
                 goal_timings: getGoalTimings(teamId),
                 referee: referee,
                 // Opponent stats for deeper analysis
                 opponent_shots: findStat(42, opponentId),
                 opponent_shots_on_target: findStat(86, opponentId),
-                opponent_corners: findStat(34, opponentId),   // FIXED
-                opponent_possession: findStat(45, opponentId)
+                opponent_corners: findStat(34, opponentId),
+                opponent_possession: findStat(45, opponentId),
+                // V8 NEW: Expanded stats
+                shots_blocked: findStat(58, teamId),
+                offsides: findStat(51, teamId),
+                free_kicks: findStat(55, teamId),
+                opponent_fouls: findStat(56, opponentId),
+                opponent_yellow_cards: findStat(84, opponentId),
+                opponent_red_cards: f.statistics?.find((s: any) => s.participant_id === opponentId && s.type_id === 83)?.data?.value || 0,
+                // V8 NEW: Detailed events (minute-by-minute)
+                events: extractDetailedEvents(teamId),
+                opponent_events: extractDetailedEvents(opponentId),
+                // V8 NEW: Half-time score
+                ht_score_team: wasHome ? htHome : htAway,
+                ht_score_opponent: wasHome ? htAway : htHome
             }
+        };
+    });
+}
+
+/**
+ * V8: Normalize SIMPLE match history (results + formation only, for general form)
+ * Lightweight version for the 30-match general trend view
+ */
+export function normalizeSimpleForm(fixtures: any[], teamId: number): any[] {
+    return fixtures.map((f: any) => {
+        const home = f.participants?.find((p: any) => p.meta?.location === 'home');
+        const away = f.participants?.find((p: any) => p.meta?.location === 'away');
+        const homeId = home?.id || 0;
+        const wasHome = teamId === homeId;
+        const opponentName = wasHome ? (away?.name || 'Away') : (home?.name || 'Home');
+
+        const homeScoreEntry = f.scores?.find((s: any) => s.description === 'CURRENT' && s.score?.participant === 'home');
+        const awayScoreEntry = f.scores?.find((s: any) => s.description === 'CURRENT' && s.score?.participant === 'away');
+        const homeScore = homeScoreEntry?.score?.goals ?? 0;
+        const awayScore = awayScoreEntry?.score?.goals ?? 0;
+
+        const teamGoals = wasHome ? homeScore : awayScore;
+        const oppGoals = wasHome ? awayScore : homeScore;
+        const result = teamGoals > oppGoals ? 'W' : teamGoals < oppGoals ? 'L' : 'D';
+
+        const formation = f.formations?.find((fm: any) => fm.participant_id === teamId)?.formation || null;
+
+        return {
+            date: f.starting_at || '',
+            opponent: opponentName,
+            was_home: wasHome,
+            score: `${teamGoals}-${oppGoals}`,
+            result,
+            formation,
+            league: f.league?.name || ''
         };
     });
 }
@@ -778,6 +847,7 @@ export function organizeOddsForAI(odds: any[]): any {
         TEAMS: [] as any[],   // BTTS, Team to Score, Team Totals
         HALVES: [] as any[],  // HT Results, HT Goals
         CORNERS: [] as any[],
+        COMBOS: [] as any[],  // Combined Markets: Result+BTTS, Result+O/U, HT/FT
         OTHERS: [] as any[]
     };
 
@@ -790,12 +860,39 @@ export function organizeOddsForAI(odds: any[]): any {
         canon: getCanonicalMarketId(o.market_id, o.label)
     });
 
-    // Valid market IDs (approximate whitelist for categorization, but we accept ALL)
+    // Known SportMonks market IDs for combined markets
+    // 37 = Result & Both Teams To Score
+    // 47 = Halftime/Fulltime
+    // 97 = Result & Total Goals
+    const COMBO_MARKET_IDS = new Set([37, 47, 97]);
+
     for (const o of odds) {
         const mid = o.market_id;
         const label = (o.label || '').toLowerCase();
 
-        // Categorization Logic
+        // ═══ COMBOS DETECTION (must be BEFORE other categories) ═══
+        // Detect by market ID first (most reliable)
+        if (COMBO_MARKET_IDS.has(mid)) {
+            structured.COMBOS.push(fmt(o));
+            continue;
+        }
+        // Detect by label patterns (catches other bookmaker-specific combos)
+        if (
+            (label.includes('&') && (label.includes('over') || label.includes('under') || label.includes('btts') || label.includes('both teams'))) ||
+            label.includes('halftime/fulltime') ||
+            label.includes('ht/ft') ||
+            label.includes('result & ') ||
+            label.includes('result/') ||
+            (label.includes('win') && label.includes('over')) ||
+            (label.includes('win') && label.includes('under')) ||
+            (label.includes('draw') && label.includes('over')) ||
+            (label.includes('draw') && label.includes('under'))
+        ) {
+            structured.COMBOS.push(fmt(o));
+            continue;
+        }
+
+        // ═══ Standard Categorization ═══
         if (mid === 1 || mid === 2 || mid === 10) { // 1x2, Double Chance
             structured.MAIN.push(fmt(o));
         } else if (label.includes('double chance') || label.includes('draw no bet') || label.includes(' or ')) {
@@ -807,7 +904,7 @@ export function organizeOddsForAI(odds: any[]): any {
             } else {
                 structured.GOALS.push(fmt(o));
             }
-        } else if (mid === 6 || mid === 13 || mid === 37 || label.includes('both teams') || label.includes('btts')) {
+        } else if (mid === 6 || mid === 13 || label.includes('both teams') || label.includes('btts')) {
             structured.TEAMS.push(fmt(o));
         } else if (label.includes('corner')) {
             structured.CORNERS.push(fmt(o));
@@ -817,10 +914,6 @@ export function organizeOddsForAI(odds: any[]): any {
             structured.OTHERS.push(fmt(o));
         }
     }
-
-    // Optional: Deduplicate within categories?
-    // User asked "prompt can determine which represents greater opportunity"
-    // So we basically pass them all but grouped.
 
     return structured;
 }

@@ -260,6 +260,10 @@ export const createAnalysisJob = async (apiFixtureId: number, timezone: string =
     try {
         console.log(`[V3] Iniciando análisis IA PURO para fixture ${apiFixtureId}...`);
 
+        // NOTE: Do NOT delete 'analisis' cache here. The analyzer handles cleanup
+        // after successful completion. Deleting prematurely causes the match to
+        // appear as "not analyzed" while the new analysis runs in background.
+
         // ═══════════════════════════════════════════════════════════════
         // MOTOR V3: Pipeline simplificado (ETL SportMonks → IA Puro)
         // Gemini recibe TODOS los datos y toma TODAS las decisiones
@@ -296,10 +300,10 @@ export const createAnalysisJob = async (apiFixtureId: number, timezone: string =
             throw new Error("V3 no devolvió job_id válido");
         }
 
-        console.log(`[V3] ✅ Análisis IA completado: ${responseData.job_id}`);
-        console.log(`[V3] Veredicto: ${responseData.summary?.veredicto}, Picks: ${responseData.summary?.picks || 0}`);
+        // V8: ETL responde inmediatamente con job_id, el analyzer corre en background
+        console.log(`[V3] ✅ ETL completado: ${responseData.job_id} (Analyzer ejecutándose en background)`);
+        console.log(`[V3] Coverage: ${responseData.coverage_pct}% | ${responseData.summary?.home_matches || 'N/A'}`);
 
-        // V2 guarda en analysis_jobs_v2, pero retornamos el job_id para compatibilidad
         return responseData.job_id;
 
     } catch (err: any) {
@@ -356,17 +360,8 @@ export const getAnalysisJob = async (jobId: string): Promise<AnalysisJob | null>
         } as unknown as AnalysisJob;
     }
 
-    // Fallback a V1
-    const { data, error } = await supabase
-        .from('analysis_jobs')
-        .select('*')
-        .eq('id', jobId)
-        .single();
-
-    if (error) {
-        return null;
-    }
-    return data as AnalysisJob;
+    // V1 fallback removed - only V3 pipeline active
+    return null;
 };
 
 /**
@@ -451,7 +446,7 @@ export const getAnalysisResult = async (jobId: string): Promise<VisualAnalysisRe
                     .from('analisis')
                     .select('resultado_analisis')
                     .eq('partido_id', v3Analysis.fixture_id)
-                    .single();
+                    .maybeSingle();
 
                 if (cachedAnalysis?.resultado_analisis?.dashboardData) {
                     console.log(`[analysisService] V3 cached dashboardData found, applying adapter`);
@@ -1170,41 +1165,57 @@ export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<V
     console.log(`[analysisService] 🟢 [V3 PATCH ACTIVO] Buscando análisis para fixture ${fixtureId}...`);
 
     // ═══════════════════════════════════════════════════════════════
-    // PASO 1: Buscar en tabla 'analisis' PRIMERO (V3 siempre guarda aquí)
+    // PASO 1: Buscar en tabla 'analisis' (V3 siempre guarda aquí)
+    // Con freshness check: si hay un job 'done' más reciente, skip cache
     // ═══════════════════════════════════════════════════════════════
     const { data: analisisData, error: analisisError } = await supabase
         .from('analisis')
-        .select('resultado_analisis')
+        .select('resultado_analisis, updated_at')
         .eq('partido_id', fixtureId)
         .maybeSingle();
 
     if (analisisData?.resultado_analisis) {
-        const result = analisisData.resultado_analisis as any;
+        // Freshness check: see if there's a newer completed job
+        const { data: newerJob } = await supabase
+            .from('analysis_jobs_v2')
+            .select('id, created_at')
+            .eq('fixture_id', fixtureId)
+            .eq('status', 'done')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-        // V3 guarda { dashboardData: {...} }
-        if (result.dashboardData) {
-            // Usar adaptador completo V3 -> Frontend
-            const adaptedDashboardData = adaptV3ToFrontend(result.dashboardData);
+        const cacheTime = analisisData.updated_at ? new Date(analisisData.updated_at).getTime() : 0;
+        const jobTime = newerJob?.created_at ? new Date(newerJob.created_at).getTime() : 0;
+        const isFresh = !newerJob || cacheTime >= jobTime;
 
-            console.log(`[analysisService] ✅ V3 dashboardData encontrado y adaptado para Frontend`);
-            return {
-                analysisText: adaptedDashboardData.resumen_ejecutivo?.frase_principal || "Análisis V3 completado.",
-                dashboardData: adaptedDashboardData,
-                analysisRun: undefined,
-                payload: result.dashboardData.payload // Fix: Pass payload explicitely
-            };
-        }
+        if (isFresh) {
+            const result = analisisData.resultado_analisis as any;
 
-        // Legacy format (resultado directo sin dashboardData wrapper)
-        if (result.veredicto_analista || result.predicciones_finales) {
-            // También adaptar formato legacy por si acaso
-            const adaptedResult = adaptV3ToFrontend(result);
-            console.log(`[analysisService] ✅ Análisis legacy encontrado y adaptado`);
-            return {
-                analysisText: adaptedResult.resumen_ejecutivo?.frase_principal || "Análisis completado.",
-                dashboardData: adaptedResult,
-                analysisRun: undefined
-            };
+            // V3 guarda { dashboardData: {...} }
+            if (result.dashboardData) {
+                const adaptedDashboardData = adaptV3ToFrontend(result.dashboardData);
+                console.log(`[analysisService] V3 dashboardData encontrado y adaptado (fresh)`);
+                return {
+                    analysisText: adaptedDashboardData.resumen_ejecutivo?.frase_principal || "Análisis V3 completado.",
+                    dashboardData: adaptedDashboardData,
+                    analysisRun: undefined,
+                    payload: result.dashboardData.payload
+                };
+            }
+
+            // Legacy format
+            if (result.veredicto_analista || result.predicciones_finales) {
+                const adaptedResult = adaptV3ToFrontend(result);
+                console.log(`[analysisService] Análisis legacy encontrado y adaptado`);
+                return {
+                    analysisText: adaptedResult.resumen_ejecutivo?.frase_principal || "Análisis completado.",
+                    dashboardData: adaptedResult,
+                    analysisRun: undefined
+                };
+            }
+        } else {
+            console.log(`[analysisService] Cache stale (cache: ${analisisData.updated_at}, job: ${newerJob?.created_at}). Falling through to reports_v2.`);
         }
     }
 
@@ -1227,27 +1238,24 @@ export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<V
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // PASO 3: Fallback final - analysis_runs (V1 legacy)
+    // PASO 3: Buscar directamente en reports_v2 por fixture_id
+    // (covers cases where analysis_jobs_v2/analisis were deleted)
     // ═══════════════════════════════════════════════════════════════
-    const { data: runData } = await supabase
-        .from('analysis_runs')
-        .select('*, predictions(*)')
+    const { data: directReport } = await supabase
+        .from('reports_v2')
+        .select('job_id, report_packet')
         .eq('fixture_id', fixtureId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-    if (runData) {
-        console.log(`[analysisService] V1 analysis_run encontrado`);
-        const run = runData as AnalysisRun;
-        return {
-            analysisText: run.summary_pre_text || "Análisis completado.",
-            dashboardData: run.report_pre_jsonb as DashboardAnalysisJSON,
-            analysisRun: run
-        };
+    if (directReport?.job_id) {
+        console.log(`[analysisService] Direct reports_v2 hit for fixture ${fixtureId}, job: ${directReport.job_id}`);
+        const result = await getAnalysisResult(directReport.job_id);
+        if (result) return result;
     }
 
-    console.log(`[analysisService] ❌ No se encontró análisis para fixture ${fixtureId}`);
+    console.log(`[analysisService] No se encontró análisis para fixture ${fixtureId}`);
     return null;
 };
 

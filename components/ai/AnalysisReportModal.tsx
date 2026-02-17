@@ -980,6 +980,122 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                     </div>
                                 )}
 
+                                {/* V8: Dual Scores Transparency */}
+                                {(data as any).scores_duales && (
+                                    <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-6 rounded-xl border border-white/10 mb-2">
+                                        <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                            <ChartBarIcon className="w-5 h-5 text-blue-400" />
+                                            Scores Duales (50/50)
+                                        </h3>
+                                        <div className="grid grid-cols-3 gap-4">
+                                            <div className="bg-black/30 p-4 rounded-lg text-center border border-blue-500/20">
+                                                <span className="text-3xl font-black text-blue-400">{(data as any).scores_duales.score_estadistico}</span>
+                                                <span className="block text-xs text-gray-400 uppercase mt-1">Stats Score</span>
+                                            </div>
+                                            <div className="bg-black/30 p-4 rounded-lg text-center border border-purple-500/20">
+                                                <span className="text-3xl font-black text-purple-400">{(data as any).scores_duales.score_inteligencia_partido}</span>
+                                                <span className="block text-xs text-gray-400 uppercase mt-1">Context Score</span>
+                                            </div>
+                                            <div className="bg-black/30 p-4 rounded-lg text-center border border-emerald-500/20">
+                                                <span className="text-3xl font-black text-emerald-400">{(data as any).scores_duales.confianza_final_calculada}%</span>
+                                                <span className="block text-xs text-gray-400 uppercase mt-1">Confianza Final</span>
+                                            </div>
+                                        </div>
+                                        {(data as any).scores_duales.justificacion_balance && (
+                                            <p className="text-gray-400 text-sm mt-3 italic border-l-2 border-gray-600 pl-3">
+                                                {(data as any).scores_duales.justificacion_balance}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* V8: Patrones Detectados */}
+                                {(data as any).patrones_detectados && (
+                                    <div className="bg-gradient-to-r from-amber-900/20 to-orange-900/20 p-6 rounded-xl border border-amber-500/30">
+                                        <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                            <SparklesIcon className="w-5 h-5 text-amber-400" />
+                                            Patrones Detectados (V8)
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            {(data as any).patrones_detectados.goles_por_tiempo && (
+                                                <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                                                    <h4 className="text-amber-400 text-xs font-bold uppercase mb-2">Goles por Tiempo</h4>
+                                                    <div className="space-y-1 text-sm">
+                                                        <div className="flex justify-between text-gray-300">
+                                                            <span>Local 1T</span>
+                                                            <span className="font-bold text-white">{(data as any).patrones_detectados.goles_por_tiempo.home_1er_tiempo_pct}%</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-gray-300">
+                                                            <span>Local 2T</span>
+                                                            <span className="font-bold text-white">{(data as any).patrones_detectados.goles_por_tiempo.home_2do_tiempo_pct}%</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-gray-300">
+                                                            <span>Visita 1T</span>
+                                                            <span className="font-bold text-white">{(data as any).patrones_detectados.goles_por_tiempo.away_1er_tiempo_pct}%</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-gray-300">
+                                                            <span>Visita 2T</span>
+                                                            <span className="font-bold text-white">{(data as any).patrones_detectados.goles_por_tiempo.away_2do_tiempo_pct}%</span>
+                                                        </div>
+                                                    </div>
+                                                    {(data as any).patrones_detectados.goles_por_tiempo.insight && (
+                                                        <p className="text-amber-300 text-xs mt-2 italic">{(data as any).patrones_detectados.goles_por_tiempo.insight}</p>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {(data as any).patrones_detectados.formacion_rendimiento && (
+                                                <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                                                    <h4 className="text-blue-400 text-xs font-bold uppercase mb-2">Formaciones</h4>
+                                                    <div className="space-y-2 text-sm">
+                                                        <div>
+                                                            <span className="text-gray-400 text-xs">Local:</span>
+                                                            <span className="text-white font-bold ml-1">{(data as any).patrones_detectados.formacion_rendimiento.home_formacion_usual}</span>
+                                                            <span className="text-emerald-400 text-xs ml-1">({(data as any).patrones_detectados.formacion_rendimiento.home_win_pct_con_formacion}% win)</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-400 text-xs">Visita:</span>
+                                                            <span className="text-white font-bold ml-1">{(data as any).patrones_detectados.formacion_rendimiento.away_formacion_usual}</span>
+                                                            <span className="text-emerald-400 text-xs ml-1">({(data as any).patrones_detectados.formacion_rendimiento.away_win_pct_con_formacion}% win)</span>
+                                                        </div>
+                                                    </div>
+                                                    {(data as any).patrones_detectados.formacion_rendimiento.insight && (
+                                                        <p className="text-blue-300 text-xs mt-2 italic">{(data as any).patrones_detectados.formacion_rendimiento.insight}</p>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {(data as any).patrones_detectados.disciplina && (
+                                                <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                                                    <h4 className="text-red-400 text-xs font-bold uppercase mb-2">Disciplina</h4>
+                                                    <div className="space-y-1 text-sm">
+                                                        <div className="flex justify-between text-gray-300">
+                                                            <span>Local Avg Tarjetas</span>
+                                                            <span className="font-bold text-white">{(data as any).patrones_detectados.disciplina.home_avg_tarjetas}</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-gray-300">
+                                                            <span>Visita Avg Tarjetas</span>
+                                                            <span className="font-bold text-white">{(data as any).patrones_detectados.disciplina.away_avg_tarjetas}</span>
+                                                        </div>
+                                                    </div>
+                                                    {(data as any).patrones_detectados.disciplina.insight && (
+                                                        <p className="text-red-300 text-xs mt-2 italic">{(data as any).patrones_detectados.disciplina.insight}</p>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* V8: Contexto Externo Resumen */}
+                                {(data as any).contexto_externo_resumen && (
+                                    <div className="bg-gradient-to-r from-cyan-900/20 to-teal-900/20 p-5 rounded-xl border border-cyan-500/30">
+                                        <h4 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" /></svg>
+                                            Contexto Externo (Noticias)
+                                        </h4>
+                                        <p className="text-gray-300 text-sm leading-relaxed">{(data as any).contexto_externo_resumen}</p>
+                                    </div>
+                                )}
+
                                 {/* 4. Predicciones Finales */}
                                 {data.predicciones_finales && data.predicciones_finales.detalle && (
                                     <div>

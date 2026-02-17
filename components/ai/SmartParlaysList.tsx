@@ -142,6 +142,12 @@ const SmartParlaysList: React.FC<SmartParlaysListProps> = ({ date }) => {
                             </div>
                             <div className="flex items-center gap-4">
                                 <div className="text-right">
+                                    <div className="text-white/80 text-xs uppercase tracking-wider">Cuota Total</div>
+                                    <div className="text-emerald-400 font-bold text-3xl">
+                                        x{parlay.implied_odds?.toFixed(2) || '---'}
+                                    </div>
+                                </div>
+                                <div className="text-right border-l border-white/10 pl-4">
                                     <div className="text-white/80 text-xs uppercase tracking-wider">Probabilidad</div>
                                     <div className="text-white font-bold text-3xl">
                                         {formatProbability(parlay.combined_probability)}

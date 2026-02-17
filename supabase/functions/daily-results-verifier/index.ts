@@ -156,6 +156,52 @@ serve(async (req) => {
                             verified_at: new Date().toISOString(),
                             verification_source: 'automation'
                         }, { onConflict: 'prediction_id' });
+
+                        // V8: Update profitability tracking
+                        try {
+                            const result = isWon ? 'won' : 'lost';
+                            // Find pending entries for this fixture
+                            const { data: profitEntries } = await supabase
+                                .from('profitability_tracking')
+                                .select('id, stake_amount, odds, bankroll_after')
+                                .eq('fixture_id', fId)
+                                .eq('result', 'pending');
+
+                            if (profitEntries && profitEntries.length > 0) {
+                                // Get latest bankroll
+                                const { data: lastBankroll } = await supabase
+                                    .from('profitability_tracking')
+                                    .select('bankroll_after')
+                                    .not('bankroll_after', 'is', null)
+                                    .not('result', 'eq', 'pending')
+                                    .order('verified_at', { ascending: false })
+                                    .limit(1)
+                                    .maybeSingle();
+
+                                let runningBankroll = lastBankroll?.bankroll_after || 100;
+
+                                for (const pe of profitEntries) {
+                                    // Match by market name (fuzzy)
+                                    const profitLoss = result === 'won'
+                                        ? pe.stake_amount * (pe.odds - 1)
+                                        : -pe.stake_amount;
+                                    runningBankroll += profitLoss;
+
+                                    await supabase
+                                        .from('profitability_tracking')
+                                        .update({
+                                            result,
+                                            profit_loss: profitLoss,
+                                            bankroll_after: runningBankroll,
+                                            verified_at: new Date().toISOString()
+                                        })
+                                        .eq('id', pe.id);
+                                }
+                                console.log(`[Verifier] Updated ${profitEntries.length} profitability entries for fixture ${fId}`);
+                            }
+                        } catch (profitErr: any) {
+                            console.warn(`[Verifier] Profitability update failed (non-blocking): ${profitErr.message}`);
+                        }
                     }
                 }
                 verifiedFixtures++;

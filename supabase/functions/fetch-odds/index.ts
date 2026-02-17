@@ -35,12 +35,15 @@ serve(async (req) => {
         }
 
         const targetRegion = region || 'eu';
-        const targetMarkets = markets || 'h2h,totals'; // Winner & Over/Under
+        // V2 UPGRADE: Support extended markets for Smart Parlays
+        // Default remains 'h2h,totals' to save costs on standard calls
+        // Allowed: h2h, spreads, totals, btts, draw_no_bet, double_chance
+        const targetMarkets = markets || 'h2h,totals';
 
         // 2. Fetch from API
         const url = `${BASE_URL}/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=${targetRegion}&markets=${targetMarkets}&oddsFormat=decimal`;
 
-        console.log(`[FETCH-ODDS] Fetching for league: ${league_id} -> ${sportKey}`);
+        console.log(`[FETCH-ODDS] Fetching for league: ${league_id} -> ${sportKey} | Markets: ${targetMarkets}`);
 
         const response = await fetch(url);
         const data = await response.json();

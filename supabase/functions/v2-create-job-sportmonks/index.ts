@@ -14,9 +14,9 @@ import {
     getPredictions,
     getValueBets
 } from '../_shared/sportmonks-client.ts'
-import { buildNormalizedPayload, organizeOddsForAI } from '../_shared/sportmonks-normalizer.ts'
+import { organizeOddsForAI, normalizeDetailedMatchHistory, normalizeSimpleForm } from '../_shared/sportmonks-normalizer.ts'
 
-const ENGINE_VERSION = '3.0.0-SPORTMONKS';
+const ENGINE_VERSION = '5.0.0-SPORTMONKS-V8';
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -37,6 +37,10 @@ serve(async (req) => {
         const sbUrl = Deno.env.get('SUPABASE_URL')!;
         const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         supabase = createClient(sbUrl, sbKey);
+
+        // NOTE: Do NOT delete old data here. The analyzer (v3-ai-analyzer) handles
+        // cleanup AFTER successful completion. Deleting here would destroy data
+        // if the analyzer fails, leaving the user with nothing.
 
         // Create job record
         const { data: job, error: jobError } = await supabase
@@ -122,12 +126,36 @@ serve(async (req) => {
 
 
         // ═══════════════════════════════════════════════════════════════
-        // STAGE 2: FETCH ADDITIONAL DATA (parallel)
+        // STAGE 2: FETCH ADDITIONAL DATA (parallel) - V8 UPGRADED
         // ═══════════════════════════════════════════════════════════════
-        console.log('[v2-create-job-sportmonks] Stage 2: Fetching additional data (Deep Dive V4)...');
+        console.log('[v2-create-job-sportmonks] Stage 2: Fetching data (V8 Deep Dive + Perplexity)...');
 
-        // V4 REQUIREMENT: 20 matches with FULL stats (lineups, statistics, events)
-        const deepIncludes = ['participants', 'scores', 'venue', 'league', 'statistics', 'lineups', 'events', 'formations'];
+        // V8: 25 matches per team (enough for 10 home + 10 away split)
+        // OPTIMIZED: Removed 'lineups' (not used in normalizer) to reduce payload size
+        const deepIncludes = ['participants', 'scores', 'venue', 'league', 'statistics', 'events', 'formations', 'referees'];
+
+        // Fetch Perplexity context in parallel with data fetching (with 10s timeout)
+        const sbUrl2 = Deno.env.get('SUPABASE_URL')!;
+        const perplexityController = new AbortController();
+        const perplexityTimeout = setTimeout(() => perplexityController.abort(), 10000); // 10s max
+        const perplexityPromise = fetch(`${sbUrl2}/functions/v1/v2-perplexity-context`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+            },
+            signal: perplexityController.signal,
+            body: JSON.stringify({
+                home_team: homeTeam.name,
+                away_team: awayTeam.name,
+                competition: fixtureData.league?.name || '',
+                date: fixtureData.starting_at?.split('T')[0] || new Date().toISOString().split('T')[0]
+            })
+        }).then(r => { clearTimeout(perplexityTimeout); return r.json(); }).catch(err => {
+            clearTimeout(perplexityTimeout);
+            console.warn('[v2-create-job] Perplexity context failed (non-blocking):', err.message);
+            return null;
+        });
 
         const [
             homeHistory,
@@ -135,42 +163,49 @@ serve(async (req) => {
             h2h,
             standings,
             predictions,
-            valueBets
+            valueBets,
+            perplexityResult
         ] = await Promise.all([
-            getTeamFixtures(homeTeamId, 20, deepIncludes), // 20 matches Deep Dive
-            getTeamFixtures(awayTeamId, 20, deepIncludes), // 20 matches Deep Dive
+            getTeamFixtures(homeTeamId, 25, deepIncludes), // 25 matches (enough for 10 home + 10 away)
+            getTeamFixtures(awayTeamId, 25, deepIncludes), // 25 matches
             getH2H(homeTeamId, awayTeamId),
             seasonId ? getStandings(seasonId) : Promise.resolve([]),
             getPredictions(fixture_id),
-            getValueBets(fixture_id)
+            getValueBets(fixture_id),
+            perplexityPromise
         ]);
 
         console.log(`[v2-create-job-sportmonks] Data fetched:`);
-        console.log(`  - Home deep history: ${homeHistory.length} matches`);
-        console.log(`  - Away deep history: ${awayHistory.length} matches`);
+        console.log(`  - Home raw history: ${homeHistory.length} matches`);
+        console.log(`  - Away raw history: ${awayHistory.length} matches`);
         console.log(`  - H2H: ${h2h.length} matches`);
         console.log(`  - Standings: ${standings.length} teams`);
         console.log(`  - Predictions: ${predictions ? 'YES' : 'NO'}`);
         console.log(`  - Value Bets: ${valueBets.length} bets`);
+        console.log(`  - Perplexity context: ${perplexityResult?.success ? 'YES' : 'NO/SKIPPED'}`);
 
         // ═══════════════════════════════════════════════════════════════
-        // STAGE 3: BUILD NORMALIZED PAYLOAD
+        // STAGE 3: BUILD NORMALIZED PAYLOAD (V8 STRUCTURED)
         // ═══════════════════════════════════════════════════════════════
-        console.log('[v2-create-job-sportmonks] Stage 3: Building normalized payload...');
+        console.log('[v2-create-job-sportmonks] Stage 3: Building V8 structured payload...');
 
-        // Note: buildNormalizedPayload will need to be updated to accept and process 
-        // the deep stats, OR we pre-process them here. 
-        // Ideally, we pass the raw data and let the normalizer handle it, 
-        // BUT buildNormalizedPayload signature expects simple arrays.
-        // We will update sportmonks-normalizer.ts to export a new 'buildDeepPayload' 
-        // or just monkey-patch the payload construction here for V4.
+        // V8: Split history by venue (home/away) for each team
+        const homeAllDetailed = normalizeDetailedMatchHistory(homeHistory, homeTeamId);
+        const awayAllDetailed = normalizeDetailedMatchHistory(awayHistory, awayTeamId);
 
-        // Import the new normalizer function
-        const { normalizeDetailedMatchHistory } = await import('../_shared/sportmonks-normalizer.ts');
+        // Split into as_home / as_away (10 each) + general_form (30 simple)
+        const homeAsHome = homeAllDetailed.filter((m: any) => m.was_home === true).slice(0, 10);
+        const homeAsAway = homeAllDetailed.filter((m: any) => m.was_home === false).slice(0, 10);
+        const homeGeneralForm = normalizeSimpleForm(homeHistory.slice(0, 30), homeTeamId);
 
-        const homeDeep = normalizeDetailedMatchHistory(homeHistory, homeTeamId);
-        const awayDeep = normalizeDetailedMatchHistory(awayHistory, awayTeamId);
+        const awayAsHome = awayAllDetailed.filter((m: any) => m.was_home === true).slice(0, 10);
+        const awayAsAway = awayAllDetailed.filter((m: any) => m.was_home === false).slice(0, 10);
+        const awayGeneralForm = normalizeSimpleForm(awayHistory.slice(0, 30), awayTeamId);
 
+        console.log(`  - Home splits: ${homeAsHome.length} as home, ${homeAsAway.length} as away, ${homeGeneralForm.length} general`);
+        console.log(`  - Away splits: ${awayAsHome.length} as home, ${awayAsAway.length} as away, ${awayGeneralForm.length} general`);
+
+        // Build V8 normalized payload
         const normalizedPayload = {
             match: {
                 fixture_id: fixtureData.id,
@@ -190,10 +225,21 @@ serve(async (req) => {
                     round: fixtureData.round?.name
                 }
             },
+            // V8: Structured datasets by venue
             datasets: {
-                home_team_last40: { all: homeDeep }, // Using Deep history in place of simple
-                away_team_last40: { all: awayDeep }, // Using Deep history in place of simple
-                h2h: h2h, // Helper function to normalize H2H can be reused or raw if fine
+                home_team: {
+                    as_home: homeAsHome,
+                    as_away: homeAsAway,
+                    general_form: homeGeneralForm,
+                    injuries: fixtureData.sidelined?.filter((s: any) => s.team_id === homeTeamId) || []
+                },
+                away_team: {
+                    as_home: awayAsHome,
+                    as_away: awayAsAway,
+                    general_form: awayGeneralForm,
+                    injuries: fixtureData.sidelined?.filter((s: any) => s.team_id === awayTeamId) || []
+                },
+                h2h: h2h,
                 standings: {
                     home_context: standings.find((s: any) => s.participant_id === homeTeamId),
                     away_context: standings.find((s: any) => s.participant_id === awayTeamId),
@@ -204,6 +250,8 @@ serve(async (req) => {
                     away: fixtureData.sidelined?.filter((s: any) => s.team_id === awayTeamId) || []
                 }
             },
+            // V8: External context from Perplexity
+            external_context: perplexityResult?.success ? perplexityResult.context : null,
             predictions,
             value_bets: valueBets,
             odds: organizeOddsForAI(fixtureData.odds || [])
@@ -221,7 +269,9 @@ serve(async (req) => {
             injuries: (fixtureData.sidelined?.length || 0) > 0,
             xg: !!fixtureData.xGFixture,
             value_bets: valueBets.length > 0,
-            deep_history: homeDeep.length > 0 && homeDeep[0].details // Check if deep stats exist
+            deep_history: homeAsHome.length > 0 && homeAsHome[0]?.details,
+            venue_split: homeAsHome.length > 0 && homeAsAway.length > 0,
+            external_context: !!normalizedPayload.external_context
         };
 
         const coverageScore = Object.values(coverage).filter(Boolean).length / Object.keys(coverage).length;
@@ -250,30 +300,16 @@ serve(async (req) => {
         }
 
         // Call v3-ai-analyzer using SERVICE ROLE KEY via FETCH
-        // DEBUG: Hardcoding key because Deno.env.get seems to be failing or returning invalid key
-        const envKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-        const knownGoodKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5va2VqbWhscHNhb2VyaGRkY3ljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTgxNjAwNywiZXhwIjoyMDgxMzkyMDA3fQ.x1icf0Wbkp1xb6h1500HeTvyNykBAAnlqz1udv2AaX4';
-
-        const serviceRoleKey = knownGoodKey;
-
-        console.log(`[v2] Using Hardcoded Key (Start: ${serviceRoleKey.substring(0, 5)}...)`);
-        if (envKey !== knownGoodKey) {
-            console.warn(`[v2] WARNING: Deno.env.get Key (${envKey ? envKey.substring(0, 5) : 'null'}) DOES NOT MATCH Known Good Key!`);
-        }
-
-        // DEBUG: Inspect normalized odds before sending
-        if (normalizedPayload.odds && normalizedPayload.odds.bookmakers && normalizedPayload.odds.bookmakers.length > 0) {
-            const bestBookie = normalizedPayload.odds.bookmakers[0];
-            console.log(`[v2] Best Bookmaker Selected: ${bestBookie.title} (ID: ${bestBookie.id})`);
-            console.log(`[v2] Markets Available: ${bestBookie.markets.map((m: any) => m.key).join(', ')}`);
-        } else {
-            console.log('[v2] No Odds/Bookmakers found in normalized payload');
-        }
+        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || sbKey;
 
         const analyzerUrl = `${sbUrl}/functions/v1/v3-ai-analyzer`;
-        console.log(`[v2] Calling analyzer at ${analyzerUrl} with payload size: ${JSON.stringify(normalizedPayload).length} chars`);
+        const payloadSize = JSON.stringify(normalizedPayload).length;
+        console.log(`[v2] Calling analyzer at ${analyzerUrl} with payload size: ${payloadSize} chars`);
 
-        const analyzerRes = await fetch(analyzerUrl, {
+        // FIRE-AND-FORGET: Launch analyzer WITHOUT waiting for response
+        // This prevents the ETL function from timing out waiting for Gemini (~30-60s)
+        // The analyzer updates the job status directly in the DB when done
+        fetch(analyzerUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -284,19 +320,18 @@ serve(async (req) => {
                 fixture_id,
                 payload: normalizedPayload
             })
+        }).then(async (res) => {
+            if (!res.ok) {
+                console.error(`[v2] Analyzer returned ${res.status}`);
+            } else {
+                console.log(`[v2] Analyzer responded OK`);
+            }
+        }).catch(err => {
+            console.error(`[v2] Analyzer call failed:`, err.message);
         });
 
-        if (!analyzerRes.ok) {
-            const errorStatus = analyzerRes.status;
-            const errorText = await analyzerRes.text();
-            console.error(`[v2] Analyzer call failed with ${errorStatus}: ${errorText}`);
-            throw new Error(`Analyzer V3 Failed (${errorStatus}): ${errorText.substring(0, 500)}`);
-        }
-
-        const analyzerResult = await analyzerRes.json();
-
         const duration = Date.now() - startTime;
-        console.log(`[v2-create-job-sportmonks] Completed in ${duration}ms`);
+        console.log(`[v2-create-job-sportmonks] ETL completed in ${duration}ms. Analyzer running in background.`);
 
         return new Response(JSON.stringify({
             success: true,
@@ -309,7 +344,13 @@ serve(async (req) => {
             data_source: 'SportMonks',
             predictions_available: !!predictions,
             value_bets_count: valueBets.length,
-            payload: normalizedPayload
+            summary: {
+                home_matches: `${homeAsHome.length} home + ${homeAsAway.length} away`,
+                away_matches: `${awayAsHome.length} home + ${awayAsAway.length} away`,
+                h2h_count: h2h.length,
+                perplexity: perplexityResult?.success ? 'YES' : 'NO',
+                payload_size_chars: payloadSize
+            }
         }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -321,7 +362,7 @@ serve(async (req) => {
             await supabase
                 .from('analysis_jobs_v2')
                 .update({
-                    status: 'error',
+                    status: 'failed',
                     error_log: error.message
                 })
                 .eq('id', jobId);

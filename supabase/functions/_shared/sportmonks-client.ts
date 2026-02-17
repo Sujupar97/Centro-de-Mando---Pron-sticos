@@ -49,7 +49,10 @@ export async function fetchSportMonks<T>(
     console.log(`[SportMonks] Fetching: ${endpoint}`);
 
     try {
-        const response = await fetch(url.toString());
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000); // 20s timeout per request
+        const response = await fetch(url.toString(), { signal: controller.signal });
+        clearTimeout(timeout);
 
         if (!response.ok) {
             const errorText = await response.text();
