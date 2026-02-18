@@ -45,7 +45,7 @@ export const AuthPage: React.FC = () => {
             <div className="w-full max-w-md p-8 space-y-8 bg-gray-800 rounded-lg shadow-lg">
                 <div>
                     <h1 className="text-3xl font-bold text-center text-white">
-                        <span className="text-green-accent">Bet</span>Command
+                        <span className="text-white">Der</span><span className="text-brand">bix</span>
                     </h1>
                     <p className="mt-2 text-center text-sm text-gray-400">
                         {isLogin ? 'Inicia sesión para acceder a tu centro de mando' : 'Crea una cuenta para comenzar'}

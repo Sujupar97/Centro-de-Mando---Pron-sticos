@@ -172,7 +172,7 @@ export const SignUpFlow: React.FC = () => {
                                     <span className="text-xs font-bold uppercase tracking-wider text-brand">Únete Ahora</span>
                                 </div>
                                 <h1 className="text-4xl font-black text-white mb-2">Crea tu Cuenta</h1>
-                                <p className="text-slate-400">Accede a pronósticos con IA en segundos</p>
+                                <p className="text-slate-400">Accede a análisis con IA en segundos</p>
                             </div>
 
                             <form onSubmit={handleStep1Submit} className="space-y-4">

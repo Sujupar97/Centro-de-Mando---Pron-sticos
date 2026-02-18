@@ -10,6 +10,7 @@ import { AnalysisReportModal } from './ai/AnalysisReportModal';
 import { GameCard as DetailsGameCard } from './live/GameCard';
 import HighProbPicks from './ai/HighProbPicks';
 import SmartParlays from './ai/SmartParlays';
+import BatchProgressBanner from './ai/BatchProgressBanner';
 import ProfitabilityDashboard from './admin/ProfitabilityDashboard';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../services/supabaseService';
@@ -169,6 +170,16 @@ export const FixturesFeed: React.FC = () => {
     const [processingFixtureId, setProcessingFixtureId] = useState<number | null>(null);
     const isProcessingQueue = React.useRef(false); // Ref guard for sequential processing
     const pollErrorCount = React.useRef(0); // Consecutive poll errors before skipping
+
+    // BATCH PROGRESS TRACKING
+    const [batchProgress, setBatchProgress] = useState<{
+        total: number;
+        completed: number;
+        currentGame: Game | null;
+        leagueName: string;
+        isActive: boolean;
+        results: Record<number, 'done' | 'failed'>;
+    }>({ total: 0, completed: 0, currentGame: null, leagueName: '', isActive: false, results: {} });
 
     // UI MODALS
     const [currentJob, setCurrentJob] = useState<AnalysisJob | null>(null);
@@ -376,6 +387,7 @@ export const FixturesFeed: React.FC = () => {
             isProcessingQueue.current = true; // Lock
             const nextGame = analysisQueue[0];
             setProcessingFixtureId(nextGame.fixture.id);
+            setBatchProgress(prev => ({ ...prev, currentGame: nextGame }));
 
             try {
                 console.log(`[Batch] Starting sequential analysis for: ${nextGame.teams.home.name} vs ${nextGame.teams.away.name}`);
@@ -408,62 +420,71 @@ export const FixturesFeed: React.FC = () => {
         const startTime = Date.now();
         const MAX_WAIT_MS = 180000; // 3 minutes max per job
 
+        const advanceBatch = (fixtureId: number, result: 'done' | 'failed') => {
+            setBatchProgress(prev => {
+                const newCompleted = prev.completed + 1;
+                const newResults = { ...prev.results, [fixtureId]: result };
+                return { ...prev, completed: newCompleted, results: newResults, currentGame: null, isActive: newCompleted < prev.total };
+            });
+            setActiveBatchJobId(null);
+            setProcessingFixtureId(null);
+            setAnalysisQueue(prev => prev.slice(1));
+        };
+
         const interval = setInterval(async () => {
             try {
                 const elapsed = Date.now() - startTime;
 
-                // Timeout: if job takes >3 min, skip to next
                 if (elapsed > MAX_WAIT_MS) {
                     console.warn(`[Batch] Job ${activeBatchJobId} timed out after ${Math.round(elapsed/1000)}s. Skipping.`);
                     pollErrorCount.current = 0;
-                    setActiveBatchJobId(null);
-                    setProcessingFixtureId(null);
-                    setAnalysisQueue(prev => prev.slice(1));
+                    if (processingFixtureId) {
+                        setGameJobStatus(prev => ({ ...prev, [processingFixtureId]: 'failed' }));
+                        advanceBatch(processingFixtureId, 'failed');
+                    } else {
+                        setActiveBatchJobId(null);
+                        setProcessingFixtureId(null);
+                        setAnalysisQueue(prev => prev.slice(1));
+                    }
                     return;
                 }
 
                 const updatedJob = await getAnalysisJob(activeBatchJobId);
-                pollErrorCount.current = 0; // Reset on successful poll
+                pollErrorCount.current = 0;
 
                 if (updatedJob) {
                     setGameJobStatus(prev => ({ ...prev, [updatedJob.api_fixture_id]: updatedJob.status }));
 
                     if (['done', 'failed', 'insufficient_data'].includes(updatedJob.status)) {
                         console.log(`[Batch] Job finished: ${updatedJob.id} (${updatedJob.status}). Moving to next.`);
-
                         if (updatedJob.status === 'done') {
                             setReportsAvailable(prev => ({ ...prev, [updatedJob.api_fixture_id]: true }));
                         }
-
-                        // Reset for next item
-                        setActiveBatchJobId(null);
-                        setProcessingFixtureId(null);
-                        setAnalysisQueue(prev => prev.slice(1));
+                        advanceBatch(updatedJob.api_fixture_id, updatedJob.status === 'done' ? 'done' : 'failed');
                     }
                 } else {
-                    // Job not found (deleted?) - skip to next
                     console.warn(`[Batch] Job ${activeBatchJobId} not found. Skipping.`);
-                    setActiveBatchJobId(null);
-                    setProcessingFixtureId(null);
-                    setAnalysisQueue(prev => prev.slice(1));
+                    if (processingFixtureId) advanceBatch(processingFixtureId, 'failed');
+                    else { setActiveBatchJobId(null); setProcessingFixtureId(null); setAnalysisQueue(prev => prev.slice(1)); }
                 }
             } catch (e) {
                 pollErrorCount.current++;
                 console.error(`[Batch] Poll error #${pollErrorCount.current} for job ${activeBatchJobId}:`, e);
 
-                // After 3 consecutive errors, skip this job to unblock the queue
                 if (pollErrorCount.current >= 3) {
                     console.warn(`[Batch] ${pollErrorCount.current} consecutive poll errors. Skipping to next job.`);
                     pollErrorCount.current = 0;
                     if (processingFixtureId) {
                         setGameJobStatus(prev => ({ ...prev, [processingFixtureId]: 'failed' }));
+                        advanceBatch(processingFixtureId, 'failed');
+                    } else {
+                        setActiveBatchJobId(null);
+                        setProcessingFixtureId(null);
+                        setAnalysisQueue(prev => prev.slice(1));
                     }
-                    setActiveBatchJobId(null);
-                    setProcessingFixtureId(null);
-                    setAnalysisQueue(prev => prev.slice(1));
                 }
             }
-        }, 3000); // Poll every 3s instead of 2s (analyzer takes 30-60s anyway)
+        }, 3000);
 
         return () => clearInterval(interval);
     }, [activeBatchJobId]);
@@ -519,7 +540,6 @@ export const FixturesFeed: React.FC = () => {
             const hasReport = !!reportsAvailable[g.fixture.id];
             const status = gameJobStatus[g.fixture.id] || '';
             const isProcessing = ['queued', 'ingesting', 'data_ready', 'analyzing', 'collecting_evidence'].includes(status);
-            // NOTE: Queue check moved to setState for concurrency safety
             const isCurrent = g.fixture.id === processingFixtureId;
             return !hasReport && !isProcessing && !isCurrent;
         });
@@ -532,7 +552,19 @@ export const FixturesFeed: React.FC = () => {
         // Add to queue with deduplication based on CURRENT state (prev)
         setAnalysisQueue(prev => {
             const newUniqueGames = candidates.filter(c => !prev.some(p => p.fixture.id === c.fixture.id));
-            console.log(`[Batch] Adding ${newUniqueGames.length} new games to queue (Length: ${prev.length} -> ${prev.length + newUniqueGames.length})`);
+            const addedCount = newUniqueGames.length;
+            console.log(`[Batch] Adding ${addedCount} new games to queue (Length: ${prev.length} -> ${prev.length + addedCount})`);
+
+            // Initialize/update batch progress
+            setBatchProgress(bp => ({
+                total: bp.isActive ? bp.total + addedCount : addedCount,
+                completed: bp.isActive ? bp.completed : 0,
+                currentGame: bp.isActive ? bp.currentGame : null,
+                leagueName: bp.isActive ? `${bp.leagueName} + ${league.name}` : league.name,
+                isActive: true,
+                results: bp.isActive ? bp.results : {}
+            }));
+
             return [...prev, ...newUniqueGames];
         });
     };
@@ -641,7 +673,7 @@ export const FixturesFeed: React.FC = () => {
                                 className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'parlays' ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20' : 'text-slate-400 hover:text-white'
                                     }`}
                             >
-                                <SparklesIcon className="w-5 h-5 mr-2" /> Smart Parlays
+                                <SparklesIcon className="w-5 h-5 mr-2" /> Parlays
                             </button>
                             {(profile?.role === 'admin' || profile?.role === 'superadmin') && (
                                 <button
@@ -676,6 +708,17 @@ export const FixturesFeed: React.FC = () => {
                         {isLoading && <LoadingState text="Sincronizando fixture..." />}
                         {!isLoading && (
                             <div className="space-y-8 animate-fade-in">
+                                {/* Batch Progress Banner */}
+                                <BatchProgressBanner
+                                    {...batchProgress}
+                                    onCancel={() => {
+                                        setAnalysisQueue([]);
+                                        setActiveBatchJobId(null);
+                                        setProcessingFixtureId(null);
+                                        setBatchProgress(prev => ({ ...prev, isActive: false, currentGame: null }));
+                                    }}
+                                />
+
                                 {/* Ligas Importantes */}
                                 {data.importantLeagues.length > 0 && (
                                     <div className="space-y-4">

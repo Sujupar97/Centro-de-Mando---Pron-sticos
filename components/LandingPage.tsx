@@ -39,7 +39,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
                             <ChartBarIcon className="w-6 h-6 text-white" />
                         </div>
                         <span className="text-xl font-display font-bold text-white tracking-tight">
-                            Bet<span className="text-brand">Command</span>
+                            Der<span className="text-brand">bix</span>
+                        </span>
+                        {/* Compliance Badge */}
+                        <span className="hidden md:inline-flex ml-3 px-3 py-1 rounded-full bg-brand/10 border border-brand/20 text-[10px] font-bold uppercase tracking-widest text-brand">
+                            100% Análisis Predictivo
                         </span>
                     </div>
 
@@ -83,12 +87,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
                     {/* Badge */}
                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 mb-10 animate-fade-in-up backdrop-blur-md hover:bg-white/10 transition-colors cursor-default">
                         <SparklesIcon className="w-4 h-4 text-brand" />
-                        <span className="text-xs font-bold uppercase tracking-widest text-slate-300">Inteligencia Artificial 2.0</span>
+                        <span className="text-xs font-bold uppercase tracking-widest text-slate-300">Motor de IA Predictiva — 40+ Ligas</span>
                     </div>
 
                     {/* Headline */}
                     <h1 className="text-6xl md:text-8xl lg:text-9xl font-display font-bold text-white tracking-tighter leading-[0.95] mb-10 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-                        Domina el <br />
+                        Analiza el <br />
                         <span className="text-transparent bg-clip-text bg-gradient-to-b from-brand to-emerald-600 relative">
                             Juego.
                             {/* Text Glow Effect */}
@@ -98,7 +102,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
 
                     {/* Subheadline */}
                     <p className="text-xl md:text-2xl text-slate-400 max-w-2xl mx-auto mb-12 leading-relaxed animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-                        La plataforma definitiva para apostadores profesionales. Análisis predictivo, gestión de capital y datos en tiempo real.
+                        El motor de análisis predictivo de fútbol con IA más avanzado. Insights probabilísticos, verificación de resultados y datos en tiempo real para analistas, traders y fans.
                     </p>
 
                     {/* CTAs */}
@@ -108,7 +112,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
                             className="group relative w-full sm:w-auto px-10 py-5 bg-white text-slate-950 font-bold rounded-2xl transition-all hover:scale-105 active:scale-95 shadow-[0_0_40px_rgba(255,255,255,0.2)] overflow-hidden"
                         >
                             <span className="relative z-10 flex items-center justify-center gap-3">
-                                Crea tu cuenta GRATIS
+                                Inicia Análisis Gratuito
                                 <ArrowRightIcon className="w-5 h-5 transition-transform group-hover:translate-x-1" />
                             </span>
                             <div className="absolute inset-0 bg-gradient-to-r from-slate-200 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -123,13 +127,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
 
                     {/* Social Proof / Trust */}
                     <div className="mt-20 pt-10 border-t border-white/5 w-full max-w-4xl animate-fade-in" style={{ animationDelay: '0.5s' }}>
-                        <p className="text-sm text-slate-500 font-medium mb-6 uppercase tracking-widest">Tecnología utilizada por profesionales en</p>
+                        <p className="text-sm text-slate-500 font-medium mb-6 uppercase tracking-widest">Fuentes de datos integradas</p>
                         <div className="flex flex-wrap justify-center gap-12 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
-                            {/* Fake Logos for Design Aesthetic */}
-                            <span className="text-xl font-display font-bold text-white">Bet<span className="text-brand">365</span></span>
-                            <span className="text-xl font-display font-bold text-white">Draft<span className="text-blue-500">Kings</span></span>
-                            <span className="text-xl font-display font-bold text-white">Fan<span className="text-blue-400">Duel</span></span>
-                            <span className="text-xl font-display font-bold text-white">Pinnacle</span>
+                            <span className="text-xl font-display font-bold text-white">Opta<span className="text-brand">Sports</span></span>
+                            <span className="text-xl font-display font-bold text-white">Stats<span className="text-blue-500">Bomb</span></span>
+                            <span className="text-xl font-display font-bold text-white">Sofa<span className="text-blue-400">Score</span></span>
+                            <span className="text-xl font-display font-bold text-white">Transfermarkt</span>
                         </div>
                     </div>
                 </div>
@@ -182,9 +185,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
             <section className="py-32 px-6">
                 <div className="max-w-7xl mx-auto">
                     <div className="text-center mb-24">
-                        <h2 className="text-4xl md:text-6xl font-display font-bold text-white mb-6">Poder Ilimitado.</h2>
+                        <h2 className="text-4xl md:text-6xl font-display font-bold text-white mb-6">Motor Analítico.</h2>
                         <p className="text-xl text-slate-400 max-w-2xl mx-auto">
-                            Herramientas diseñadas obsesivamente para darte la ventaja que la casa no quiere que tengas.
+                            Herramientas diseñadas obsesivamente para generar insights que el análisis manual no puede alcanzar.
                         </p>
                     </div>
 
@@ -197,12 +200,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
                                     <div className="w-12 h-12 rounded-2xl bg-brand/10 flex items-center justify-center mb-6">
                                         <SparklesIcon className="w-6 h-6 text-brand" />
                                     </div>
-                                    <h3 className="text-3xl font-bold text-white mb-4">Predicciones Cuánticas</h3>
-                                    <p className="text-slate-400 text-lg max-w-md">Nuestro motor de IA analiza más de 5,000 puntos de datos por partido para encontrar valor real donde otros solo ven ruido.</p>
+                                    <h3 className="text-3xl font-bold text-white mb-4">Predicciones Probabilísticas</h3>
+                                    <p className="text-slate-400 text-lg max-w-md">Nuestro motor de IA analiza más de 5,000 puntos de datos por partido para identificar señales estadísticas donde otros solo ven ruido.</p>
                                 </div>
                                 <div className="mt-8 flex gap-2">
-                                    <div className="px-4 py-2 rounded-lg bg-green-500/10 text-green-400 border border-green-500/20 text-sm font-bold">Probabilidad Alta</div>
-                                    <div className="px-4 py-2 rounded-lg bg-white/5 text-slate-300 border border-white/10 text-sm">ROI +15%</div>
+                                    <div className="px-4 py-2 rounded-lg bg-green-500/10 text-green-400 border border-green-500/20 text-sm font-bold">Alta Probabilidad</div>
+                                    <div className="px-4 py-2 rounded-lg bg-white/5 text-slate-300 border border-white/10 text-sm">Performance +15%</div>
                                 </div>
                             </div>
                             <div className="absolute right-[-10%] bottom-[-10%] w-[60%] h-[80%] bg-gradient-to-tl from-slate-800 to-slate-950 rounded-tl-3xl border-l border-t border-white/10 group-hover:scale-105 transition-transform duration-700"></div>
@@ -215,10 +218,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
                                     <GlobeAmericasIcon className="w-6 h-6 text-blue-400" />
                                 </div>
                                 <h3 className="text-3xl font-bold text-white mb-4">Cobertura Global</h3>
-                                <p className="text-slate-400 text-lg mb-8">Desde la Premier League hasta ligas menores en Asia. Si hay cuotas, tenemos datos.</p>
+                                <p className="text-slate-400 text-lg mb-8">Desde la Premier League hasta ligas emergentes en Asia. Si hay datos, tenemos análisis.</p>
 
                                 <div className="flex-1 space-y-4">
-                                    {['Premier League', 'La Liga', 'NBA', 'NFL', 'Champions'].map(league => (
+                                    {['Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Champions'].map(league => (
                                         <div key={league} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
                                             <span className="font-semibold text-white">{league}</span>
                                             <ArrowRightIcon className="w-4 h-4 text-slate-500" />
@@ -236,7 +239,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
                                         <LockClosedIcon className="w-6 h-6 text-purple-400" />
                                     </div>
                                     <h3 className="text-2xl font-bold text-white mb-2">Seguridad Total</h3>
-                                    <p className="text-slate-400">Encriptación de extremo a extremo para tus estrategias.</p>
+                                    <p className="text-slate-400">Encriptación de extremo a extremo para tus análisis y datos.</p>
                                 </div>
                             </div>
                         </div>
@@ -248,8 +251,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
                                     <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center mb-6">
                                         <UsersIcon className="w-6 h-6 text-white" />
                                     </div>
-                                    <h3 className="text-2xl font-bold text-white mb-2">Comunidad VIP</h3>
-                                    <p className="text-slate-400">Acceso exclusivo a estrategias de apostadores top.</p>
+                                    <h3 className="text-2xl font-bold text-white mb-2">Comunidad Analítica</h3>
+                                    <p className="text-slate-400">Acceso exclusivo a metodologías de analistas expertos.</p>
                                 </div>
                             </div>
                         </div>
@@ -263,14 +266,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
                 <div className="absolute inset-0 bg-brand/10 skew-y-3 transform origin-bottom-left scale-110"></div>
                 <div className="max-w-5xl mx-auto text-center relative z-10">
                     <h2 className="text-5xl md:text-7xl font-display font-bold text-white mb-10 tracking-tight">
-                        Deja de adivinar.<br />Empieza a ganar.
+                        Deja de suponer.<br />Empieza a analizar.
                     </h2>
                     <div className="flex flex-col items-center gap-6">
                         <button
                             onClick={onGetStarted}
                             className="px-12 py-6 bg-white text-slate-950 font-bold rounded-full text-xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_50px_rgba(255,255,255,0.3)] flex items-center gap-4"
                         >
-                            Comenzar Prueba Gratuita
+                            Prueba el Motor Analítico
                             <RocketLaunchIcon className="w-6 h-6" />
                         </button>
                         <p className="text-slate-400 text-sm">Sin tarjeta de crédito requerida • Cancelación inmediata</p>
@@ -291,6 +294,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLoginC
                         <a href="#" className="hover:text-white transition-colors">Soporte</a>
                     </div>
                     <p>&copy; {new Date().getFullYear()} Derbix Inc.</p>
+                </div>
+                {/* Compliance Disclaimers */}
+                <div className="max-w-7xl mx-auto px-6 mt-8 pt-6 border-t border-white/5">
+                    <div className="flex flex-col gap-2 text-xs text-slate-600 text-center md:text-left">
+                        <p>Plataforma de Análisis Puro — No gestionamos fondos ni capital de usuarios.</p>
+                        <p>Suscripción SaaS para acceso a herramientas analíticas de inteligencia artificial.</p>
+                        <p>Herramienta analítica únicamente. El usuario toma decisiones independientes basadas en los datos proporcionados.</p>
+                    </div>
                 </div>
             </footer>
         </div>

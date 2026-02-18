@@ -26,7 +26,7 @@ const PAID_PLANS: Plan[] = [
         id: '2',
         name: 'starter',
         displayName: 'Starter',
-        description: 'Acceso al 35% de pronósticos premium',
+        description: 'Acceso al 35% de insights predictivos',
         priceCents: 999,
         predictionsPercentage: 35,
         monthlyParlayLimit: 2,
@@ -40,7 +40,7 @@ const PAID_PLANS: Plan[] = [
         id: '3',
         name: 'pro',
         displayName: 'Pro',
-        description: 'Acceso al 70% de pronósticos + 8 parlays',
+        description: 'Acceso al 70% de insights + 8 combinaciones analíticas',
         priceCents: 2399,
         predictionsPercentage: 70,
         monthlyParlayLimit: 8,
@@ -95,7 +95,7 @@ interface PricingCardProps {
 const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular, onSelect, isProcessing }) => {
     const features = [
         {
-            label: 'Pronósticos de alta probabilidad',
+            label: 'Predicciones de alta probabilidad',
             value: plan.predictionsPercentage === 0
                 ? '1 diario'
                 : plan.predictionsPercentage === 100
@@ -104,7 +104,7 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular, onSelect, is
             included: true
         },
         {
-            label: 'Parlays mensuales',
+            label: 'Combinaciones analíticas mensuales',
             value: plan.monthlyParlayLimit === 0
                 ? 'No incluido'
                 : plan.monthlyParlayLimit >= 24
@@ -127,7 +127,7 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular, onSelect, is
             included: plan.canAccessMLDashboard
         },
         {
-            label: 'Análisis de tickets propios',
+            label: 'Análisis de reportes propios',
             value: plan.canAnalyzeOwnTickets ? 'Incluido' : 'No incluido',
             included: plan.canAnalyzeOwnTickets
         },
@@ -269,10 +269,10 @@ export const PublicPricingPage: React.FC = () => {
                     ← Volver al inicio
                 </button>
                 <h1 className="text-4xl md:text-5xl font-black text-white mb-4">
-                    Elige tu Plan
+                    Elige tu Plan de Análisis
                 </h1>
                 <p className="text-xl text-gray-400">
-                    Accede a pronósticos de alta probabilidad generados por inteligencia artificial
+                    Accede a predicciones analíticas generadas por inteligencia artificial
                     con sistema de aprendizaje automático.
                 </p>
             </div>
@@ -280,8 +280,8 @@ export const PublicPricingPage: React.FC = () => {
             {/* Message Banner */}
             {message && (
                 <div className={`max-w-2xl mx-auto mb-8 p-4 rounded-xl border ${message.type === 'success'
-                        ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                        : 'bg-red-500/10 border-red-500/30 text-red-400'
+                    ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                    : 'bg-red-500/10 border-red-500/30 text-red-400'
                     }`}>
                     <p className="text-center font-medium">{message.text}</p>
                 </div>
@@ -319,7 +319,7 @@ export const PublicPricingPage: React.FC = () => {
             <div className="max-w-3xl mx-auto text-center">
                 <p className="text-gray-500 text-sm">
                     Los precios están en USD (convertidos a COP al pagar). Puedes cancelar en cualquier momento.
-                    Todos los planes incluyen acceso a nuestra plataforma con inteligencia artificial.
+                    Suscripción SaaS para herramientas analíticas de IA. Todos los planes incluyen acceso a nuestra plataforma de análisis predictivo.
                 </p>
             </div>
         </div>
