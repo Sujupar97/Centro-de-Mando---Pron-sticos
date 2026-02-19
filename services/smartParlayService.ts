@@ -1,123 +1,98 @@
 // services/smartParlayService.ts
-// Servicio para gestionar Smart Parlays (combinaciones multi-partido)
+// Servicio para gestionar Parlays (combinaciones multi-partido desde parlay_combos_v2)
 
 import { supabase } from './supabaseService';
 
-export interface SmartParlayPick {
+export interface ParlayPick {
     fixture_id: number;
     market: string;
     selection: string;
+    odds: number;
     p_model: number;
     home_team: string;
     away_team: string;
     league: string;
+    reasoning?: string;
 }
 
-export interface SmartParlay {
+export interface ParlayCombo {
     id: string;
     date: string;
-    name: string;
-    picks: SmartParlayPick[];
+    picks: ParlayPick[];
+    combined_odds: number;
     combined_probability: number;
-    implied_odds: number;
     pick_count: number;
-    confidence_tier: 'ultra_safe' | 'safe' | 'balanced';
+    risk_tier: 'conservative' | 'balanced' | 'aggressive';
     status: 'pending' | 'won' | 'lost' | 'partial' | 'void';
-    created_at: string;
+    generated_at: string;
 }
 
 export interface GenerateParlaysResult {
     success: boolean;
     date?: string;
     stats?: {
-        jobs_found: number;
-        picks_found: number;
-        picks_enriched: number;
-        parlays_2_picks: number;
-        parlays_3_picks: number;
-        total_generated: number;
+        total_picks: number;
+        fixtures_with_picks: number;
+        combinations_evaluated: number;
+        combos_saved: number;
     };
-    parlays?: SmartParlay[];
+    combos?: ParlayCombo[];
     message?: string;
     error?: string;
 }
 
 /**
- * Genera Smart Parlays para una fecha específica
- * @param date Fecha en formato YYYY-MM-DD
+ * Genera combinaciones de parlays para una fecha
+ * Llama a v3-generate-parlay-combos (lógica combinatoria, no Gemini)
  */
 export async function generateSmartParlays(date: string): Promise<GenerateParlaysResult> {
     try {
-        console.log(`[SmartParlays] Generating for date: ${date}`);
+        console.log(`[Parlays] Generating combos for date: ${date}`);
 
-        const { data, error } = await supabase.functions.invoke('v3-smart-parlays', {
+        const { data, error } = await supabase.functions.invoke('v3-generate-parlay-combos', {
             body: { date }
         });
 
         if (error) {
-            console.error('[SmartParlays] Function error:', error);
+            console.error('[Parlays] Function error:', error);
             throw new Error(error.message);
         }
 
-        console.log('[SmartParlays] Result:', data);
-
-        // Adapter for v3 which returns the object directly
-        if (data && data.id) {
-            return {
-                success: true,
-                date: date,
-                stats: {
-                    jobs_found: 0, // Not returned by v3 yet
-                    picks_found: 0,
-                    picks_enriched: 0,
-                    parlays_2_picks: 0,
-                    parlays_3_picks: 1, // We generated 1
-                    total_generated: 1
-                },
-                parlays: [data]
-            };
-        }
-
+        console.log('[Parlays] Result:', data);
         return data as GenerateParlaysResult;
 
     } catch (e: any) {
-        console.error('[SmartParlays] Error:', e);
-        return {
-            success: false,
-            error: e.message
-        };
+        console.error('[Parlays] Error:', e);
+        return { success: false, error: e.message };
     }
 }
 
 /**
- * Obtiene los Smart Parlays almacenados para una fecha
- * @param date Fecha en formato YYYY-MM-DD
+ * Obtiene los parlays almacenados para una fecha desde parlay_combos_v2
  */
-export async function getSmartParlays(date: string): Promise<SmartParlay[]> {
+export async function getSmartParlays(date: string): Promise<ParlayCombo[]> {
     try {
         const { data, error } = await supabase
-            .from('smart_parlays_v2')
+            .from('parlay_combos_v2')
             .select('*')
             .eq('date', date)
-            .order('combined_probability', { ascending: false });
+            .order('combined_odds', { ascending: false });
 
         if (error) {
-            console.error('[SmartParlays] Fetch error:', error);
+            console.error('[Parlays] Fetch error:', error);
             return [];
         }
 
-        return (data || []) as SmartParlay[];
+        return (data || []) as ParlayCombo[];
 
     } catch (e) {
-        console.error('[SmartParlays] Error fetching:', e);
+        console.error('[Parlays] Error fetching:', e);
         return [];
     }
 }
 
 /**
- * Actualiza el estado de un parlay (para verificación de resultados)
- * @param parlayId ID del parlay
- * @param status Nuevo estado
+ * Actualiza el estado de un parlay combo
  */
 export async function updateParlayStatus(
     parlayId: string,
@@ -125,7 +100,7 @@ export async function updateParlayStatus(
 ): Promise<boolean> {
     try {
         const { error } = await supabase
-            .from('smart_parlays_v2')
+            .from('parlay_combos_v2')
             .update({
                 status,
                 verified_at: new Date().toISOString()
@@ -133,14 +108,12 @@ export async function updateParlayStatus(
             .eq('id', parlayId);
 
         if (error) {
-            console.error('[SmartParlays] Update error:', error);
+            console.error('[Parlays] Update error:', error);
             return false;
         }
-
         return true;
-
     } catch (e) {
-        console.error('[SmartParlays] Error updating:', e);
+        console.error('[Parlays] Error updating:', e);
         return false;
     }
 }
@@ -154,6 +127,10 @@ export function translateMarket(market: string): string {
         'over_1.5_goals': 'Más de 1.5 Goles',
         'over_2.5_goals': 'Más de 2.5 Goles',
         'over_3.5_goals': 'Más de 3.5 Goles',
+        'under_0.5_goals': 'Menos de 0.5 Goles',
+        'under_1.5_goals': 'Menos de 1.5 Goles',
+        'under_2.5_goals': 'Menos de 2.5 Goles',
+        'under_3.5_goals': 'Menos de 3.5 Goles',
         'btts_yes': 'Ambos Anotan: Sí',
         'btts_no': 'Ambos Anotan: No',
         'home_win': 'Victoria Local',
@@ -170,31 +147,43 @@ export function translateMarket(market: string): string {
         '1t_over_1.5': '1T Más de 1.5',
         '2t_over_0.5': '2T Más de 0.5',
         '2t_over_1.5': '2T Más de 1.5',
+        'handicap_home': 'Hándicap Local',
+        'handicap_away': 'Hándicap Visitante',
+        'corners_over': 'Córners +',
+        'corners_under': 'Córners -',
+        'cards_over': 'Tarjetas +',
+        'cards_under': 'Tarjetas -',
     };
 
     return translations[market] || market.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
 /**
- * Obtiene el color del badge según el tier de confianza
+ * Obtiene el color según el risk tier
  */
-export function getConfidenceColor(tier: string): string {
+export function getRiskColor(tier: string): string {
     switch (tier) {
-        case 'ultra_safe': return 'from-emerald-500 to-green-600';
-        case 'safe': return 'from-blue-500 to-cyan-600';
+        case 'conservative': return 'from-emerald-500 to-green-600';
         case 'balanced': return 'from-amber-500 to-orange-600';
+        case 'aggressive': return 'from-red-500 to-rose-600';
         default: return 'from-gray-500 to-gray-600';
     }
 }
 
 /**
- * Obtiene el label del tier de confianza
+ * Obtiene el label del risk tier
  */
-export function getConfidenceLabel(tier: string): string {
+export function getRiskLabel(tier: string): string {
     switch (tier) {
-        case 'ultra_safe': return 'Ultra Seguro';
-        case 'safe': return 'Seguro';
+        case 'conservative': return 'Conservador';
         case 'balanced': return 'Equilibrado';
+        case 'aggressive': return 'Agresivo';
         default: return tier;
     }
 }
+
+// Keep old names as aliases for backwards compatibility with SmartParlays component
+export type SmartParlay = ParlayCombo;
+export type SmartParlayPick = ParlayPick;
+export const getConfidenceColor = getRiskColor;
+export const getConfidenceLabel = getRiskLabel;

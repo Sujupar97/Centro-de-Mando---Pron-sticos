@@ -55,6 +55,7 @@ serve(async (req) => {
             .from('analysis_jobs_v2')
             .select('id, fixture_id, status, created_at')
             .eq('status', 'done')
+            .or('analysis_type.eq.standard,analysis_type.is.null')
             .gte('created_at', `${date}T00:00:00`)
             .lt('created_at', `${date}T23:59:59+05:00`); // +5h buffer for Colombia timezone
 
@@ -132,11 +133,12 @@ serve(async (req) => {
 
         if (vpError) log(`[OPP-V8.1] value_picks_v2 error: ${vpError.message}`);
 
-        // 2C: Check for jobs (status info + fallback source)
+        // 2C: Check for jobs (status info + fallback source, exclude parlay jobs)
         const { data: jobs } = await supabase
             .from('analysis_jobs_v2')
             .select('id, fixture_id, status')
             .in('fixture_id', fixtureIds)
+            .or('analysis_type.eq.standard,analysis_type.is.null')
             .order('created_at', { ascending: false });
 
         // 2D: FALLBACK - If fewer reports than done jobs, try via job_id

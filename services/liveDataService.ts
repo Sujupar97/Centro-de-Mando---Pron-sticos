@@ -256,7 +256,8 @@ export const fetchTopPicks = async (date: string) => {
             .from('analysis_jobs_v2')
             .select('id, fixture_id, created_at')
             .in('fixture_id', fixtureIds)
-            .eq('status', 'done');
+            .eq('status', 'done')
+            .or('analysis_type.eq.standard,analysis_type.is.null');
 
         if (v2Jobs && v2Jobs.length > 0) {
             console.log(`[TopPicks] ✅ V2: Encontrados ${v2Jobs.length} jobs V2`);

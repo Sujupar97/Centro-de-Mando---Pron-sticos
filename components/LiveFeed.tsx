@@ -290,7 +290,8 @@ export const FixturesFeed: React.FC = () => {
                     const { data: v2Jobs, error: v2Error } = await supabase
                         .from('analysis_jobs_v2')
                         .select('fixture_id, status, id')
-                        .in('fixture_id', allSearchIds);
+                        .in('fixture_id', allSearchIds)
+                        .or('analysis_type.eq.standard,analysis_type.is.null');
 
                     if (!v2Error && v2Jobs) {
                         v2Jobs.forEach(job => {

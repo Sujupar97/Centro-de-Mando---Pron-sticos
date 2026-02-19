@@ -330,12 +330,63 @@ serve(async (req) => {
             console.error(`[v2] Analyzer call failed:`, err.message);
         });
 
+        // ═══════════════════════════════════════════════════════════════
+        // STAGE 5: FIRE-AND-FORGET PARLAY ANALYZER (parallel, independent)
+        // ═══════════════════════════════════════════════════════════════
+        let parlayJobId: string | null = null;
+        try {
+            // Create a separate job for parlay analysis
+            const { data: parlayJob, error: parlayJobErr } = await supabase
+                .from('analysis_jobs_v2')
+                .insert({
+                    fixture_id,
+                    status: 'etl',
+                    current_motor: 'PARLAY-ANALYZER',
+                    engine_version: ENGINE_VERSION,
+                    analysis_type: 'parlay'
+                })
+                .select()
+                .single();
+
+            if (parlayJobErr) {
+                console.warn(`[v2] Parlay job creation failed (non-blocking):`, parlayJobErr.message);
+            } else {
+                parlayJobId = parlayJob.id;
+                console.log(`[v2] Parlay job created: ${parlayJobId}`);
+
+                const parlayAnalyzerUrl = `${sbUrl}/functions/v1/v3-parlay-analyzer`;
+                fetch(parlayAnalyzerUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${serviceRoleKey}`
+                    },
+                    body: JSON.stringify({
+                        job_id: parlayJobId,
+                        fixture_id,
+                        payload: normalizedPayload
+                    })
+                }).then(async (res) => {
+                    if (!res.ok) {
+                        console.error(`[v2] Parlay analyzer returned ${res.status}`);
+                    } else {
+                        console.log(`[v2] Parlay analyzer responded OK`);
+                    }
+                }).catch(err => {
+                    console.error(`[v2] Parlay analyzer call failed:`, err.message);
+                });
+            }
+        } catch (parlayErr: any) {
+            console.warn(`[v2] Parlay fire-and-forget failed (non-blocking):`, parlayErr.message);
+        }
+
         const duration = Date.now() - startTime;
-        console.log(`[v2-create-job-sportmonks] ETL completed in ${duration}ms. Analyzer running in background.`);
+        console.log(`[v2-create-job-sportmonks] ETL completed in ${duration}ms. Analyzers running in background.`);
 
         return new Response(JSON.stringify({
             success: true,
             job_id: jobId,
+            parlay_job_id: parlayJobId,
             fixture_id,
             engine: ENGINE_VERSION,
             coverage: coverage,

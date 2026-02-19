@@ -1,32 +1,29 @@
 // components/ai/SmartParlays.tsx
-// Componente para mostrar y generar Smart Parlays (combinaciones multi-partido)
+// Componente para mostrar y generar Parlays (combinaciones multi-partido)
 
 import React, { useState, useEffect } from 'react';
 import {
     generateSmartParlays,
     getSmartParlays,
-    SmartParlay,
+    ParlayCombo,
     translateMarket,
-    getConfidenceColor,
-    getConfidenceLabel
+    getRiskColor,
+    getRiskLabel
 } from '../../services/smartParlayService';
 import { getCurrentDateInBogota } from '../../utils/dateUtils';
-import { ArrowDownTrayIcon } from '../icons/Icons';
 
 interface SmartParlaysProps {
     date?: string;
 }
 
 const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
-    const [parlays, setParlays] = useState<SmartParlay[]>([]);
+    const [parlays, setParlays] = useState<ParlayCombo[]>([]);
     const [loading, setLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [lastGenerated, setLastGenerated] = useState<string | null>(null);
     const [stats, setStats] = useState<any>(null);
     const [selectedDate, setSelectedDate] = useState(date || getCurrentDateInBogota());
 
-    // Cargar parlays cuando cambia la fecha
     useEffect(() => {
         loadParlays();
     }, [selectedDate]);
@@ -54,8 +51,6 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
 
             if (result.success) {
                 setStats(result.stats);
-                setLastGenerated(new Date().toLocaleTimeString());
-                // Recargar parlays
                 await loadParlays();
             } else {
                 setError(result.error || result.message || 'Error desconocido');
@@ -69,30 +64,21 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
 
     const formatProbability = (prob: number) => `${Math.round(prob * 100)}%`;
 
-    const handleDownloadPDF = (parlay: SmartParlay, index: number) => {
-        import('../../services/pdf/pdfGenerator').then(({ generateParlayPDF }) => {
-            generateParlayPDF(parlay, {
-                fileName: `Derbix_SmartParlay_${selectedDate}_${index + 1}.pdf`
-            });
-        });
-    };
-
     return (
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-700/50 p-6">
-            {/* Header con Selector de Fecha */}
+            {/* Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                 <div>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
                         <span className="text-2xl">🎯</span>
-                        Smart Parlays
+                        Parlays
                     </h2>
                     <p className="text-gray-400 text-sm mt-1">
-                        Combinaciones inteligentes de diferentes partidos
+                        Combinaciones de 3 picks de alto valor de diferentes partidos
                     </p>
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* Selector de Fecha */}
                     <div className="flex items-center gap-2">
                         <label className="text-gray-400 text-sm">Fecha:</label>
                         <input
@@ -129,13 +115,12 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                 </div>
             </div>
 
-            {/* Stats de la última generación */}
+            {/* Stats */}
             {stats && (
                 <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
                     <p className="text-emerald-400 text-sm">
-                        ✅ Generados {stats.total_generated} parlays ({stats.parlays_2_picks} de 2 picks, {stats.parlays_3_picks} de 3 picks)
-                        a partir de {stats.picks_enriched} picks de {stats.jobs_found} partidos analizados.
-                        {lastGenerated && <span className="text-gray-400 ml-2">({lastGenerated})</span>}
+                        Generados {stats.combos_saved} parlays a partir de {stats.total_picks} picks
+                        de {stats.fixtures_with_picks} partidos ({stats.combinations_evaluated} combinaciones evaluadas).
                     </p>
                 </div>
             )}
@@ -143,7 +128,7 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
             {/* Error */}
             {error && (
                 <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                    <p className="text-red-400 text-sm">❌ {error}</p>
+                    <p className="text-red-400 text-sm">{error}</p>
                 </div>
             )}
 
@@ -154,94 +139,89 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                 </div>
             )}
 
-            {/* Lista de Parlays */}
+            {/* Empty state */}
             {!loading && parlays.length === 0 && (
                 <div className="text-center py-12 text-gray-400">
                     <p className="text-4xl mb-3">🎰</p>
-                    <p>No hay Smart Parlays para esta fecha.</p>
-                    <p className="text-sm mt-1">Analiza algunos partidos y luego presiona "Generar Parlays".</p>
+                    <p>No hay Parlays para esta fecha.</p>
+                    <p className="text-sm mt-1">Analiza al menos 3 partidos y luego presiona "Generar Parlays".</p>
                 </div>
             )}
 
+            {/* Parlay combos list */}
             {!loading && parlays.length > 0 && (
                 <div className="space-y-4">
-                    {parlays.map((parlay, index) => (
+                    {parlays.map((combo, index) => (
                         <div
-                            key={parlay.id}
+                            key={combo.id}
                             className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden"
                         >
-                            {/* Parlay Header */}
-                            <div className={`bg-gradient-to-r ${getConfidenceColor(parlay.confidence_tier)} p-4`}>
+                            {/* Combo Header */}
+                            <div className={`bg-gradient-to-r ${getRiskColor(combo.risk_tier)} p-4`}>
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <span className="text-white/80 text-sm font-medium">
-                                            {getConfidenceLabel(parlay.confidence_tier)}
+                                        <span className="text-white/80 text-xs font-medium uppercase tracking-wider">
+                                            {getRiskLabel(combo.risk_tier)}
                                         </span>
                                         <h3 className="text-white font-bold text-lg">
-                                            Parlay {parlay.pick_count} Picks #{index + 1}
+                                            Parlay #{index + 1}
                                         </h3>
                                     </div>
                                     <div className="flex items-center gap-4">
                                         <div className="text-right">
-                                            <div className="text-white/80 text-sm">Cuota Total</div>
-                                            <div className="text-emerald-400 font-bold text-2xl">
-                                                x{parlay.implied_odds?.toFixed(2) || '---'}
-                                            </div>
-                                        </div>
-                                        <div className="text-right border-l border-white/10 pl-4">
-                                            <div className="text-white/80 text-sm">Probabilidad</div>
+                                            <div className="text-white/80 text-xs">Cuota Combinada</div>
                                             <div className="text-white font-bold text-2xl">
-                                                {formatProbability(parlay.combined_probability)}
+                                                x{combo.combined_odds?.toFixed(2) || '---'}
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={() => handleDownloadPDF(parlay, index)}
-                                            className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
-                                            title="Descargar Reporte PDF"
-                                        >
-                                            <ArrowDownTrayIcon className="w-5 h-5" />
-                                        </button>
+                                        <div className="text-right border-l border-white/20 pl-4">
+                                            <div className="text-white/80 text-xs">Probabilidad</div>
+                                            <div className="text-white font-bold text-2xl">
+                                                {formatProbability(combo.combined_probability)}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Picks */}
+                            {/* Picks detail */}
                             <div className="p-4 space-y-3">
-                                {parlay.picks.map((pick, pickIndex) => (
+                                {combo.picks.map((pick, pickIndex) => (
                                     <div
                                         key={pickIndex}
-                                        className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg"
+                                        className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-gray-700/30"
                                     >
-                                        <div className="flex-1">
-                                            <div className="text-gray-400 text-xs mb-1">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-gray-400 text-xs mb-1 truncate">
                                                 {pick.league}
                                             </div>
-                                            <div className="text-white font-medium">
+                                            <div className="text-white font-medium text-sm">
                                                 {pick.home_team} vs {pick.away_team}
                                             </div>
                                             <div className="text-emerald-400 text-sm mt-1 font-bold">
                                                 {translateMarket(pick.market)}: <span className="text-white">{pick.selection}</span>
                                             </div>
                                         </div>
-                                        <div className="text-right ml-4">
-                                            <div className="flex flex-col items-end">
-                                                <div className="text-white font-bold text-lg">
-                                                    {formatProbability(pick.p_model)}
-                                                </div>
-                                                <div className="text-emerald-400 text-sm font-bold">
-                                                    x{pick.odds?.toFixed(2) || '---'}
-                                                </div>
+                                        <div className="text-right ml-4 flex-shrink-0">
+                                            <div className="text-emerald-400 font-bold text-lg">
+                                                x{pick.odds?.toFixed(2) || '---'}
+                                            </div>
+                                            <div className="text-gray-400 text-xs">
+                                                {formatProbability(pick.p_model)} prob
                                             </div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
 
-                            {/* Footer simplificado - SIN CUOTAS */}
+                            {/* Footer with EV indicator */}
                             <div className="px-4 pb-4">
-                                <div className="flex items-center justify-center p-3 bg-gray-900/80 rounded-lg border border-gray-700/50">
-                                    <span className="text-emerald-400 font-medium">
-                                        💡 {parlay.pick_count} selecciones de diferentes partidos
+                                <div className="flex items-center justify-between p-3 bg-gray-900/80 rounded-lg border border-gray-700/50">
+                                    <span className="text-gray-400 text-sm">
+                                        {combo.pick_count} selecciones de diferentes partidos
+                                    </span>
+                                    <span className="text-emerald-400 font-medium text-sm">
+                                        EV: {(combo.combined_odds * combo.combined_probability).toFixed(2)}
                                     </span>
                                 </div>
                             </div>
@@ -249,7 +229,7 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                     ))}
                 </div>
             )}
-        </div >
+        </div>
     );
 };
 

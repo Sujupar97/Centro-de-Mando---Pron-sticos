@@ -369,12 +369,13 @@ export const getAnalysisJob = async (jobId: string): Promise<AnalysisJob | null>
  * Prioriza V2, luego fallback a V1.
  */
 export const getAnalysisResultByFixture = async (fixtureId: number): Promise<VisualAnalysisResult | null> => {
-    // 1. Buscar último job V2 completado para este fixture
+    // 1. Buscar último job V2 completado para este fixture (excluir parlay jobs)
     const { data: v2Job } = await supabase
         .from('analysis_jobs_v2')
         .select('id')
         .eq('fixture_id', fixtureId)
         .eq('status', 'done')
+        .or('analysis_type.eq.standard,analysis_type.is.null')
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
@@ -1175,12 +1176,13 @@ export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<V
         .maybeSingle();
 
     if (analisisData?.resultado_analisis) {
-        // Freshness check: see if there's a newer completed job
+        // Freshness check: see if there's a newer completed job (exclude parlay jobs)
         const { data: newerJob } = await supabase
             .from('analysis_jobs_v2')
             .select('id, created_at')
             .eq('fixture_id', fixtureId)
             .eq('status', 'done')
+            .or('analysis_type.eq.standard,analysis_type.is.null')
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
