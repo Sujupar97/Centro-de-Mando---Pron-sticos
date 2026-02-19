@@ -1,5 +1,6 @@
 // components/ai/SmartParlays.tsx
 // Componente para mostrar y generar Parlays (combinaciones multi-partido)
+// Usa la fecha global pasada desde LiveFeed via prop
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -10,10 +11,9 @@ import {
     getRiskColor,
     getRiskLabel
 } from '../../services/smartParlayService';
-import { getCurrentDateInBogota } from '../../utils/dateUtils';
 
 interface SmartParlaysProps {
-    date?: string;
+    date: string;
 }
 
 const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
@@ -22,17 +22,16 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
     const [generating, setGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [stats, setStats] = useState<any>(null);
-    const [selectedDate, setSelectedDate] = useState(date || getCurrentDateInBogota());
 
     useEffect(() => {
         loadParlays();
-    }, [selectedDate]);
+    }, [date]);
 
     const loadParlays = async () => {
         setLoading(true);
         setError(null);
         try {
-            const data = await getSmartParlays(selectedDate);
+            const data = await getSmartParlays(date);
             setParlays(data);
         } catch (e: any) {
             setError(e.message);
@@ -47,7 +46,7 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
         setStats(null);
 
         try {
-            const result = await generateSmartParlays(selectedDate);
+            const result = await generateSmartParlays(date);
 
             if (result.success) {
                 setStats(result.stats);
@@ -78,41 +77,29 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                     </p>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                        <label className="text-gray-400 text-sm">Fecha:</label>
-                        <input
-                            type="date"
-                            value={selectedDate}
-                            onChange={(e) => setSelectedDate(e.target.value)}
-                            className="bg-gray-800 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                        />
-                    </div>
-
-                    <button
-                        onClick={handleGenerate}
-                        disabled={generating}
-                        className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${generating
-                            ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700'
-                            }`}
-                    >
-                        {generating ? (
-                            <>
-                                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                </svg>
-                                Generando...
-                            </>
-                        ) : (
-                            <>
-                                <span>✨</span>
-                                Generar Parlays
-                            </>
-                        )}
-                    </button>
-                </div>
+                <button
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${generating
+                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700'
+                        }`}
+                >
+                    {generating ? (
+                        <>
+                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            Generando...
+                        </>
+                    ) : (
+                        <>
+                            <span>✨</span>
+                            Generar Parlays
+                        </>
+                    )}
+                </button>
             </div>
 
             {/* Stats */}
@@ -157,9 +144,21 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                             className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden"
                         >
                             {/* Combo Header */}
-                            <div className={`bg-gradient-to-r ${getRiskColor(combo.risk_tier)} p-4`}>
+                            <div className={`bg-gradient-to-r ${getRiskColor(combo.risk_tier)} p-4 relative`}>
+                                {combo.status && combo.status !== 'pending' && (
+                                    <div className={`absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-black tracking-wider ${
+                                        combo.status === 'won' ? 'bg-emerald-500 text-white' :
+                                        combo.status === 'lost' ? 'bg-red-500 text-white' :
+                                        combo.status === 'partial' ? 'bg-amber-500 text-white' :
+                                        'bg-slate-500 text-white'
+                                    }`}>
+                                        {combo.status === 'won' ? 'GANADO' :
+                                         combo.status === 'lost' ? 'PERDIDO' :
+                                         combo.status === 'partial' ? 'PARCIAL' : 'NULO'}
+                                    </div>
+                                )}
                                 <div className="flex items-center justify-between">
-                                    <div>
+                                    <div className={combo.status && combo.status !== 'pending' ? 'mt-4' : ''}>
                                         <span className="text-white/80 text-xs font-medium uppercase tracking-wider">
                                             {getRiskLabel(combo.risk_tier)}
                                         </span>
@@ -189,7 +188,11 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                 {combo.picks.map((pick, pickIndex) => (
                                     <div
                                         key={pickIndex}
-                                        className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-gray-700/30"
+                                        className={`flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border ${
+                                            (pick as any).result === 'WON' ? 'border-emerald-500/30' :
+                                            (pick as any).result === 'LOST' ? 'border-red-500/30 opacity-60' :
+                                            'border-gray-700/30'
+                                        }`}
                                     >
                                         <div className="flex-1 min-w-0">
                                             <div className="text-gray-400 text-xs mb-1 truncate">
@@ -202,12 +205,23 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                                 {translateMarket(pick.market)}: <span className="text-white">{pick.selection}</span>
                                             </div>
                                         </div>
-                                        <div className="text-right ml-4 flex-shrink-0">
-                                            <div className="text-emerald-400 font-bold text-lg">
-                                                x{pick.odds?.toFixed(2) || '---'}
-                                            </div>
-                                            <div className="text-gray-400 text-xs">
-                                                {formatProbability(pick.p_model)} prob
+                                        <div className="text-right ml-4 flex-shrink-0 flex items-center gap-2">
+                                            {(pick as any).result && (pick as any).result !== 'PENDING' && (
+                                                <span className={`text-xs font-black px-1.5 py-0.5 rounded ${
+                                                    (pick as any).result === 'WON' ? 'bg-emerald-500/20 text-emerald-400' :
+                                                    (pick as any).result === 'LOST' ? 'bg-red-500/20 text-red-400' :
+                                                    'bg-slate-500/20 text-slate-400'
+                                                }`}>
+                                                    {(pick as any).result === 'WON' ? '✓' : (pick as any).result === 'LOST' ? '✗' : '—'}
+                                                </span>
+                                            )}
+                                            <div>
+                                                <div className="text-emerald-400 font-bold text-lg">
+                                                    x{pick.odds?.toFixed(2) || '---'}
+                                                </div>
+                                                <div className="text-gray-400 text-xs">
+                                                    {formatProbability(pick.p_model)} prob
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

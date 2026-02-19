@@ -5,6 +5,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseService';
+import { manualOverridePick } from '../../services/resultsService';
+import { useAuth } from '../../hooks/useAuth';
 import { TrophyIcon, ChartBarIcon, ArrowPathIcon, ArrowTopRightOnSquareIcon } from '../icons/Icons';
 
 interface HighProbPick {
@@ -21,6 +23,9 @@ interface HighProbPick {
     odds: number;
     logo_home?: string;
     logo_away?: string;
+    result?: string;
+    verified_at?: string;
+    actual_score?: string;
 }
 
 interface HighProbPicksProps {
@@ -29,6 +34,8 @@ interface HighProbPicksProps {
 }
 
 const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => {
+    const { profile } = useAuth();
+    const isAdmin = profile?.role && ['platform_owner', 'agency_admin', 'superadmin'].includes(profile.role);
     const [singles, setSingles] = useState<HighProbPick[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -80,7 +87,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
     const lowOddsPicks = singles.filter(p => !p.odds || p.odds < 1.40);
     
     // Display Logic
-    const displayPicks = showLowOdds ? [...mainPicks, ...lowOddsPicks] : mainPicks;
+    const displayPicks = mainPicks; // Cuotas bajas ocultas temporalmente
 
     // Helpers UI
     const translateMarket = (market: string): string => {
@@ -119,18 +126,20 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
                 </div>
                 
                 <div className="flex items-center gap-2">
+                    {/* TEMPORARILY HIDDEN — Cuotas bajas ocultas
                     {lowOddsPicks.length > 0 && (
-                        <button 
+                        <button
                             onClick={() => setShowLowOdds(!showLowOdds)}
                             className={`px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
-                                showLowOdds 
-                                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50' 
+                                showLowOdds
+                                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50'
                                 : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
                             }`}
                         >
                             {showLowOdds ? 'Ocultar' : 'Ver'} Cuotas Bajas ({lowOddsPicks.length})
                         </button>
                     )}
+                    */}
                     
                     <button onClick={() => loadPicks(true)} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors" title="Actualizar Oportunidades">
                         <ArrowPathIcon className="w-5 h-5" />
@@ -146,6 +155,25 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
                             pick={pick}
                             translateMarket={translateMarket}
                             onView={() => onViewReport?.(pick.job_id, pick.fixture_id)}
+                            isAdmin={!!isAdmin}
+                            onOverride={async (result) => {
+                                try {
+                                    await manualOverridePick(pick.id, result, {
+                                        fixture_id: pick.fixture_id,
+                                        market: pick.market,
+                                        selection: pick.selection,
+                                        p_model: pick.p_model,
+                                        odds: pick.odds,
+                                        job_id: pick.job_id,
+                                    });
+                                    setSingles(prev => prev.map(p =>
+                                        p.id === pick.id ? { ...p, result, actual_score: `Manual: ${result}`, verified_at: new Date().toISOString() } : p
+                                    ));
+                                } catch (err: any) {
+                                    console.error('[HighProbPicks] Override error:', err);
+                                    alert(`Error: ${err.message}`);
+                                }
+                            }}
                         />
                     ))}
                 </div>
@@ -198,18 +226,66 @@ const EmptyState: React.FC<{ onRetry: () => void; message?: string | null; inPro
     </div>
 );
 
+const ResultBadge: React.FC<{ result?: string; actualScore?: string }> = ({ result, actualScore }) => {
+    if (!result || result === 'PENDING') return null;
+
+    const config: Record<string, { bg: string; text: string; label: string; border: string }> = {
+        WON: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', label: 'GANADA', border: 'border-emerald-500/50' },
+        LOST: { bg: 'bg-red-500/20', text: 'text-red-400', label: 'PERDIDA', border: 'border-red-500/50' },
+        VOID: { bg: 'bg-slate-500/20', text: 'text-slate-400', label: 'NULA', border: 'border-slate-500/50' },
+        PUSH: { bg: 'bg-slate-500/20', text: 'text-slate-400', label: 'PUSH', border: 'border-slate-500/50' },
+    };
+
+    const c = config[result] || config.VOID;
+
+    return (
+        <div className={`absolute top-0 left-0 p-1.5 px-2.5 ${c.bg} rounded-br-xl border-b border-r ${c.border} z-10`}>
+            <span className={`${c.text} font-black text-[10px] tracking-wider`}>{c.label}</span>
+            {actualScore && <span className={`${c.text} text-[9px] ml-1 opacity-70`}>({actualScore})</span>}
+        </div>
+    );
+};
+
 const SinglePickCard: React.FC<{
     pick: HighProbPick;
     translateMarket: (m: string) => string;
     onView: () => void;
-}> = ({ pick, translateMarket, onView }) => {
+    isAdmin: boolean;
+    onOverride: (result: 'WON' | 'LOST') => Promise<void>;
+}> = ({ pick, translateMarket, onView, isAdmin, onOverride }) => {
+    const [overriding, setOverriding] = useState(false);
+    const isVerified = pick.result && pick.result !== 'PENDING';
+    const isLost = pick.result === 'LOST';
+    const isWon = pick.result === 'WON';
+    const canOverride = isAdmin && (!isVerified || pick.actual_score?.startsWith('Manual'));
+
+    const handleOverride = async (e: React.MouseEvent, result: 'WON' | 'LOST') => {
+        e.stopPropagation();
+        if (overriding) return;
+        setOverriding(true);
+        try {
+            await onOverride(result);
+        } finally {
+            setOverriding(false);
+        }
+    };
+
     return (
-        <div className="bg-slate-900 border border-white/10 rounded-xl p-4 hover:bg-slate-800 transition-all cursor-pointer group relative overflow-hidden" onClick={onView}>
+        <div
+            className={`bg-slate-900 border rounded-xl p-4 hover:bg-slate-800 transition-all cursor-pointer group relative overflow-hidden ${
+                isWon ? 'border-emerald-500/30 shadow-lg shadow-emerald-500/5' :
+                isLost ? 'border-red-500/20 opacity-60' :
+                'border-white/10'
+            }`}
+            onClick={onView}
+        >
+            <ResultBadge result={pick.result} actualScore={pick.actual_score} />
+
             <div className="absolute top-0 right-0 p-2 bg-blue-600/20 rounded-bl-xl border-b border-l border-blue-500/20">
                 <span className="text-blue-400 font-bold text-xs">{Math.round(pick.p_model * 100)}% Prob</span>
             </div>
 
-            <div className="flex items-center gap-3 mb-4">
+            <div className={`flex items-center gap-3 mb-4 ${isVerified ? 'mt-2' : ''}`}>
                 <div className="flex -space-x-2">
                     <img src={pick.logo_home || ''} className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 object-contain p-1" />
                     <img src={pick.logo_away || ''} className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 object-contain p-1" />
@@ -233,10 +309,29 @@ const SinglePickCard: React.FC<{
                 </div>
             </div>
 
-            <div className="w-full py-1.5 flex items-center justify-center gap-2 text-xs font-bold text-slate-500 group-hover:text-white transition-colors">
-                <ArrowTopRightOnSquareIcon className="w-3 h-3" />
-                Ver Análisis Completo
-            </div>
+            {canOverride ? (
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={(e) => handleOverride(e, 'WON')}
+                        disabled={overriding}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-all disabled:opacity-50"
+                    >
+                        {overriding ? '...' : 'GANADA'}
+                    </button>
+                    <button
+                        onClick={(e) => handleOverride(e, 'LOST')}
+                        disabled={overriding}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all disabled:opacity-50"
+                    >
+                        {overriding ? '...' : 'PERDIDA'}
+                    </button>
+                </div>
+            ) : (
+                <div className="w-full py-1.5 flex items-center justify-center gap-2 text-xs font-bold text-slate-500 group-hover:text-white transition-colors">
+                    <ArrowTopRightOnSquareIcon className="w-3 h-3" />
+                    Ver Análisis Completo
+                </div>
+            )}
         </div>
     );
 };

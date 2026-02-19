@@ -127,7 +127,7 @@ serve(async (req) => {
         // 2B: Get value_picks directly by fixture_id
         const { data: valuePicks, error: vpError } = await supabase
             .from('value_picks_v2')
-            .select('job_id, fixture_id, market, selection, p_model, odds, decision, confidence')
+            .select('job_id, fixture_id, market, selection, p_model, odds, decision, confidence, result, verified_at, actual_score')
             .in('fixture_id', fixtureIds)
             .gte('p_model', 0.50);
 
@@ -186,6 +186,17 @@ serve(async (req) => {
         // Build job_id -> fixture_id mapping for fallback resolution
         const jobToFixture = new Map<string, number>();
         (jobs || []).forEach((j: any) => jobToFixture.set(j.id, j.fixture_id));
+
+        // Build result lookup map from value_picks_v2 (fixture_market_selection → result)
+        const vpResultMap = new Map<string, { result: string; verified_at: string | null; actual_score: string | null }>();
+        if (valuePicks && valuePicks.length > 0) {
+            for (const vp of valuePicks) {
+                if (vp.result && vp.result !== 'PENDING') {
+                    const key = `${vp.fixture_id}_${(vp.market || '').toLowerCase()}_${(vp.selection || '').toLowerCase()}`;
+                    vpResultMap.set(key, { result: vp.result, verified_at: vp.verified_at, actual_score: vp.actual_score });
+                }
+            }
+        }
 
         // SOURCE A: Extract from report_packet.pronosticos
         if (reports && reports.length > 0) {
@@ -283,6 +294,10 @@ serve(async (req) => {
                         if (seenPickKeys.has(pickKey)) return;
                         seenPickKeys.add(pickKey);
 
+                        // Lookup result from value_picks_v2
+                        const resultKey = `${resolvedFixtureId}_${(p.mercado || '').toLowerCase()}_${(p.seleccion || '').toLowerCase()}`;
+                        const vpRes = vpResultMap.get(resultKey);
+
                         highProbPicks.push({
                             id: `${report.job_id}_${p.mercado}_${p.seleccion}`,
                             job_id: report.job_id,
@@ -299,7 +314,10 @@ serve(async (req) => {
                             logo_away: dailyMatch.away_team_logo,
                             tesis: packet?.analisis_profundo?.razonamiento_central || packet?.analisis_profundo?.factor_psicologico || "Análisis IA V8.",
                             tactica: packet?.analisis_profundo?.matchup_tactico || "Ver reporte completo.",
-                            stake: p.stake_recomendado || null
+                            stake: p.stake_recomendado || null,
+                            result: vpRes?.result || 'PENDING',
+                            verified_at: vpRes?.verified_at || null,
+                            actual_score: vpRes?.actual_score || null
                         });
                     }
                 });
@@ -340,7 +358,10 @@ serve(async (req) => {
                     logo_home: dailyMatch.home_team_logo,
                     logo_away: dailyMatch.away_team_logo,
                     tesis: "Análisis IA V8.",
-                    tactica: "Ver reporte completo."
+                    tactica: "Ver reporte completo.",
+                    result: vp.result || 'PENDING',
+                    verified_at: vp.verified_at || null,
+                    actual_score: vp.actual_score || null
                 });
             }
         }
@@ -384,6 +405,10 @@ serve(async (req) => {
                         if (seenPickKeys.has(pickKey)) continue;
                         seenPickKeys.add(pickKey);
 
+                        // Lookup result from value_picks_v2
+                        const cResKey = `${row.partido_id}_${(p.mercado || '').toLowerCase()}_${(p.seleccion || '').toLowerCase()}`;
+                        const cRes = vpResultMap.get(cResKey);
+
                         highProbPicks.push({
                             id: `analisis_${row.partido_id}_${p.mercado}_${p.seleccion}`,
                             job_id: null,
@@ -399,7 +424,10 @@ serve(async (req) => {
                             logo_home: dailyMatch.home_team_logo,
                             logo_away: dailyMatch.away_team_logo,
                             tesis: "Análisis IA V8.",
-                            tactica: "Ver reporte completo."
+                            tactica: "Ver reporte completo.",
+                            result: cRes?.result || 'PENDING',
+                            verified_at: cRes?.verified_at || null,
+                            actual_score: cRes?.actual_score || null
                         });
                     }
                 }
@@ -451,6 +479,82 @@ serve(async (req) => {
         highProbPicks.sort((a, b) => b.p_model - a.p_model);
 
         log(`[OPP-V8.1] SUCCESS: ${highProbPicks.length} picks found (${highProbPicks.filter((p: any) => p.odds).length} with odds)`);
+
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 5: SYNC to value_picks_v2
+        // Picks extracted from reports_v2 or analisis may NOT exist in
+        // value_picks_v2. The verifier needs them there to work.
+        // This ensures every displayed Oportunidad can be verified.
+        // ═══════════════════════════════════════════════════════════════
+        try {
+            // Get all existing picks in value_picks_v2 for these fixtures
+            const pickFixtureIds = [...new Set(highProbPicks.map((p: any) => p.fixture_id))];
+            const { data: existingVPs } = await supabase
+                .from('value_picks_v2')
+                .select('fixture_id, market, selection')
+                .in('fixture_id', pickFixtureIds);
+
+            const existingKeys = new Set<string>();
+            (existingVPs || []).forEach((vp: any) => {
+                existingKeys.add(`${vp.fixture_id}_${vp.market}_${vp.selection}`);
+            });
+
+            // Find picks that need to be inserted
+            const picksToInsert = highProbPicks.filter((p: any) => {
+                const key = `${p.fixture_id}_${p.market}_${p.selection}`;
+                return !existingKeys.has(key);
+            });
+
+            if (picksToInsert.length > 0) {
+                const payload = picksToInsert.map((p: any) => ({
+                    job_id: p.job_id || null,
+                    fixture_id: p.fixture_id,
+                    market: p.market,
+                    selection: p.selection,
+                    p_model: p.p_model, // already 0-1
+                    odds: p.odds || null,
+                    decision: 'BET',
+                    confidence: 8,
+                    engine_version: 'V8-SYNC',
+                    result: 'PENDING',
+                    created_at: new Date().toISOString(),
+                }));
+
+                const { error: syncErr } = await supabase
+                    .from('value_picks_v2')
+                    .insert(payload);
+
+                if (syncErr) {
+                    log(`[OPP-V8.1] SYNC: Error inserting ${payload.length} picks: ${syncErr.message}`);
+                } else {
+                    log(`[OPP-V8.1] SYNC: Inserted ${payload.length} missing picks into value_picks_v2`);
+                    // Update the pick IDs with real UUIDs for the frontend
+                    const { data: insertedPicks } = await supabase
+                        .from('value_picks_v2')
+                        .select('id, fixture_id, market, selection')
+                        .in('fixture_id', picksToInsert.map((p: any) => p.fixture_id))
+                        .eq('engine_version', 'V8-SYNC');
+
+                    if (insertedPicks) {
+                        const idMap = new Map<string, string>();
+                        insertedPicks.forEach((ip: any) => {
+                            idMap.set(`${ip.fixture_id}_${ip.market}_${ip.selection}`, ip.id);
+                        });
+                        // Update highProbPicks with real UUIDs
+                        for (const p of highProbPicks) {
+                            const key = `${p.fixture_id}_${p.market}_${p.selection}`;
+                            if (idMap.has(key)) {
+                                p.id = idMap.get(key);
+                            }
+                        }
+                    }
+                }
+            } else {
+                log(`[OPP-V8.1] SYNC: All ${highProbPicks.length} picks already in value_picks_v2`);
+            }
+        } catch (syncErr: any) {
+            log(`[OPP-V8.1] SYNC failed (non-blocking): ${syncErr.message}`);
+        }
 
         // Register in profitability tracking (non-blocking)
         try {

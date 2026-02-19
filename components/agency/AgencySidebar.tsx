@@ -3,9 +3,7 @@ import React from 'react';
 import {
     Squares2X2Icon,
     UsersIcon,
-    RocketLaunchIcon,
-    ChartBarIcon,
-    Cog6ToothIcon
+    TrophyIcon
 } from '../icons/Icons';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -18,11 +16,9 @@ export const AgencySidebar: React.FC<AgencySidebarProps> = ({ activeView, onView
     const { t } = useLanguage();
 
     const menuItems = [
-        { id: 'launchpad', label: t('nav.launchpad'), icon: <RocketLaunchIcon className="w-5 h-5" /> },
         { id: 'dashboard', label: t('nav.dashboard'), icon: <Squares2X2Icon className="w-5 h-5" /> },
         { id: 'subaccounts', label: t('nav.clients'), icon: <UsersIcon className="w-5 h-5" /> },
-        { id: 'analytics', label: t('nav.analytics'), icon: <ChartBarIcon className="w-5 h-5" /> },
-        { id: 'settings', label: t('nav.settings'), icon: <Cog6ToothIcon className="w-5 h-5" /> },
+        { id: 'advanced-analytics', label: 'Analítica Avanzada', icon: <TrophyIcon className="w-5 h-5" /> },
     ];
 
     return (

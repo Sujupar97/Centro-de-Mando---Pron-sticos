@@ -1,15 +1,6 @@
-import React, { useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import React from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import { Dashboard } from './components/Dashboard';
-import { BetTable } from './components/BetTable';
-import { AddBetForm } from './components/AddBetForm';
-import { AiAnalysis } from './components/AiAnalysis';
-import { TicketScanner } from './components/TicketScanner';
-import { Settings } from './components/Settings';
-import { useBets } from './hooks/useBets';
-import { useSettings } from './hooks/useSettings';
-import { Bet } from './types';
 import { FixturesFeed } from './components/LiveFeed';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { LanguageProvider } from './contexts/LanguageContext';
@@ -18,19 +9,16 @@ import { SubscriptionProvider } from './contexts/SubscriptionContext';
 import { AuthPage } from './components/Auth';
 import { LandingPage } from './components/LandingPage';
 import { AdminPage } from './components/Admin';
-import MLDashboard from './components/ai/MLDashboard';
 import { PricingPage } from './components/pricing/PricingPage';
 import { PublicPricingPage } from './components/pricing/PublicPricingPage';
 import { SignUpFlow } from './components/auth/SignUpFlow';
 
-export type Page = 'dashboard' | 'bets' | 'add' | 'ai' | 'live' | 'scan' | 'settings' | 'admin' | 'ml' | 'pricing';
+export type Page = 'live' | 'admin' | 'pricing';
 
 // --- PLATFORM (PROTECTED APP) ---
 const Platform: React.FC = () => {
   const { profile } = useAuth();
-  const [currentPage, setCurrentPage] = React.useState<Page>('dashboard');
-  const { bets, addBet, deleteBet } = useBets();
-  const { initialCapital, setInitialCapital } = useSettings();
+  const [currentPage, setCurrentPage] = React.useState<Page>('live');
 
   // Error safety for profile loading
   if (!profile) {
@@ -42,39 +30,20 @@ const Platform: React.FC = () => {
     );
   }
 
-  const handleAddBet = async (newBet: Omit<Bet, 'id' | 'payout' | 'user_id'>) => {
-    await addBet(newBet);
-    setCurrentPage('bets');
-  };
-
   const renderContent = () => {
     switch (currentPage) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'bets':
-        return <BetTable bets={bets} onDeleteBet={deleteBet} onAddBetClick={() => setCurrentPage('add')} />;
-      case 'add':
-        return <AddBetForm onAddBet={handleAddBet} />;
-      case 'ai':
-        return <AiAnalysis />;
       case 'live':
         return <FixturesFeed />;
-      case 'scan':
-        return <TicketScanner />;
-      case 'settings':
-        return <Settings initialCapital={initialCapital} setInitialCapital={setInitialCapital} />;
       case 'admin':
         if (profile.role === 'superadmin' || profile.role === 'admin') {
           return <AdminPage />;
         }
-        setCurrentPage('dashboard');
-        return <Dashboard />;
-      case 'ml':
-        return <MLDashboard />;
+        setCurrentPage('live');
+        return <FixturesFeed />;
       case 'pricing':
         return <PricingPage />;
       default:
-        return <Dashboard />;
+        return <FixturesFeed />;
     }
   };
 
@@ -116,7 +85,7 @@ const LoginRoute = () => {
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { session, loading } = useAuth();
 
-  if (loading) return null; // Or a spinner
+  if (loading) return null;
   if (!session) return <Navigate to="/login" replace />;
 
   return <>{children}</>;
@@ -139,7 +108,6 @@ const AppContent: React.FC = () => {
           </ProtectedRoute>
         }
       />
-      {/* Catch all redirect */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

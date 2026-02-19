@@ -11,7 +11,7 @@ import { GameCard as DetailsGameCard } from './live/GameCard';
 import HighProbPicks from './ai/HighProbPicks';
 import SmartParlays from './ai/SmartParlays';
 import BatchProgressBanner from './ai/BatchProgressBanner';
-import ProfitabilityDashboard from './admin/ProfitabilityDashboard';
+import ResultadosPublic from './live/ResultadosPublic';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../services/supabaseService';
 import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
@@ -152,7 +152,7 @@ export const FixturesFeed: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [selectedDate, setSelectedDate] = useState(getCurrentDateInBogota());
-    const [viewMode, setViewMode] = useState<'fixtures' | 'top-picks' | 'parlays' | 'profitability'>('fixtures');
+    const [viewMode, setViewMode] = useState<'fixtures' | 'top-picks' | 'parlays' | 'profitability'>('top-picks');
 
     // GESTIÓN DE JOBS
     const [activeJobs, setActiveJobs] = useState<Record<number, string>>({});
@@ -422,14 +422,19 @@ export const FixturesFeed: React.FC = () => {
         const MAX_WAIT_MS = 180000; // 3 minutes max per job
 
         const advanceBatch = (fixtureId: number, result: 'done' | 'failed') => {
-            setBatchProgress(prev => {
-                const newCompleted = prev.completed + 1;
-                const newResults = { ...prev.results, [fixtureId]: result };
-                return { ...prev, completed: newCompleted, results: newResults, currentGame: null, isActive: newCompleted < prev.total };
-            });
             setActiveBatchJobId(null);
             setProcessingFixtureId(null);
-            setAnalysisQueue(prev => prev.slice(1));
+            setAnalysisQueue(prev => {
+                const remaining = prev.slice(1);
+                // Use queue length as source of truth: batch finishes when queue is empty
+                setBatchProgress(bp => {
+                    const newCompleted = bp.completed + 1;
+                    const newResults = { ...bp.results, [fixtureId]: result };
+                    const isDone = remaining.length === 0;
+                    return { ...bp, completed: newCompleted, results: newResults, currentGame: null, isActive: !isDone };
+                });
+                return remaining;
+            });
         };
 
         const interval = setInterval(async () => {
@@ -536,13 +541,16 @@ export const FixturesFeed: React.FC = () => {
     const handleAnalyzeLeague = (league: League) => {
         console.log(`[Batch] Queueing league ${league.name} with ${league.games.length} games`);
 
-        // Filter valid candidates (stateless check first)
+        // Filter valid candidates: exclude already-analyzed, in-progress, in-queue, and already-batched
         const candidates = league.games.filter(g => {
-            const hasReport = !!reportsAvailable[g.fixture.id];
-            const status = gameJobStatus[g.fixture.id] || '';
-            const isProcessing = ['queued', 'ingesting', 'data_ready', 'analyzing', 'collecting_evidence'].includes(status);
-            const isCurrent = g.fixture.id === processingFixtureId;
-            return !hasReport && !isProcessing && !isCurrent;
+            const fid = g.fixture.id;
+            const hasReport = !!reportsAvailable[fid];
+            const status = gameJobStatus[fid] || '';
+            const isProcessingOrDone = ['queued', 'ingesting', 'data_ready', 'analyzing', 'collecting_evidence', 'etl', 'interpret', 'features', 'done', 'processing'].includes(status);
+            const isCurrent = fid === processingFixtureId;
+            // Also exclude games already processed in current batch
+            const alreadyBatched = !!batchProgress.results[fid];
+            return !hasReport && !isProcessingOrDone && !isCurrent && !alreadyBatched;
         });
 
         if (candidates.length === 0) {
@@ -550,23 +558,32 @@ export const FixturesFeed: React.FC = () => {
             return;
         }
 
-        // Add to queue with deduplication based on CURRENT state (prev)
+        // Add to queue with deduplication based on CURRENT queue state (prev)
         setAnalysisQueue(prev => {
-            const newUniqueGames = candidates.filter(c => !prev.some(p => p.fixture.id === c.fixture.id));
+            const existingIds = new Set(prev.map(p => p.fixture.id));
+            const newUniqueGames = candidates.filter(c => !existingIds.has(c.fixture.id));
             const addedCount = newUniqueGames.length;
+
+            if (addedCount === 0) {
+                console.log(`[Batch] All ${candidates.length} candidates already in queue. Skipping.`);
+                return prev;
+            }
+
             console.log(`[Batch] Adding ${addedCount} new games to queue (Length: ${prev.length} -> ${prev.length + addedCount})`);
 
-            // Initialize/update batch progress
-            setBatchProgress(bp => ({
-                total: bp.isActive ? bp.total + addedCount : addedCount,
-                completed: bp.isActive ? bp.completed : 0,
-                currentGame: bp.isActive ? bp.currentGame : null,
-                leagueName: bp.isActive ? `${bp.leagueName} + ${league.name}` : league.name,
+            // ALWAYS start fresh batch: clear old state, set total = new games only
+            // Previous stuck batches should not accumulate
+            setBatchProgress({
+                total: addedCount,
+                completed: 0,
+                currentGame: null,
+                leagueName: league.name,
                 isActive: true,
-                results: bp.isActive ? bp.results : {}
-            }));
+                results: {}
+            });
 
-            return [...prev, ...newUniqueGames];
+            // Replace queue entirely (old stuck items discarded)
+            return [...newUniqueGames];
         });
     };
 
@@ -656,13 +673,6 @@ export const FixturesFeed: React.FC = () => {
 
                         <div className="bg-slate-800 p-1 rounded-xl flex gap-1 w-full sm:w-auto">
                             <button
-                                onClick={() => setViewMode('fixtures')}
-                                className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'fixtures' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-                                    }`}
-                            >
-                                <ListBulletIcon className="w-5 h-5 mr-2" /> Partidos
-                            </button>
-                            <button
                                 onClick={() => setViewMode('top-picks')}
                                 className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'top-picks' ? 'bg-gradient-to-r from-brand to-emerald-600 text-white shadow-lg shadow-brand/20' : 'text-slate-400 hover:text-white'
                                     }`}
@@ -674,17 +684,22 @@ export const FixturesFeed: React.FC = () => {
                                 className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'parlays' ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20' : 'text-slate-400 hover:text-white'
                                     }`}
                             >
-                                <SparklesIcon className="w-5 h-5 mr-2" /> Parlays
+                                <SparklesIcon className="w-5 h-5 mr-2" /> Smart Parlays
                             </button>
-                            {(profile?.role === 'admin' || profile?.role === 'superadmin') && (
-                                <button
-                                    onClick={() => setViewMode('profitability')}
-                                    className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'profitability' ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/20' : 'text-slate-400 hover:text-white'
-                                        }`}
-                                >
-                                    <ChartBarIcon className="w-5 h-5 mr-2" /> ROI
-                                </button>
-                            )}
+                            <button
+                                onClick={() => setViewMode('fixtures')}
+                                className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'fixtures' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                                    }`}
+                            >
+                                <ListBulletIcon className="w-5 h-5 mr-2" /> Partidos
+                            </button>
+                            <button
+                                onClick={() => setViewMode('profitability')}
+                                className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'profitability' ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-400 hover:text-white'
+                                    }`}
+                            >
+                                <ChartBarIcon className="w-5 h-5 mr-2" /> Resultados
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -702,7 +717,7 @@ export const FixturesFeed: React.FC = () => {
                     </div>
                 ) : viewMode === 'profitability' ? (
                     <div className="glass rounded-2xl p-6 min-h-[500px] animate-fade-in border border-white/5">
-                        <ProfitabilityDashboard />
+                        <ResultadosPublic />
                     </div>
                 ) : (
                     <>
@@ -713,10 +728,16 @@ export const FixturesFeed: React.FC = () => {
                                 <BatchProgressBanner
                                     {...batchProgress}
                                     onCancel={() => {
+                                        console.log('[Batch] Cancelled by user');
                                         setAnalysisQueue([]);
                                         setActiveBatchJobId(null);
                                         setProcessingFixtureId(null);
-                                        setBatchProgress(prev => ({ ...prev, isActive: false, currentGame: null }));
+                                        isProcessingQueue.current = false;
+                                        pollErrorCount.current = 0;
+                                        setBatchProgress({ total: 0, completed: 0, currentGame: null, leagueName: '', isActive: false, results: {} });
+                                    }}
+                                    onDismiss={() => {
+                                        setBatchProgress({ total: 0, completed: 0, currentGame: null, leagueName: '', isActive: false, results: {} });
                                     }}
                                 />
 
@@ -793,7 +814,7 @@ const CountrySection: React.FC<{
     reportsAvailable: Record<number, boolean>;
     userRole?: string;
 }> = ({ country, onAnalyzeGame, onAnalyzeLeague, onViewReport, gameJobStatus, reportsAvailable, userRole }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(true);
 
     return (
         <div className="glass rounded-xl overflow-hidden border border-white/5 transition-all duration-300">

@@ -538,3 +538,84 @@ export interface PerformanceReportDB { id: number; user_id: string; created_at: 
 export interface AnalyzedGameDB { partido_id: number; resultado_analisis: VisualAnalysisResult; partidos: any; }
 export interface TopPickItem { gameId: number; analysisRunId?: string; matchup: string; date: string; league: string; teams: { home: { name: string; logo: string }; away: { name: string; logo: string }; }; bestRecommendation: BettingRecommendationVisual; result?: 'Won' | 'Lost' | 'Pending' | 'Void'; odds?: number; alternative?: { market: string; probability: number; }; }
 export type CreateBetPayload = Omit<Bet, 'id' | 'user_id'>;
+
+// --- RESULTS VERIFICATION TYPES ---
+
+export type PickResult = 'WON' | 'LOST' | 'VOID' | 'PUSH' | 'PENDING';
+
+export interface PublicResultsData {
+    winRate: number;
+    totalVerified: number;
+    totalPending: number;
+    won: number;
+    lost: number;
+    last7Days: { wins: number; losses: number; total: number };
+    currentStreak: { type: 'win' | 'loss'; count: number };
+    recentResults: Array<{
+        id: string;
+        home_team: string;
+        away_team: string;
+        market: string;
+        selection: string;
+        result: PickResult;
+        odds: number | null;
+        p_model: number;
+        actual_score: string | null;
+        verified_at: string;
+        league?: string;
+        match_date?: string;
+    }>;
+    bankroll?: {
+        base: number;
+        current: number;
+        profit: number;
+        roi: number;
+        periodProfit?: number;
+    };
+}
+
+export interface AdvancedAnalyticsFilters {
+    startDate: string;
+    endDate: string;
+    pickType?: 'oportunidad' | 'parlay';
+    market?: string;
+    startingBankroll: number;
+}
+
+export interface AdvancedAnalyticsData {
+    summary: {
+        total_picks: number;
+        verified_picks: number;
+        pending_picks: number;
+        won: number;
+        lost: number;
+        voided: number;
+        accuracy: number;
+        total_staked: number;
+        total_profit: number;
+        roi: number;
+        yield: number;
+        current_bankroll: number;
+        max_drawdown: number;
+        max_win_streak: number;
+        max_loss_streak: number;
+        current_streak: { type: 'win' | 'loss'; count: number };
+    };
+    by_market: Record<string, { won: number; lost: number; profit: number; staked: number; accuracy: number }>;
+    by_league: Record<string, { won: number; lost: number; accuracy: number }>;
+    bankroll_history: Array<{ date: string; bankroll: number; profit: number }>;
+    picks: Array<{
+        id: string;
+        home_team: string;
+        away_team: string;
+        market: string;
+        selection: string;
+        result: PickResult;
+        odds: number;
+        p_model: number;
+        actual_score: string | null;
+        verified_at: string;
+        profit_loss: number;
+        league?: string;
+    }>;
+}

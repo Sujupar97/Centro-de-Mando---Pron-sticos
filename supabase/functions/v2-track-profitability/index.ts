@@ -6,26 +6,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from '../_shared/cors.ts'
 
-// Fractional Kelly Staking Model
-function calculateStake(probability: number, odds: number, isLowOdds: boolean): { percentage: number; tier: string } {
-    const prob = probability > 1 ? probability : probability * 100;
-
-    // Confidence tiers
-    let tier: string;
-    let baseStake: number;
-
-    if (prob >= 90) {
-        tier = '90+';
-        baseStake = isLowOdds ? 4 : 5;
-    } else if (prob >= 85) {
-        tier = '85-89';
-        baseStake = isLowOdds ? 3 : 4;
-    } else {
-        tier = '80-84';
-        baseStake = isLowOdds ? 2 : 3;
-    }
-
-    return { percentage: baseStake, tier };
+// Flat Staking Model — 4% for Oportunidades, 1% for Parlays
+function calculateStake(pickType: 'oportunidad' | 'parlay'): { percentage: number; tier: string } {
+    return pickType === 'parlay'
+        ? { percentage: 1, tier: 'parlay-flat' }
+        : { percentage: 4, tier: 'oportunidad-flat' };
 }
 
 serve(async (req) => {
@@ -59,10 +44,25 @@ serve(async (req) => {
 
             const currentBankroll = lastEntry?.bankroll_after || bankroll;
 
-            const records = picks.map((pick: any) => {
+            // Filter only Oportunidades: p_model >= 80% and odds >= 1.40
+            const oportunidades = picks.filter((pick: any) => {
                 const prob = pick.p_model > 1 ? pick.p_model : pick.p_model * 100;
-                const isLowOdds = (pick.odds || 0) < 1.40;
-                const { percentage, tier } = calculateStake(prob, pick.odds, isLowOdds);
+                return prob >= 80 && (pick.odds || 0) >= 1.40;
+            });
+
+            if (oportunidades.length === 0) {
+                return new Response(JSON.stringify({
+                    success: true,
+                    action: 'register',
+                    picks_registered: 0,
+                    message: 'No picks met Oportunidades criteria (prob >= 80%, odds >= 1.40)',
+                    current_bankroll: currentBankroll
+                }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            const { percentage, tier } = calculateStake('oportunidad');
+            const records = oportunidades.map((pick: any) => {
+                const prob = pick.p_model > 1 ? pick.p_model : pick.p_model * 100;
                 const stakeAmount = (currentBankroll * percentage) / 100;
 
                 return {
@@ -79,7 +79,8 @@ serve(async (req) => {
                     confidence_tier: tier,
                     stake_percentage: percentage,
                     stake_amount: stakeAmount,
-                    result: 'pending'
+                    result: 'pending',
+                    pick_type: 'oportunidad'
                 };
             });
 

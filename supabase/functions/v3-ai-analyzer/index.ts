@@ -1040,9 +1040,9 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
         const idsToClean = [finalFixtureId];
         if (fixture_id !== finalFixtureId) idsToClean.push(fixture_id);
 
-        // Delete old jobs (keep only current)
+        // Delete old STANDARD jobs (keep only current, preserve parlay jobs)
         for (const fid of idsToClean) {
-            await supabase.from('analysis_jobs_v2').delete().eq('fixture_id', fid).neq('id', job_id);
+            await supabase.from('analysis_jobs_v2').delete().eq('fixture_id', fid).neq('id', job_id).or('analysis_type.eq.standard,analysis_type.is.null');
         }
 
         // Delete ALL old reports for this fixture

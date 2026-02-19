@@ -5,7 +5,7 @@ import { SubAccountsPage } from './SubAccountsPage';
 import { CreateSubAccountModal } from './CreateSubAccountModal';
 import { ManageSubAccountPage } from './ManageSubAccountPage';
 import { OperationsCenter } from '../superadmin/OperationsCenter';
-import { PerformanceReports } from '../admin/PerformanceReports';
+import AnaliticaAvanzada from '../admin/AnaliticaAvanzada';
 
 interface AgencyLayoutProps {
     onBack?: () => void;
@@ -15,7 +15,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 // ... imports
 
 export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
-    const [activeView, setActiveView] = useState('subaccounts');
+    const [activeView, setActiveView] = useState('dashboard');
     const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const { t, language, setLanguage } = useLanguage();
@@ -36,7 +36,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
                     <div className="text-slate-400 text-sm">
                         {t('header.admin')} <span className="mx-2">/</span>
                         <span className="text-white capitalize">
-                            {selectedOrgId ? t('detail.title') : t(`nav.${activeView === 'subaccounts' ? 'clients' : activeView}`)}
+                            {selectedOrgId ? t('detail.title') : activeView === 'advanced-analytics' ? 'Analítica Avanzada' : t(`nav.${activeView === 'subaccounts' ? 'clients' : activeView}`)}
                         </span>
                     </div>
 
@@ -71,16 +71,6 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
                 {/* Main Content Area */}
                 <div className="flex-1 overflow-y-auto p-8 relative">
                     <div className="max-w-7xl mx-auto animate-fade-in">
-                        {activeView === 'launchpad' && (
-                            <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-                                <div className="w-20 h-20 bg-brand/10 rounded-full flex items-center justify-center mb-6">
-                                    <span className="text-4xl">🚀</span>
-                                </div>
-                                <h2 className="text-2xl font-bold text-white mb-2">Bienvenido al Launchpad</h2>
-                                <p className="text-slate-400 max-w-md">Aquí verás un resumen rápido de onboarding y tareas pendientes para configurar tu agencia al 100%.</p>
-                            </div>
-                        )}
-
                         {activeView === 'subaccounts' && (
                             selectedOrgId ? (
                                 <ManageSubAccountPage
@@ -99,9 +89,9 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
                             <OperationsCenter />
                         )}
 
-                        {activeView === 'analytics' && (
+                        {activeView === 'advanced-analytics' && (
                             <div className="glass p-6 rounded-xl border border-white/5">
-                                <PerformanceReports />
+                                <AnaliticaAvanzada />
                             </div>
                         )}
                     </div>

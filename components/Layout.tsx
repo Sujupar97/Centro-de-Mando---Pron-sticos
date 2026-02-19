@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HomeIcon, ChartBarIcon, PlusCircleIcon, SparklesIcon, CogIcon, CalendarDaysIcon, UsersIcon, ArrowLeftOnRectangleIcon, TicketIcon, CreditCardIcon } from './icons/Icons';
+import { CalendarDaysIcon, UsersIcon, ArrowLeftOnRectangleIcon, CreditCardIcon } from './icons/Icons';
 import { useAuth } from '../hooks/useAuth';
 import { OrganizationSwitcher } from './OrganizationSwitcher';
 import { Page } from '../App';
@@ -37,22 +37,15 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
     profile?.role === 'user' ||
     profile?.role === 'usuario'; // Backward compatibility
 
-  // Opciones del sidebar con niveles de acceso más granulares
+  // Opciones del sidebar simplificadas
   const navItems = [
     // Opciones para TODOS los usuarios
-    { id: 'dashboard', label: 'Dashboard', icon: <HomeIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: true },
     { id: 'live', label: 'Jornadas', icon: <CalendarDaysIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: true },
-    { id: 'bets', label: 'Apuestas', icon: <ChartBarIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: true },
-    { id: 'ai', label: 'Análisis IA', icon: <SparklesIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: true },
-    { id: 'settings', label: 'Ajustes', icon: <CogIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: true },
 
     // Opciones para ADMINS de cuenta y superiores
-    { id: 'scan', label: 'Escanear', icon: <TicketIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: false },
     { id: 'pricing', label: 'Planes', icon: <CreditCardIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: false },
 
     // Opciones SOLO para SUPERADMIN de AGENCIA (platform_owner, agency_admin)
-    { id: 'add', label: 'Añadir', icon: <PlusCircleIcon className="w-5 h-5" />, forAgency: true, forAccount: false, forUser: false },
-    { id: 'ml', label: 'ML Learning', icon: <SparklesIcon className="w-5 h-5" />, forAgency: true, forAccount: false, forUser: false },
     { id: 'admin', label: 'Admin', icon: <UsersIcon className="w-5 h-5" />, forAgency: true, forAccount: false, forUser: false },
   ];
 
