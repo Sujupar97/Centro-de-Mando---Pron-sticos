@@ -1,8 +1,9 @@
 // components/ai/SmartParlays.tsx
 // Componente para mostrar y generar Parlays (combinaciones multi-partido)
 // Usa la fecha global pasada desde LiveFeed via prop
+// Incluye subscription gating + transparencia historica
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     generateSmartParlays,
     getSmartParlays,
@@ -11,6 +12,9 @@ import {
     getRiskColor,
     getRiskLabel
 } from '../../services/smartParlayService';
+import { useSubscription } from '../../contexts/SubscriptionContext';
+import { isHistoricalDate, canViewParlays, isUnlimitedParlays } from '../../utils/planAccessUtils';
+import { usePresentationMode } from '../../hooks/usePresentationMode';
 
 interface SmartParlaysProps {
     date: string;
@@ -22,10 +26,36 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
     const [generating, setGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [stats, setStats] = useState<any>(null);
+    const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+
+    const {
+        plan,
+        usage,
+        limits,
+        isAdmin,
+        isFree,
+        checkLimit,
+        trackUsage,
+    } = useSubscription();
+    const { presentationMode } = usePresentationMode();
+
+    const historical = useMemo(() => isHistoricalDate(date), [date]);
+    const parlayAccess = useMemo(
+        () => canViewParlays(plan.monthly_parlay_limit, historical),
+        [plan.monthly_parlay_limit, historical]
+    );
+    const unlimited = useMemo(
+        () => isUnlimitedParlays(plan.monthly_parlay_limit),
+        [plan.monthly_parlay_limit]
+    );
 
     useEffect(() => {
-        loadParlays();
-    }, [date]);
+        if (parlayAccess || isAdmin) {
+            loadParlays();
+        } else {
+            setParlays([]);
+        }
+    }, [date, parlayAccess, isAdmin]);
 
     const loadParlays = async () => {
         setLoading(true);
@@ -41,6 +71,21 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
     };
 
     const handleGenerate = async () => {
+        // Si es fecha historica, no se puede generar (solo ver)
+        if (historical) {
+            setError('No se pueden generar parlays para fechas anteriores.');
+            return;
+        }
+
+        // Verificar limite antes de generar (a menos que sea admin)
+        if (!isAdmin) {
+            const limitResult = await checkLimit('parlays');
+            if (!limitResult.allowed) {
+                setShowUpgradePrompt(true);
+                return;
+            }
+        }
+
         setGenerating(true);
         setError(null);
         setStats(null);
@@ -50,6 +95,10 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
 
             if (result.success) {
                 setStats(result.stats);
+                // Trackear uso despues de generacion exitosa
+                if (!isAdmin) {
+                    await trackUsage('parlays');
+                }
                 await loadParlays();
             } else {
                 setError(result.error || result.message || 'Error desconocido');
@@ -62,6 +111,43 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
     };
 
     const formatProbability = (prob: number) => `${Math.round(prob * 100)}%`;
+
+    // --- Plan Free sin acceso a parlays del dia actual ---
+    if (!parlayAccess && !isAdmin) {
+        return (
+            <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-700/50 p-6">
+                <div className="text-center py-12">
+                    <div className="text-5xl mb-4">🔒</div>
+                    <h3 className="text-xl font-bold text-white mb-2">
+                        Parlays no disponibles en tu plan
+                    </h3>
+                    <p className="text-gray-400 mb-6 max-w-md mx-auto">
+                        {isFree
+                            ? 'Los Parlays están disponibles a partir del plan Starter. Actualiza para acceder a combinaciones inteligentes de apuestas.'
+                            : 'Has alcanzado el límite de parlays de tu plan. Actualiza para generar más combinaciones.'}
+                    </p>
+                    <a
+                        href="/pricing"
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-green-600 text-white font-medium rounded-lg hover:from-emerald-600 hover:to-green-700 transition-all"
+                    >
+                        <span>⚡</span>
+                        Ver planes
+                    </a>
+                    {!isFree && (
+                        <p className="text-gray-500 text-xs mt-4">
+                            Los parlays de días anteriores son visibles para todos los planes.
+                        </p>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // Calcular info del contador de uso
+    const parlayLimitDisplay = unlimited || isAdmin
+        ? null
+        : plan.monthly_parlay_limit;
+    const parlaysUsed = usage.parlays_used;
 
     return (
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-700/50 p-6">
@@ -77,29 +163,53 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                     </p>
                 </div>
 
-                <button
-                    onClick={handleGenerate}
-                    disabled={generating}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${generating
-                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700'
-                        }`}
-                >
-                    {generating ? (
-                        <>
-                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                            Generando...
-                        </>
-                    ) : (
-                        <>
-                            <span>✨</span>
-                            Generar Parlays
-                        </>
+                <div className="flex items-center gap-3">
+                    {/* Contador de uso mensual (solo si no es historico y tiene limite) */}
+                    {!historical && parlayLimitDisplay !== null && (
+                        <div className="text-right">
+                            <div className="text-gray-400 text-xs">Este mes</div>
+                            <div className={`text-sm font-medium ${
+                                parlaysUsed >= parlayLimitDisplay ? 'text-red-400' : 'text-emerald-400'
+                            }`}>
+                                {parlaysUsed} / {parlayLimitDisplay}
+                            </div>
+                        </div>
                     )}
-                </button>
+
+                    {/* Badge historico */}
+                    {historical && (
+                        <span className="px-2 py-1 bg-blue-500/10 border border-blue-500/30 rounded text-blue-400 text-xs font-medium">
+                            Histórico
+                        </span>
+                    )}
+
+                    {/* Boton generar (solo para dia actual) */}
+                    {!historical && (
+                        <button
+                            onClick={handleGenerate}
+                            disabled={generating}
+                            className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${generating
+                                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700'
+                                }`}
+                        >
+                            {generating ? (
+                                <>
+                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    Generando...
+                                </>
+                            ) : (
+                                <>
+                                    <span>✨</span>
+                                    Generar Parlays
+                                </>
+                            )}
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Stats */}
@@ -131,7 +241,9 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                 <div className="text-center py-12 text-gray-400">
                     <p className="text-4xl mb-3">🎰</p>
                     <p>No hay Parlays para esta fecha.</p>
-                    <p className="text-sm mt-1">Analiza al menos 3 partidos y luego presiona "Generar Parlays".</p>
+                    {!historical && (
+                        <p className="text-sm mt-1">Analiza al menos 3 partidos y luego presiona "Generar Parlays".</p>
+                    )}
                 </div>
             )}
 
@@ -145,7 +257,7 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                         >
                             {/* Combo Header */}
                             <div className={`bg-gradient-to-r ${getRiskColor(combo.risk_tier)} p-4 relative`}>
-                                {combo.status && combo.status !== 'pending' && (
+                                {!presentationMode && combo.status && combo.status !== 'pending' && (
                                     <div className={`absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-black tracking-wider ${
                                         combo.status === 'won' ? 'bg-emerald-500 text-white' :
                                         combo.status === 'lost' ? 'bg-red-500 text-white' :
@@ -189,8 +301,8 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                     <div
                                         key={pickIndex}
                                         className={`flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border ${
-                                            (pick as any).result === 'WON' ? 'border-emerald-500/30' :
-                                            (pick as any).result === 'LOST' ? 'border-red-500/30 opacity-60' :
+                                            !presentationMode && (pick as any).result === 'WON' ? 'border-emerald-500/30' :
+                                            !presentationMode && (pick as any).result === 'LOST' ? 'border-red-500/30 opacity-60' :
                                             'border-gray-700/30'
                                         }`}
                                     >
@@ -206,7 +318,7 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                             </div>
                                         </div>
                                         <div className="text-right ml-4 flex-shrink-0 flex items-center gap-2">
-                                            {(pick as any).result && (pick as any).result !== 'PENDING' && (
+                                            {!presentationMode && (pick as any).result && (pick as any).result !== 'PENDING' && (
                                                 <span className={`text-xs font-black px-1.5 py-0.5 rounded ${
                                                     (pick as any).result === 'WON' ? 'bg-emerald-500/20 text-emerald-400' :
                                                     (pick as any).result === 'LOST' ? 'bg-red-500/20 text-red-400' :
@@ -241,6 +353,38 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Modal de upgrade cuando se alcanza limite */}
+            {showUpgradePrompt && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-md w-full">
+                        <div className="text-center">
+                            <div className="text-4xl mb-3">🎯</div>
+                            <h3 className="text-lg font-bold text-white mb-2">
+                                Límite de Parlays Alcanzado
+                            </h3>
+                            <p className="text-gray-400 text-sm mb-4">
+                                Has usado {parlaysUsed} de {parlayLimitDisplay} parlays este mes.
+                                Actualiza tu plan para generar más combinaciones.
+                            </p>
+                            <div className="flex gap-3 justify-center">
+                                <button
+                                    onClick={() => setShowUpgradePrompt(false)}
+                                    className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 transition-colors"
+                                >
+                                    Cerrar
+                                </button>
+                                <a
+                                    href="/pricing"
+                                    className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg hover:from-emerald-600 hover:to-green-700 transition-all font-medium"
+                                >
+                                    Ver planes
+                                </a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

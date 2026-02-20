@@ -22,7 +22,22 @@ export type ConfidenceLevel = 'Alta' | 'Media' | 'Baja';
 
 export type OrganizationRole = 'owner' | 'admin' | 'usuario';
 export type OrganizationStatus = 'active' | 'suspended' | 'trial' | 'cancelled';
-export type SubscriptionPlan = 'free' | 'basic' | 'pro' | 'enterprise';
+export type SubscriptionPlanName = 'free' | 'starter' | 'pro' | 'premium' | 'unlimited';
+/** @deprecated Use SubscriptionPlanName instead */
+export type SubscriptionPlan = SubscriptionPlanName;
+export type BillingPeriod = 'monthly' | 'annual';
+export type SubscriptionStatus = 'active' | 'cancelled' | 'expired' | 'past_due' | 'paused' | 'on_trial' | 'trialing';
+
+export interface LemonSqueezyWebhookEvent {
+    id: string;
+    event_name: string;
+    ls_event_id: string;
+    payload: Record<string, any>;
+    processed: boolean;
+    processed_at: string | null;
+    error: string | null;
+    created_at: string;
+}
 
 export interface Organization {
     id: string;

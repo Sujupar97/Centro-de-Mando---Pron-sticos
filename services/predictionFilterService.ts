@@ -13,7 +13,7 @@
  */
 
 import { supabase } from './supabaseService';
-import { getUserSubscription, getUsageStats, incrementUsage } from './subscriptionCheckService';
+import { getCurrentUserPlan, getCurrentUsage, incrementUsage, UserPlan } from './subscriptionService';
 
 // Interfaz para pronóstico
 export interface Prediction {
@@ -56,8 +56,8 @@ export async function getFilteredPredictions(
     };
 }> {
     // 1. Obtener plan del usuario
-    const subscription = await getUserSubscription(userId, orgId);
-    const usage = await getUsageStats(userId, orgId);
+    const subscription = await getCurrentUserPlan(userId, orgId);
+    const usage = await getCurrentUsage(userId, orgId);
 
     if (!subscription) {
         return {
@@ -91,12 +91,12 @@ export async function getFilteredPredictions(
 
     // 3. Calcular cuántos pronósticos puede ver según plan
     const { allowedCount, dailyLimit } = calculateAllowedPredictions(
-        subscription.planName,
-        subscription.predictionsPercentage,
+        subscription.plan_name,
+        subscription.predictions_percentage,
         total
     );
 
-    const usedToday = usage?.predictionsViewed || 0;
+    const usedToday = usage?.predictions_used || 0;
     const remainingToday = dailyLimit !== null ? Math.max(0, dailyLimit - usedToday) : allowedCount;
 
     // 4. Filtrar pronósticos
@@ -105,7 +105,7 @@ export async function getFilteredPredictions(
         const hasRemaining = dailyLimit === null || usedToday < dailyLimit;
 
         // Plan Free: solo estadísticas, sin ver pronóstico real
-        if (subscription.planName === 'free') {
+        if (subscription.plan_name === 'free') {
             if (index === 0 && hasRemaining) {
                 // Solo el primer pronóstico (menos probable de los "top") visible
                 return {
@@ -240,13 +240,13 @@ export async function canViewPrediction(
     }
 
     const { allowedCount, dailyLimit } = calculateAllowedPredictions(
-        subscription.planName,
-        subscription.predictionsPercentage,
+        subscription.plan_name,
+        subscription.predictions_percentage,
         totalPredictions
     );
 
     // Verificar límite diario
-    if (dailyLimit !== null && (usage?.predictionsViewed || 0) >= dailyLimit) {
+    if (dailyLimit !== null && (usage?.predictions_used || 0) >= dailyLimit) {
         return {
             canView: false,
             reason: 'Límite diario alcanzado',

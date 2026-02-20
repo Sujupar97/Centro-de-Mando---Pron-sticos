@@ -1,6 +1,6 @@
 /**
  * Subscription Context
- * Provee estado global de suscripción del usuario
+ * Provee estado global de suscripcion del usuario con soporte Lemon Squeezy
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
@@ -13,16 +13,25 @@ import {
     FeatureLimitResult
 } from '../services/subscriptionService';
 
+interface PlanState {
+    plan_name: string;
+    display_name: string;
+    predictions_percentage: number;
+    monthly_parlay_limit: number;
+    monthly_analysis_limit: number | null;
+    analysis_percentage: number;
+    can_analyze_own_tickets: boolean;
+    can_access_ml_dashboard: boolean;
+    can_access_full_stats: boolean;
+    has_priority_support: boolean;
+    billing_period: string;
+    renews_at: string | null;
+    ls_subscription_id: string | null;
+    customer_portal_url: string | null;
+}
+
 interface SubscriptionState {
-    plan: {
-        plan_name: string;
-        display_name: string;
-        predictions_percentage: number;
-        monthly_parlay_limit: number;
-        monthly_analysis_limit: number | null;
-        can_analyze_own_tickets: boolean;
-        can_access_ml_dashboard: boolean;
-    };
+    plan: PlanState;
     usage: {
         predictions_used: number;
         parlays_used: number;
@@ -37,6 +46,7 @@ interface SubscriptionState {
     isPro: boolean;
     isStarter: boolean;
     isFree: boolean;
+    isAdmin: boolean;
 }
 
 interface SubscriptionContextType extends SubscriptionState {
@@ -47,16 +57,25 @@ interface SubscriptionContextType extends SubscriptionState {
     canUseAnalysis: () => Promise<FeatureLimitResult>;
 }
 
+const defaultPlan: PlanState = {
+    plan_name: 'free',
+    display_name: 'Gratis',
+    predictions_percentage: 1,
+    monthly_parlay_limit: 0,
+    monthly_analysis_limit: 0,
+    analysis_percentage: 0,
+    can_analyze_own_tickets: false,
+    can_access_ml_dashboard: false,
+    can_access_full_stats: false,
+    has_priority_support: false,
+    billing_period: 'monthly',
+    renews_at: null,
+    ls_subscription_id: null,
+    customer_portal_url: null,
+};
+
 const defaultState: SubscriptionState = {
-    plan: {
-        plan_name: 'free',
-        display_name: 'Gratis',
-        predictions_percentage: 0,
-        monthly_parlay_limit: 0,
-        monthly_analysis_limit: 0,
-        can_analyze_own_tickets: false,
-        can_access_ml_dashboard: false,
-    },
+    plan: defaultPlan,
     usage: {
         predictions_used: 0,
         parlays_used: 0,
@@ -71,6 +90,7 @@ const defaultState: SubscriptionState = {
     isPro: false,
     isStarter: false,
     isFree: true,
+    isAdmin: false,
 };
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -91,15 +111,32 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         try {
             const summary = await getSubscriptionSummary(user.id, currentOrg.id);
 
+            const planName = summary.plan.plan_name;
             setState({
-                plan: summary.plan,
+                plan: {
+                    plan_name: planName,
+                    display_name: summary.plan.display_name,
+                    predictions_percentage: summary.plan.predictions_percentage,
+                    monthly_parlay_limit: summary.plan.monthly_parlay_limit,
+                    monthly_analysis_limit: summary.plan.monthly_analysis_limit,
+                    analysis_percentage: summary.plan.analysis_percentage ?? 0,
+                    can_analyze_own_tickets: summary.plan.can_analyze_own_tickets,
+                    can_access_ml_dashboard: summary.plan.can_access_ml_dashboard,
+                    can_access_full_stats: summary.plan.can_access_full_stats ?? false,
+                    has_priority_support: summary.plan.has_priority_support ?? false,
+                    billing_period: summary.plan.billing_period ?? 'monthly',
+                    renews_at: summary.plan.renews_at ?? null,
+                    ls_subscription_id: summary.plan.ls_subscription_id ?? null,
+                    customer_portal_url: summary.plan.customer_portal_url ?? null,
+                },
                 usage: summary.usage,
                 limits: summary.limits,
                 isLoading: false,
-                isPremium: summary.plan.plan_name === 'premium',
-                isPro: summary.plan.plan_name === 'pro',
-                isStarter: summary.plan.plan_name === 'starter',
-                isFree: summary.plan.plan_name === 'free',
+                isPremium: planName === 'premium',
+                isPro: planName === 'pro',
+                isStarter: planName === 'starter',
+                isFree: planName === 'free',
+                isAdmin: planName === 'unlimited',
             });
         } catch (error) {
             console.error('Error loading subscription:', error);
@@ -122,7 +159,6 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         if (!user?.id || !currentOrg?.id) return false;
         const result = await incrementUsage(user.id, currentOrg.id, feature);
         if (result) {
-            // Refresh stats after tracking
             await refreshSubscription();
         }
         return result;

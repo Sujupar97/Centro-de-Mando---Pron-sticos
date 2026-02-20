@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../services/supabaseService';
 import { PlanSelector } from './PlanSelector';
 import { ArrowRightIcon, ArrowLeftIcon, SparklesIcon } from '../icons/Icons';
-import { initSubscriptionPayment, usdToCop } from '../../services/wompiService';
+import { openCheckoutOverlay, getVariantId } from '../../services/lemonSqueezyService';
+import { SubscriptionPlan } from '../../services/subscriptionService';
 
 interface SignUpData {
     fullName: string;
@@ -12,15 +13,9 @@ interface SignUpData {
     confirmPassword: string;
 }
 
-interface Plan {
-    id: string;
-    name: string;
-    displayName: string;
-    priceCents: number;
-}
-
 export const SignUpFlow: React.FC = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -32,7 +27,10 @@ export const SignUpFlow: React.FC = () => {
         confirmPassword: ''
     });
 
-    const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+    const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+    const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>(
+        (searchParams.get('billing') as 'monthly' | 'annual') || 'monthly'
+    );
 
     // Step 1: User Data
     const handleStep1Submit = (e: React.FormEvent) => {
@@ -82,11 +80,8 @@ export const SignUpFlow: React.FC = () => {
             if (authError) throw authError;
             if (!authData.user) throw new Error('No se pudo crear el usuario');
 
-            // Note: Profile and organization are created automatically by database trigger
-
             // 2. Si es plan gratuito, asignar directamente
-            if (selectedPlan.priceCents === 0) {
-                // Obtener el plan free de la DB
+            if (selectedPlan.price_cents === 0) {
                 const { data: planData } = await supabase
                     .from('subscription_plans')
                     .select('id')
@@ -101,32 +96,44 @@ export const SignUpFlow: React.FC = () => {
                             plan_id: planData.id,
                             status: 'active',
                             current_period_start: new Date().toISOString(),
-                            current_period_end: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // 1 año
+                            current_period_end: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
                         });
                 }
 
-                // Redirigir a app
                 navigate('/app');
             } else {
-                // 4. Si es plan de pago, iniciar Wompi
-                const priceCOP = usdToCop(selectedPlan.priceCents / 100);
+                // 3. Plan de pago: abrir checkout Lemon Squeezy
+                const variantId = getVariantId(selectedPlan, billingPeriod);
+                if (!variantId) {
+                    setError('Plan no disponible. Contacta soporte.');
+                    setLoading(false);
+                    return;
+                }
 
-                await initSubscriptionPayment(
-                    selectedPlan.name,
-                    selectedPlan.displayName,
-                    priceCOP,
-                    signUpData.email,
-                    signUpData.fullName,
-                    () => {
-                        // Éxito - redirigir a app
-                        navigate('/app');
-                    },
-                    () => {
-                        // Error en pago
-                        setError('Hubo un problema con el pago. Intenta de nuevo.');
-                        setLoading(false);
-                    }
-                );
+                // Esperar un poco para que el user se propague en Supabase
+                await new Promise(r => setTimeout(r, 1000));
+
+                // Obtener orgId del usuario recien creado
+                const { data: memberData } = await supabase
+                    .from('organization_members')
+                    .select('organization_id')
+                    .eq('user_id', authData.user.id)
+                    .limit(1)
+                    .single();
+
+                const orgId = memberData?.organization_id || authData.user.id;
+
+                await openCheckoutOverlay({
+                    variantId,
+                    userId: authData.user.id,
+                    userEmail: signUpData.email,
+                    userName: signUpData.fullName,
+                    orgId,
+                    billingPeriod,
+                });
+
+                // Redirigir despues de abrir el checkout overlay
+                setTimeout(() => navigate('/app'), 2000);
             }
         } catch (err: any) {
             console.error('Error en registro:', err);
@@ -172,7 +179,7 @@ export const SignUpFlow: React.FC = () => {
                                     <span className="text-xs font-bold uppercase tracking-wider text-brand">Únete Ahora</span>
                                 </div>
                                 <h1 className="text-4xl font-black text-white mb-2">Crea tu Cuenta</h1>
-                                <p className="text-slate-400">Accede a análisis con IA en segundos</p>
+                                <p className="text-slate-400">Accede a oportunidades de alto valor en segundos</p>
                             </div>
 
                             <form onSubmit={handleStep1Submit} className="space-y-4">
@@ -263,7 +270,12 @@ export const SignUpFlow: React.FC = () => {
                     ) : (
                         /* STEP 2: Plan Selection */
                         <div>
-                            <PlanSelector selectedPlan={selectedPlan} onSelectPlan={setSelectedPlan} />
+                            <PlanSelector
+                                selectedPlan={selectedPlan}
+                                onSelectPlan={setSelectedPlan}
+                                billingPeriod={billingPeriod}
+                                onBillingPeriodChange={setBillingPeriod}
+                            />
 
                             {error && (
                                 <div className="mt-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl max-w-2xl mx-auto">
@@ -293,7 +305,7 @@ export const SignUpFlow: React.FC = () => {
                                         </>
                                     ) : (
                                         <>
-                                            {selectedPlan?.priceCents === 0 ? 'Comenzar Gratis' : 'Continuar al Pago'}
+                                            {selectedPlan?.price_cents === 0 ? 'Comenzar Gratis' : 'Continuar al Pago'}
                                             <ArrowRightIcon className="w-5 h-5" />
                                         </>
                                     )}

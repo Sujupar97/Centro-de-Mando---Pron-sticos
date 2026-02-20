@@ -6,13 +6,15 @@ import { CreateSubAccountModal } from './CreateSubAccountModal';
 import { ManageSubAccountPage } from './ManageSubAccountPage';
 import { OperationsCenter } from '../superadmin/OperationsCenter';
 import AnaliticaAvanzada from '../admin/AnaliticaAvanzada';
+import RevenueDashboard from './RevenueDashboard';
+import UserActivityMonitor from './UserActivityMonitor';
+import AuditLog from './AuditLog';
 
 interface AgencyLayoutProps {
     onBack?: () => void;
 }
 
 import { useLanguage } from '../../contexts/LanguageContext';
-// ... imports
 
 export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
     const [activeView, setActiveView] = useState('dashboard');
@@ -20,10 +22,18 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const { t, language, setLanguage } = useLanguage();
 
-    // Reset selected org when changing main views
     const handleViewChange = (view: string) => {
         setActiveView(view);
         setSelectedOrgId(null);
+    };
+
+    const viewLabels: Record<string, string> = {
+        dashboard: t('nav.dashboard'),
+        revenue: 'Revenue',
+        subaccounts: t('nav.clients'),
+        activity: 'Actividad',
+        'advanced-analytics': 'Analítica',
+        'audit-log': 'Audit Log',
     };
 
     return (
@@ -31,17 +41,15 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
             <AgencySidebar activeView={activeView} onViewChange={handleViewChange} />
 
             <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-950 relative">
-                {/* Header Actions (Search, Notifications, Add New) */}
                 <div className="h-16 border-b border-white/5 flex items-center justify-between px-8 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-30">
                     <div className="text-slate-400 text-sm">
                         {t('header.admin')} <span className="mx-2">/</span>
                         <span className="text-white capitalize">
-                            {selectedOrgId ? t('detail.title') : activeView === 'advanced-analytics' ? 'Analítica Avanzada' : t(`nav.${activeView === 'subaccounts' ? 'clients' : activeView}`)}
+                            {selectedOrgId ? t('detail.title') : viewLabels[activeView] || activeView}
                         </span>
                     </div>
 
                     <div className="flex items-center gap-4">
-                        {/* Language Toggle */}
                         <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-white/5">
                             <button
                                 onClick={() => setLanguage('es')}
@@ -68,9 +76,16 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
                     </div>
                 </div>
 
-                {/* Main Content Area */}
                 <div className="flex-1 overflow-y-auto p-8 relative">
                     <div className="max-w-7xl mx-auto animate-fade-in">
+                        {activeView === 'dashboard' && (
+                            <OperationsCenter />
+                        )}
+
+                        {activeView === 'revenue' && (
+                            <RevenueDashboard />
+                        )}
+
                         {activeView === 'subaccounts' && (
                             selectedOrgId ? (
                                 <ManageSubAccountPage
@@ -85,14 +100,18 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
                             )
                         )}
 
-                        {activeView === 'dashboard' && (
-                            <OperationsCenter />
+                        {activeView === 'activity' && (
+                            <UserActivityMonitor />
                         )}
 
                         {activeView === 'advanced-analytics' && (
                             <div className="glass p-6 rounded-xl border border-white/5">
                                 <AnaliticaAvanzada />
                             </div>
+                        )}
+
+                        {activeView === 'audit-log' && (
+                            <AuditLog />
                         )}
                     </div>
                 </div>
@@ -103,7 +122,6 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
                 onClose={() => setIsCreateModalOpen(false)}
                 onSuccess={() => {
                     setIsCreateModalOpen(false);
-                    // Trigger refresh of subaccounts if needed (usually context or SWR handles this)
                 }}
             />
         </div>

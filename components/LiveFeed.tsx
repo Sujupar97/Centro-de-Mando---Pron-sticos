@@ -16,8 +16,10 @@ import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../services/supabaseService';
 import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
 import { UpgradePlanModal } from './pricing/UpgradePlanModal';
-import { incrementUsage } from '../services/subscriptionCheckService';
+import { incrementUsage } from '../services/subscriptionService';
 import { useOrganization } from '../contexts/OrganizationContext';
+import { isHistoricalDate } from '../utils/planAccessUtils';
+import { usePresentationMode } from '../hooks/usePresentationMode';
 
 // --- COMPONENTES AUXILIARES ---
 
@@ -148,11 +150,19 @@ const AnalysisGameCard: React.FC<{
 
 export const FixturesFeed: React.FC = () => {
     const { profile } = useAuth();
+    const { presentationMode } = usePresentationMode();
     const [data, setData] = useState<DashboardData>({ importantLeagues: [], countryLeagues: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [selectedDate, setSelectedDate] = useState(getCurrentDateInBogota());
     const [viewMode, setViewMode] = useState<'fixtures' | 'top-picks' | 'parlays' | 'profitability'>('top-picks');
+
+    // Si presentationMode se activa y estamos en tab Resultados, redirigir
+    useEffect(() => {
+        if (presentationMode && viewMode === 'profitability') {
+            setViewMode('top-picks');
+        }
+    }, [presentationMode, viewMode]);
 
     // GESTIÓN DE JOBS
     const [activeJobs, setActiveJobs] = useState<Record<number, string>>({});
@@ -498,7 +508,7 @@ export const FixturesFeed: React.FC = () => {
     // 3. Iniciar Análisis (Individual)
     // Hook de suscripciones
     const { subscription, checkAnalysisAccess, analysesRemaining, recommendedUpgrade } = useSubscriptionLimits();
-    const { currentOrganization } = useOrganization();
+    const { currentOrg } = useOrganization();
     const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
     const [upgradeReason, setUpgradeReason] = useState('');
 
@@ -516,6 +526,12 @@ export const FixturesFeed: React.FC = () => {
             setGameJobStatus(prev => ({ ...prev, [game.fixture.id]: 'queued' }));
             const jobId = await createAnalysisJob(game.fixture.id);
             setActiveJobs(prev => ({ ...prev, [game.fixture.id]: jobId }));
+
+            // Trackear uso despues de crear el job exitosamente
+            if (profile?.id && currentOrg?.id) {
+                await incrementUsage(profile.id, currentOrg.id, 'analyses');
+            }
+
             const initialJobState: AnalysisJob = {
                 id: jobId,
                 api_fixture_id: game.fixture.id,
@@ -587,10 +603,14 @@ export const FixturesFeed: React.FC = () => {
         });
     };
 
-    // Gating Helper
+    // Gating Helper — Transparencia historica: dias anteriores visibles para TODOS
     const verifyReportAccess = async (): Promise<boolean> => {
-        // CRÍTICO: Los usuarios FREE no pueden abrir informes, incluso de partidos pasados
-        // Solo verificamos análisis limit (no incrementamos uso por VER informes)
+        // Regla de transparencia: datos historicos son accesibles para todos los planes
+        if (isHistoricalDate(selectedDate)) {
+            return true;
+        }
+
+        // Para el dia actual: verificar limites del plan
         const accessCheck = await checkAnalysisAccess();
         if (!accessCheck.allowed) {
             setUpgradeReason(accessCheck.reason || 'Actualiza tu plan para acceder a los análisis de IA.');
@@ -598,7 +618,6 @@ export const FixturesFeed: React.FC = () => {
             return false;
         }
 
-        // Permitir si tiene acceso
         return true;
     };
 
@@ -693,13 +712,15 @@ export const FixturesFeed: React.FC = () => {
                             >
                                 <ListBulletIcon className="w-5 h-5 mr-2" /> Partidos
                             </button>
-                            <button
-                                onClick={() => setViewMode('profitability')}
-                                className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'profitability' ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-400 hover:text-white'
-                                    }`}
-                            >
-                                <ChartBarIcon className="w-5 h-5 mr-2" /> Resultados
-                            </button>
+                            {!presentationMode && (
+                                <button
+                                    onClick={() => setViewMode('profitability')}
+                                    className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'profitability' ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-400 hover:text-white'
+                                        }`}
+                                >
+                                    <ChartBarIcon className="w-5 h-5 mr-2" /> Resultados
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

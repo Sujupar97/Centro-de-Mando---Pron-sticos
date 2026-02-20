@@ -1,140 +1,63 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckIcon, SparklesIcon } from '../icons/Icons';
-import { initSubscriptionPayment, usdToCop } from '../../services/wompiService';
+import { getActivePlans, SubscriptionPlan } from '../../services/subscriptionService';
+import { getPlanPrice } from '../../services/lemonSqueezyService';
 import { useAuth } from '../../hooks/useAuth';
 
-interface Plan {
-    id: string;
-    name: string;
-    displayName: string;
-    description: string;
-    priceCents: number;
-    predictionsPercentage: number;
-    monthlyParlayLimit: number;
-    monthlyAnalysisLimit: number | null;
-    canAnalyzeOwnTickets: boolean;
-    canAccessMLDashboard: boolean;
-    canAccessFullStats: boolean;
-    hasPrioritySupport: boolean;
-}
-
-const PAID_PLANS: Plan[] = [
-    {
-        id: '2',
-        name: 'starter',
-        displayName: 'Starter',
-        description: 'Acceso al 35% de insights predictivos',
-        priceCents: 999,
-        predictionsPercentage: 35,
-        monthlyParlayLimit: 2,
-        monthlyAnalysisLimit: 10,
-        canAnalyzeOwnTickets: false,
-        canAccessMLDashboard: false,
-        canAccessFullStats: false,
-        hasPrioritySupport: false
-    },
-    {
-        id: '3',
-        name: 'pro',
-        displayName: 'Pro',
-        description: 'Acceso al 70% de insights + 8 combinaciones analíticas',
-        priceCents: 2399,
-        predictionsPercentage: 70,
-        monthlyParlayLimit: 8,
-        monthlyAnalysisLimit: null,
-        canAnalyzeOwnTickets: false,
-        canAccessMLDashboard: true,
-        canAccessFullStats: true,
-        hasPrioritySupport: false
-    },
-    {
-        id: '4',
-        name: 'premium',
-        displayName: 'Premium',
-        description: 'Acceso completo + soporte prioritario',
-        priceCents: 9999,
-        predictionsPercentage: 100,
-        monthlyParlayLimit: 24,
-        monthlyAnalysisLimit: null,
-        canAnalyzeOwnTickets: true,
-        canAccessMLDashboard: true,
-        canAccessFullStats: true,
-        hasPrioritySupport: true
-    }
-];
-
-const FREE_PLAN: Plan = {
-    id: '1',
-    name: 'free',
-    displayName: 'Gratis',
-    description: 'Plan gratuito con acceso básico',
-    priceCents: 0,
-    predictionsPercentage: 0,
-    monthlyParlayLimit: 0,
-    monthlyAnalysisLimit: 0,
-    canAnalyzeOwnTickets: false,
-    canAccessMLDashboard: false,
-    canAccessFullStats: false,
-    hasPrioritySupport: false
-};
-
-function formatPrice(cents: number): string {
-    return `$${(cents / 100).toFixed(2)}`;
-}
-
 interface PricingCardProps {
-    plan: Plan;
+    plan: SubscriptionPlan;
     isPopular: boolean;
-    onSelect: (plan: Plan) => void;
+    billingPeriod: 'monthly' | 'annual';
+    onSelect: (plan: SubscriptionPlan) => void;
     isProcessing: boolean;
 }
 
-const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular, onSelect, isProcessing }) => {
+const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular, billingPeriod, onSelect, isProcessing }) => {
+    const priceDisplay = getPlanPrice(plan.price_cents, plan.annual_price_cents, billingPeriod);
+    const isUnlimitedParlays = plan.monthly_parlay_limit === -1 || plan.monthly_parlay_limit >= 999999;
+
     const features = [
         {
-            label: 'Predicciones de alta probabilidad',
-            value: plan.predictionsPercentage === 0
+            label: 'Oportunidades diarias',
+            value: plan.predictions_percentage <= 1
                 ? '1 diario'
-                : plan.predictionsPercentage === 100
-                    ? '100% (Ilimitados)'
-                    : `${plan.predictionsPercentage}%`,
+                : plan.predictions_percentage >= 100
+                    ? '100% (Todos)'
+                    : `${plan.predictions_percentage}%`,
             included: true
         },
         {
-            label: 'Combinaciones analíticas mensuales',
-            value: plan.monthlyParlayLimit === 0
+            label: 'Parlays mensuales',
+            value: plan.monthly_parlay_limit === 0
                 ? 'No incluido'
-                : plan.monthlyParlayLimit >= 24
-                    ? 'Ilimitados (~24)'
-                    : `${plan.monthlyParlayLimit}/mes`,
-            included: plan.monthlyParlayLimit > 0
+                : isUnlimitedParlays
+                    ? 'Ilimitados'
+                    : `${plan.monthly_parlay_limit}/mes`,
+            included: plan.monthly_parlay_limit > 0 || isUnlimitedParlays
         },
         {
             label: 'Análisis de partidos',
-            value: plan.monthlyAnalysisLimit === null
-                ? 'Ilimitado'
-                : plan.monthlyAnalysisLimit === 0
-                    ? 'No incluido'
-                    : `${plan.monthlyAnalysisLimit}/mes`,
-            included: plan.monthlyAnalysisLimit === null || plan.monthlyAnalysisLimit > 0
+            value: plan.analysis_percentage === 0
+                ? 'No incluido'
+                : plan.analysis_percentage >= 100
+                    ? 'Todos'
+                    : `${plan.analysis_percentage}%`,
+            included: plan.analysis_percentage > 0
         },
         {
-            label: 'Dashboard ML',
-            value: plan.canAccessMLDashboard ? 'Incluido' : 'No incluido',
-            included: plan.canAccessMLDashboard
+            label: 'Estadísticas completas',
+            included: plan.can_access_full_stats
         },
         {
-            label: 'Análisis de reportes propios',
-            value: plan.canAnalyzeOwnTickets ? 'Incluido' : 'No incluido',
-            included: plan.canAnalyzeOwnTickets
+            label: 'Historial de resultados',
+            included: true
         },
         {
             label: 'Soporte prioritario',
-            value: plan.hasPrioritySupport ? 'Incluido' : 'No incluido',
-            included: plan.hasPrioritySupport
+            included: plan.has_priority_support
         }
     ];
 
@@ -143,7 +66,6 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular, onSelect, is
       relative flex flex-col bg-slate-900 rounded-2xl border-2 transition-all duration-300
       ${isPopular ? 'border-brand shadow-xl shadow-brand/20 scale-105 lg:scale-110' : 'border-white/10 hover:border-white/20'}
     `}>
-            {/* Popular Badge */}
             {isPopular && (
                 <div className="absolute -top-5 left-1/2 -translate-x-1/2 z-10">
                     <div className="bg-gradient-to-r from-brand via-emerald-400 to-brand text-slate-900 text-xs font-black px-5 py-2 rounded-full uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-brand/40 animate-pulse">
@@ -154,22 +76,32 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular, onSelect, is
                 </div>
             )}
 
-            {/* Header */}
             <div className={`p-6 border-b border-white/5 ${isPopular ? 'bg-gradient-to-b from-brand/10 to-transparent' : ''}`}>
-                <h3 className="text-lg font-bold text-white">{plan.displayName}</h3>
+                <h3 className="text-lg font-bold text-white">{plan.display_name}</h3>
                 <p className="text-sm text-gray-400 mt-1">{plan.description}</p>
 
-                <div className="mt-4 flex items-baseline gap-1">
-                    <span className={`text-4xl font-black ${isPopular ? 'text-brand' : 'text-white'}`}>
-                        {plan.priceCents === 0 ? 'Gratis' : formatPrice(plan.priceCents)}
-                    </span>
-                    {plan.priceCents > 0 && (
-                        <span className="text-gray-500">/mes</span>
+                <div className="mt-4">
+                    <div className="flex items-baseline gap-1">
+                        <span className={`text-4xl font-black ${isPopular ? 'text-brand' : 'text-white'}`}>
+                            {plan.price_cents === 0 ? 'Gratis' : priceDisplay.monthly.replace('/mes', '')}
+                        </span>
+                        {plan.price_cents > 0 && (
+                            <span className="text-gray-500">/mes</span>
+                        )}
+                    </div>
+                    {priceDisplay.savings && (
+                        <div className="mt-1 inline-flex items-center px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 rounded text-emerald-400 text-xs font-medium">
+                            {priceDisplay.savings}
+                        </div>
+                    )}
+                    {billingPeriod === 'annual' && plan.annual_price_cents > 0 && (
+                        <p className="text-xs text-gray-500 mt-1">
+                            Facturado {priceDisplay.display}
+                        </p>
                     )}
                 </div>
             </div>
 
-            {/* Features */}
             <div className="flex-grow p-6 space-y-3">
                 {features.map((feature, idx) => (
                     <div key={idx} className="flex items-start gap-3">
@@ -178,15 +110,16 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular, onSelect, is
                             <span className={feature.included ? 'text-white' : 'text-gray-500'}>
                                 {feature.label}
                             </span>
-                            <span className={`ml-2 text-sm ${feature.included ? (isPopular ? 'text-brand font-bold' : 'text-emerald-500 font-semibold') : 'text-gray-600'}`}>
-                                {feature.value}
-                            </span>
+                            {feature.value && (
+                                <span className={`ml-2 text-sm ${feature.included ? (isPopular ? 'text-brand font-bold' : 'text-emerald-500 font-semibold') : 'text-gray-600'}`}>
+                                    {feature.value}
+                                </span>
+                            )}
                         </div>
                     </div>
                 ))}
             </div>
 
-            {/* CTA */}
             <div className="p-6 border-t border-white/5">
                 <button
                     onClick={() => onSelect(plan)}
@@ -199,14 +132,7 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular, onSelect, is
                         }
           `}
                 >
-                    {isProcessing ? (
-                        <>
-                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                            Procesando...
-                        </>
-                    ) : (
-                        plan.priceCents === 0 ? 'Comenzar Gratis' : 'Seleccionar Plan'
-                    )}
+                    {plan.price_cents === 0 ? 'Comenzar Gratis' : 'Seleccionar Plan'}
                 </button>
             </div>
         </div>
@@ -215,53 +141,42 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isPopular, onSelect, is
 
 export const PublicPricingPage: React.FC = () => {
     const navigate = useNavigate();
-    const { user, profile } = useAuth();
-    const [processing, setProcessing] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const { user } = useAuth();
+    const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('monthly');
+    const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    const handleSelectPlan = async (plan: Plan) => {
+    useEffect(() => {
+        const loadPlans = async () => {
+            const data = await getActivePlans();
+            setPlans(data);
+            setLoading(false);
+        };
+        loadPlans();
+    }, []);
+
+    const handleSelectPlan = (plan: SubscriptionPlan) => {
         if (!user) {
-            navigate('/login');
+            navigate(`/signup?plan=${plan.name}&billing=${billingPeriod}`);
             return;
         }
-
-        if (plan.priceCents === 0) {
-            navigate('/login');
-            return;
-        }
-
-        setProcessing(true);
-        setMessage(null);
-
-        try {
-            const priceCOP = usdToCop(plan.priceCents / 100);
-
-            await initSubscriptionPayment(
-                plan.name,
-                plan.displayName,
-                priceCOP,
-                profile?.email || user.email || '',
-                profile?.full_name || 'Usuario',
-                () => {
-                    setMessage({ type: 'success', text: '¡Pago procesado! Tu suscripción se activará en segundos.' });
-                    setTimeout(() => navigate('/app'), 3000);
-                },
-                () => {
-                    setMessage({ type: 'error', text: 'El pago no pudo ser procesado. Intenta de nuevo.' });
-                }
-            );
-        } catch (error) {
-            console.error('Error selecting plan:', error);
-            setMessage({ type: 'error', text: 'Ocurrió un error. Intenta de nuevo.' });
-        }
-
-        setProcessing(false);
+        navigate('/app?page=pricing');
     };
+
+    const paidPlans = plans.filter(p => p.price_cents > 0);
+    const freePlan = plans.find(p => p.price_cents === 0);
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 flex items-center justify-center">
+                <div className="w-10 h-10 border-4 border-brand border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 py-12 px-4">
-            {/* Header */}
-            <div className="text-center max-w-3xl mx-auto mb-12">
+            <div className="text-center max-w-3xl mx-auto mb-8">
                 <button
                     onClick={() => navigate('/')}
                     className="text-brand hover:text-emerald-400 text-sm font-medium mb-4 inline-block"
@@ -269,57 +184,70 @@ export const PublicPricingPage: React.FC = () => {
                     ← Volver al inicio
                 </button>
                 <h1 className="text-4xl md:text-5xl font-black text-white mb-4">
-                    Elige tu Plan de Análisis
+                    Elige tu Plan
                 </h1>
                 <p className="text-xl text-gray-400">
-                    Accede a predicciones analíticas generadas por inteligencia artificial
-                    con sistema de aprendizaje automático.
+                    Accede a oportunidades de alto valor generadas por inteligencia artificial.
                 </p>
             </div>
 
-            {/* Message Banner */}
-            {message && (
-                <div className={`max-w-2xl mx-auto mb-8 p-4 rounded-xl border ${message.type === 'success'
-                    ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                    : 'bg-red-500/10 border-red-500/30 text-red-400'
-                    }`}>
-                    <p className="text-center font-medium">{message.text}</p>
-                </div>
-            )}
+            {/* Toggle mensual/anual */}
+            <div className="flex items-center justify-center gap-3 mb-10">
+                <span className={`text-sm font-medium ${billingPeriod === 'monthly' ? 'text-white' : 'text-gray-500'}`}>
+                    Mensual
+                </span>
+                <button
+                    onClick={() => setBillingPeriod(bp => bp === 'monthly' ? 'annual' : 'monthly')}
+                    className={`relative w-14 h-7 rounded-full transition-colors ${billingPeriod === 'annual' ? 'bg-brand' : 'bg-slate-700'}`}
+                >
+                    <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white transition-transform ${billingPeriod === 'annual' ? 'translate-x-7' : 'translate-x-0.5'}`} />
+                </button>
+                <span className={`text-sm font-medium ${billingPeriod === 'annual' ? 'text-white' : 'text-gray-500'}`}>
+                    Anual
+                </span>
+                {billingPeriod === 'annual' && (
+                    <span className="ml-1 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 rounded text-emerald-400 text-xs font-bold">
+                        -20%
+                    </span>
+                )}
+            </div>
 
             {/* Paid Plans Grid */}
             <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                {PAID_PLANS.map((plan, idx) => (
+                {paidPlans.map((plan) => (
                     <PricingCard
                         key={plan.id}
                         plan={plan}
-                        isPopular={idx === 1} // Plan del medio (Pro)
+                        isPopular={plan.name === 'pro'}
+                        billingPeriod={billingPeriod}
                         onSelect={handleSelectPlan}
-                        isProcessing={processing}
+                        isProcessing={false}
                     />
                 ))}
             </div>
 
-            {/* Free Plan - Destacado Abajo */}
-            <div className="max-w-2xl mx-auto mb-12">
-                <div className="text-center mb-6">
-                    <p className="text-gray-400 text-sm uppercase tracking-wide">O empieza gratis</p>
+            {/* Free Plan */}
+            {freePlan && (
+                <div className="max-w-2xl mx-auto mb-12">
+                    <div className="text-center mb-6">
+                        <p className="text-gray-400 text-sm uppercase tracking-wide">O empieza gratis</p>
+                    </div>
+                    <div className="max-w-md mx-auto">
+                        <PricingCard
+                            plan={freePlan}
+                            isPopular={false}
+                            billingPeriod={billingPeriod}
+                            onSelect={handleSelectPlan}
+                            isProcessing={false}
+                        />
+                    </div>
                 </div>
-                <div className="max-w-md mx-auto">
-                    <PricingCard
-                        plan={FREE_PLAN}
-                        isPopular={false}
-                        onSelect={handleSelectPlan}
-                        isProcessing={processing}
-                    />
-                </div>
-            </div>
+            )}
 
-            {/* FAQ or Additional Info */}
             <div className="max-w-3xl mx-auto text-center">
                 <p className="text-gray-500 text-sm">
-                    Los precios están en USD (convertidos a COP al pagar). Puedes cancelar en cualquier momento.
-                    Suscripción SaaS para herramientas analíticas de IA. Todos los planes incluyen acceso a nuestra plataforma de análisis predictivo.
+                    Precios en USD. Puedes cancelar en cualquier momento.
+                    Todos los planes incluyen acceso al historial completo de resultados anteriores.
                 </p>
             </div>
         </div>

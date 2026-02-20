@@ -6,7 +6,7 @@ import { supabase } from '../../services/supabaseService';
 import { mapLeagueToSportKey, fastBatchOddsCheck, findPriceInEvent } from '../../services/oddsService';
 import { TrophyIcon, ChartBarIcon, CheckCircleIcon, XCircleIcon, LockClosedIcon } from '../icons/Icons';
 import { useAuth } from '../../hooks/useAuth';
-import { getUserSubscription } from '../../services/subscriptionCheckService'; // CAMBIADO: Usar servicio con bypass de admin
+import { getCurrentUserPlan } from '../../services/subscriptionService';
 import { UpgradePlanModal } from '../pricing/UpgradePlanModal';
 
 interface TopPicksProps {
@@ -42,35 +42,27 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
     useEffect(() => {
         const loadSubscription = async () => {
             if (profile?.id) {
-                // Usar subscriptionCheckService que tiene bypass de admin
-                const sub = await getUserSubscription(profile.id, profile.organization_id);
-                setSubscription(sub);
+                const plan = await getCurrentUserPlan(profile.id, profile.organization_id);
+                setSubscription(plan);
             }
         };
         loadSubscription();
     }, [profile]);
 
-    // Calcular cuántos picks puede ver
-    const getAllowedCount = () => {
-        if (!subscription) return 1; // Default Free: 1 pick
+    // Calcular cuantos picks puede ver segun porcentaje del plan
+    const getAllowedCount = (totalPicks: number) => {
+        if (!subscription) return 1;
 
-        // BYPASS: Si es admin/superadmin o plan unlimited, acceso total
-        if (profile?.role === 'admin' || profile?.role === 'superadmin' || subscription.planName === 'unlimited') {
-            return 999999; // Ilimitado
+        const isAdmin = ['platform_owner', 'agency_admin', 'admin', 'superadmin'].includes(profile?.role || '');
+        if (isAdmin || subscription.plan_name === 'unlimited') {
+            return totalPicks;
         }
 
-        const planName = subscription.planName || 'free';
-
-        switch (planName) {
-            case 'free': return 1;
-            case 'starter': return 3;
-            case 'pro': return 10;
-            case 'premium': return 1000;
-            default: return 1;
-        }
+        const pct = subscription.predictions_percentage || 0;
+        if (pct >= 100) return totalPicks;
+        if (pct <= 1) return Math.min(1, totalPicks); // Free: 1 daily
+        return Math.ceil(totalPicks * (pct / 100));
     };
-
-    const allowedCount = getAllowedCount();
 
     // ═══════════════════════════════════════════════════════════════
     // FILTRO ESTRICTO: Solo alta probabilidad o media con alta confianza
@@ -250,7 +242,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                             <p>No hay pronósticos con confianza <strong>{filter}</strong> {showOnlyHighConfidence ? 'y ALTA CONFIANZA' : ''} para esta fecha.</p>
                         </div>
                     ) : filteredPicks.map((pick, index) => {
-                        const isLocked = index >= allowedCount;
+                        const isLocked = index >= getAllowedCount(filteredPicks.length);
 
                         return (
                             <div

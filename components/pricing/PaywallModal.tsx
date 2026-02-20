@@ -1,6 +1,7 @@
 /**
  * Paywall Modal
- * Modal que aparece cuando el usuario alcanza un límite de su plan
+ * Modal que aparece cuando el usuario alcanza un limite de su plan
+ * Precios dinamicos - no hardcodeados
  */
 
 import React from 'react';
@@ -14,6 +15,8 @@ interface PaywallModalProps {
     currentUsage?: number;
     limit?: number;
     planName?: string;
+    upgradePlanName?: string;
+    upgradeDescription?: string;
 }
 
 export const PaywallModal: React.FC<PaywallModalProps> = ({
@@ -23,27 +26,26 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     feature,
     currentUsage,
     limit,
-    planName = 'Gratis'
+    planName = 'Gratis',
+    upgradePlanName,
+    upgradeDescription,
 }) => {
     if (!isOpen) return null;
 
     const featureNames: Record<string, string> = {
         parlays: 'Parlays',
         analyses: 'Análisis de partidos',
-        predictions: 'Pronósticos premium'
+        predictions: 'Oportunidades premium'
     };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-            {/* Backdrop */}
             <div
                 className="absolute inset-0 bg-black/80 backdrop-blur-sm"
                 onClick={onClose}
             />
 
-            {/* Modal */}
             <div className="relative bg-slate-900 rounded-2xl border border-white/10 max-w-md w-full mx-4 overflow-hidden shadow-2xl">
-                {/* Header Gradient */}
                 <div className="bg-gradient-to-br from-red-500/20 to-orange-500/20 p-6 border-b border-white/5">
                     <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
                         <LockClosedIcon className="w-8 h-8 text-red-400" />
@@ -53,7 +55,6 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                     </h2>
                 </div>
 
-                {/* Content */}
                 <div className="p-6 space-y-4">
                     <p className="text-gray-300 text-center">
                         Has alcanzado el límite de <span className="text-white font-semibold">{featureNames[feature] || feature}</span> en tu plan <span className="text-brand font-semibold">{planName}</span>.
@@ -68,7 +69,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                             <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                                 <div
                                     className="h-full bg-gradient-to-r from-red-500 to-orange-500 rounded-full transition-all"
-                                    style={{ width: `100%` }}
+                                    style={{ width: '100%' }}
                                 />
                             </div>
                         </div>
@@ -78,16 +79,17 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                         <div className="flex items-start gap-3">
                             <SparklesIcon className="w-5 h-5 text-brand shrink-0 mt-0.5" />
                             <div>
-                                <p className="text-white font-medium">Actualiza a Pro</p>
+                                <p className="text-white font-medium">
+                                    {upgradePlanName ? `Actualiza a ${upgradePlanName}` : 'Actualiza tu plan'}
+                                </p>
                                 <p className="text-sm text-gray-400 mt-1">
-                                    Obtén 70% de pronósticos premium y 8 parlays mensuales por solo <span className="text-brand font-bold">$23.99/mes</span>
+                                    {upgradeDescription || 'Obtén acceso a más funcionalidades y límites más amplios.'}
                                 </p>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Actions */}
                 <div className="p-6 border-t border-white/5 flex gap-3">
                     <button
                         onClick={onClose}

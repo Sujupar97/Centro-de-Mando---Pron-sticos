@@ -1,6 +1,7 @@
 /**
  * Subscription Service
- * Maneja toda la lógica de suscripciones, verificación de límites y tracking de uso
+ * Fuente unica de verdad para suscripciones, limites y tracking de uso.
+ * Consolida la logica de subscriptionCheckService.ts (eliminado).
  */
 
 import { supabase } from './supabaseService';
@@ -17,11 +18,18 @@ export interface SubscriptionPlan {
     predictions_percentage: number;
     monthly_parlay_limit: number;
     monthly_analysis_limit: number | null;
+    analysis_percentage: number;
     can_analyze_own_tickets: boolean;
     can_access_ml_dashboard: boolean;
     can_access_full_stats: boolean;
     has_priority_support: boolean;
     sort_order: number;
+    // Lemon Squeezy fields
+    ls_product_id?: string;
+    ls_variant_id_monthly?: string;
+    ls_variant_id_annual?: string;
+    annual_price_cents: number;
+    annual_discount_percentage: number;
 }
 
 export interface UserSubscription {
@@ -29,10 +37,18 @@ export interface UserSubscription {
     user_id: string;
     organization_id: string;
     plan_id: string;
-    status: 'active' | 'cancelled' | 'expired' | 'past_due' | 'trialing';
+    status: 'active' | 'cancelled' | 'expired' | 'past_due' | 'trialing' | 'paused' | 'on_trial';
     current_period_start: string;
     current_period_end: string | null;
     cancel_at_period_end: boolean;
+    billing_period: string;
+    renews_at: string | null;
+    ends_at: string | null;
+    ls_subscription_id: string | null;
+    ls_customer_id: string | null;
+    card_brand: string | null;
+    card_last_four: string | null;
+    customer_portal_url: string | null;
     plan?: SubscriptionPlan;
 }
 
@@ -42,10 +58,17 @@ export interface UserPlan {
     predictions_percentage: number;
     monthly_parlay_limit: number;
     monthly_analysis_limit: number | null;
+    analysis_percentage: number;
     can_analyze_own_tickets: boolean;
     can_access_ml_dashboard: boolean;
+    can_access_full_stats: boolean;
+    has_priority_support: boolean;
     subscription_status: string;
     period_end: string | null;
+    billing_period: string;
+    renews_at: string | null;
+    ls_subscription_id: string | null;
+    customer_portal_url: string | null;
 }
 
 export interface UsageStats {
@@ -61,6 +84,32 @@ export interface FeatureLimitResult {
     current: number;
     limit: number | null;
     message?: string;
+}
+
+// ==========================================
+// ADMIN BYPASS (consolidado de subscriptionCheckService)
+// ==========================================
+
+const ADMIN_ROLES = ['platform_owner', 'agency_admin', 'admin', 'superadmin'];
+
+/**
+ * Verifica si el usuario tiene rol de administrador.
+ * Admins obtienen acceso ilimitado a todo.
+ */
+export async function isAdminRole(userId: string): Promise<boolean> {
+    try {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', userId)
+            .single();
+
+        if (error) throw error;
+        return ADMIN_ROLES.includes(data?.role || '');
+    } catch (error) {
+        console.error('Error checking admin role:', error);
+        return false;
+    }
 }
 
 // ==========================================
@@ -108,7 +157,8 @@ export const getPlanByName = async (name: string): Promise<SubscriptionPlan | nu
 // ==========================================
 
 /**
- * Obtiene el plan actual del usuario usando la función de base de datos
+ * Obtiene el plan actual del usuario usando la funcion de base de datos.
+ * El RPC get_user_plan ya incluye admin bypass en el lado de DB.
  */
 export const getCurrentUserPlan = async (userId: string, orgId?: string): Promise<UserPlan | null> => {
     const { data, error } = await supabase
@@ -126,7 +176,7 @@ export const getCurrentUserPlan = async (userId: string, orgId?: string): Promis
 };
 
 /**
- * Obtiene la suscripción del usuario con detalles del plan
+ * Obtiene la suscripcion del usuario con detalles del plan
  */
 export const getUserSubscription = async (userId: string, orgId?: string): Promise<UserSubscription | null> => {
     let query = supabase
@@ -136,7 +186,7 @@ export const getUserSubscription = async (userId: string, orgId?: string): Promi
       plan:subscription_plans(*)
     `)
         .eq('user_id', userId)
-        .in('status', ['active', 'trialing']);
+        .in('status', ['active', 'trialing', 'on_trial', 'paused']);
 
     if (orgId) {
         query = query.eq('organization_id', orgId);
@@ -164,7 +214,7 @@ export const assignPlanToUser = async (
     assignedBy?: string,
     notes?: string
 ): Promise<{ success: boolean; error?: string }> => {
-    // Calcular período (1 mes desde ahora)
+    // Calcular periodo (1 mes desde ahora)
     const periodStart = new Date();
     const periodEnd = new Date();
     periodEnd.setMonth(periodEnd.getMonth() + 1);
@@ -179,7 +229,8 @@ export const assignPlanToUser = async (
             current_period_start: periodStart.toISOString(),
             current_period_end: periodEnd.toISOString(),
             assigned_by: assignedBy || null,
-            notes: notes || null
+            notes: notes || null,
+            billing_period: 'monthly'
         }, {
             onConflict: 'user_id,organization_id'
         });
@@ -197,7 +248,7 @@ export const assignPlanToUser = async (
 // ==========================================
 
 /**
- * Obtiene el uso del período actual
+ * Obtiene el uso del periodo actual
  */
 export const getCurrentUsage = async (userId: string, orgId?: string): Promise<UsageStats> => {
     const { data, error } = await supabase
@@ -252,7 +303,7 @@ export const incrementUsage = async (
 // ==========================================
 
 /**
- * Verifica si el usuario puede usar un feature específico
+ * Verifica si el usuario puede usar un feature especifico
  */
 export const checkFeatureLimit = async (
     userId: string,
@@ -263,36 +314,38 @@ export const checkFeatureLimit = async (
     const plan = await getCurrentUserPlan(userId, orgId);
 
     if (!plan) {
-        // Sin plan = plan free (límites mínimos)
         return {
-            allowed: feature === 'predictions', // Solo 1 predicción gratis
+            allowed: feature === 'predictions',
             current: 0,
             limit: feature === 'predictions' ? 1 : 0,
-            message: 'Necesitas una suscripción para acceder a esta función.'
+            message: 'Necesitas una suscripcion para acceder a esta funcion.'
         };
     }
 
     // 2. Obtener uso actual
     const usage = await getCurrentUsage(userId, orgId);
 
-    // 3. Determinar límite según feature y plan
+    // 3. Determinar limite segun feature y plan
     let limit: number | null = null;
     let current = 0;
 
     switch (feature) {
         case 'predictions':
-            // El límite de predicciones es un porcentaje, no un número fijo
-            // Aquí solo verificamos si tiene acceso (porcentaje > 0)
+            // El limite de predicciones es un porcentaje, no un numero fijo
             const hasAccess = plan.predictions_percentage > 0;
             return {
                 allowed: hasAccess,
                 current: usage.predictions_used,
-                limit: null, // Porcentaje, no número
-                message: hasAccess ? undefined : 'Tu plan no incluye pronósticos premium.'
+                limit: null,
+                message: hasAccess ? undefined : 'Tu plan no incluye pronosticos premium.'
             };
 
         case 'parlays':
             limit = plan.monthly_parlay_limit;
+            // -1 = ilimitado (Premium)
+            if (limit === -1 || limit >= 999999) {
+                return { allowed: true, current: usage.parlays_used, limit: null };
+            }
             current = usage.parlays_used;
             break;
 
@@ -315,12 +368,12 @@ export const checkFeatureLimit = async (
         limit,
         message: allowed
             ? undefined
-            : `Has alcanzado el límite de ${limit} ${feature === 'parlays' ? 'parlays' : 'análisis'} este mes. Actualiza tu plan para continuar.`
+            : `Has alcanzado el limite de ${limit} ${feature === 'parlays' ? 'parlays' : 'analisis'} este mes. Actualiza tu plan para continuar.`
     };
 };
 
 /**
- * Verifica acceso a un feature booleano (ML Dashboard, etc.)
+ * Verifica acceso a un feature booleano
  */
 export const hasFeatureAccess = async (
     userId: string,
@@ -337,9 +390,9 @@ export const hasFeatureAccess = async (
         case 'own_tickets':
             return plan.can_analyze_own_tickets;
         case 'full_stats':
-            return true; // Todos tienen stats básicos
+            return plan.can_access_full_stats;
         case 'priority_support':
-            return false; // Solo premium (manejado en plan)
+            return plan.has_priority_support;
         default:
             return false;
     }
@@ -350,7 +403,7 @@ export const hasFeatureAccess = async (
 // ==========================================
 
 /**
- * Formatea el precio de centavos a dólares
+ * Formatea el precio de centavos a dolares
  */
 export const formatPrice = (cents: number, currency: string = 'USD'): string => {
     const dollars = cents / 100;
@@ -365,11 +418,12 @@ export const formatPrice = (cents: number, currency: string = 'USD'): string => 
  */
 export const calculateUsagePercentage = (current: number, limit: number | null): number => {
     if (limit === null || limit === 0) return 0;
+    if (limit === -1) return 0; // Ilimitado
     return Math.min(100, Math.round((current / limit) * 100));
 };
 
 /**
- * Obtiene un resumen completo del estado de suscripción del usuario
+ * Obtiene un resumen completo del estado de suscripcion del usuario
  */
 export const getSubscriptionSummary = async (userId: string, orgId: string) => {
     const [plan, usage, subscription] = await Promise.all([
@@ -382,13 +436,20 @@ export const getSubscriptionSummary = async (userId: string, orgId: string) => {
         plan: plan || {
             plan_name: 'free',
             display_name: 'Gratis',
-            predictions_percentage: 0,
+            predictions_percentage: 1, // Free: 1 diaria
             monthly_parlay_limit: 0,
             monthly_analysis_limit: 0,
+            analysis_percentage: 0,
             can_analyze_own_tickets: false,
             can_access_ml_dashboard: false,
+            can_access_full_stats: false,
+            has_priority_support: false,
             subscription_status: 'active',
-            period_end: null
+            period_end: null,
+            billing_period: 'monthly',
+            renews_at: null,
+            ls_subscription_id: null,
+            customer_portal_url: null
         },
         usage,
         subscription,
@@ -408,3 +469,47 @@ export const getSubscriptionSummary = async (userId: string, orgId: string) => {
         }
     };
 };
+
+/**
+ * Obtiene el plan recomendado para upgrade
+ */
+export function getRecommendedUpgrade(currentPlanName: string): {
+    planName: string;
+    displayName: string;
+    benefits: string[];
+} {
+    const upgrades: Record<string, { planName: string; displayName: string; benefits: string[] }> = {
+        free: {
+            planName: 'starter',
+            displayName: 'Starter',
+            benefits: [
+                'Acceso al 35% de pronosticos',
+                '4 parlays mensuales',
+                'Analisis del 50% de partidos'
+            ]
+        },
+        starter: {
+            planName: 'pro',
+            displayName: 'Pro',
+            benefits: [
+                'Acceso al 80% de pronosticos',
+                '20 parlays mensuales',
+                'Analisis del 90% de partidos',
+                'Estadisticas completas'
+            ]
+        },
+        pro: {
+            planName: 'premium',
+            displayName: 'Premium',
+            benefits: [
+                '100% de pronosticos',
+                'Parlays ilimitados',
+                'Analisis del 100% de partidos',
+                'Soporte prioritario',
+                'Analisis de tickets propios'
+            ]
+        }
+    };
+
+    return upgrades[currentPlanName] || upgrades.free;
+}

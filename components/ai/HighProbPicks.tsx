@@ -3,11 +3,14 @@
 // Componente para mostrar Oportunidades (Picks Individuales >= 80% con cuota real)
 // Updated: Removed Smart Parlays logic as per user request.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../services/supabaseService';
 import { manualOverridePick } from '../../services/resultsService';
 import { useAuth } from '../../hooks/useAuth';
-import { TrophyIcon, ChartBarIcon, ArrowPathIcon, ArrowTopRightOnSquareIcon } from '../icons/Icons';
+import { useSubscription } from '../../contexts/SubscriptionContext';
+import { isHistoricalDate, getAllowedPickCount } from '../../utils/planAccessUtils';
+import { TrophyIcon, ChartBarIcon, ArrowPathIcon, ArrowTopRightOnSquareIcon, LockClosedIcon } from '../icons/Icons';
+import { usePresentationMode } from '../../hooks/usePresentationMode';
 
 interface HighProbPick {
     id: string;
@@ -35,13 +38,19 @@ interface HighProbPicksProps {
 
 const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => {
     const { profile } = useAuth();
-    const isAdmin = profile?.role && ['platform_owner', 'agency_admin', 'superadmin'].includes(profile.role);
+    const { plan, isAdmin: isSubAdmin, trackUsage } = useSubscription();
+    const { presentationMode } = usePresentationMode();
+    const isAdmin = isSubAdmin || (profile?.role && ['platform_owner', 'agency_admin', 'superadmin'].includes(profile.role));
     const [singles, setSingles] = useState<HighProbPick[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showLowOdds, setShowLowOdds] = useState(false);
     const [infoMessage, setInfoMessage] = useState<string | null>(null);
     const [inProgress, setInProgress] = useState(0);
+    const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+
+    // Transparencia historica: fechas anteriores = todo visible
+    const isHistorical = isHistoricalDate(date);
 
     const loadPicks = async (forceRegenerate = false) => {
         setIsLoading(true);
@@ -85,9 +94,16 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
     // Filtering Logic: picks with odds >= 1.40 are "main", odds < 1.40 OR no odds are "low/complementary"
     const mainPicks = singles.filter(p => p.odds && p.odds >= 1.40);
     const lowOddsPicks = singles.filter(p => !p.odds || p.odds < 1.40);
-    
-    // Display Logic
-    const displayPicks = mainPicks; // Cuotas bajas ocultas temporalmente
+
+    // SUBSCRIPTION GATING: Calcular cuantos picks puede ver el usuario
+    const allowedCount = useMemo(() => {
+        if (isAdmin) return mainPicks.length; // Admins ven todo
+        return getAllowedPickCount(mainPicks.length, plan.predictions_percentage, isHistorical);
+    }, [mainPicks.length, plan.predictions_percentage, isHistorical, isAdmin]);
+
+    const visiblePicks = mainPicks.slice(0, allowedCount);
+    const lockedPicks = mainPicks.slice(allowedCount);
+    const hasLockedPicks = lockedPicks.length > 0 && !isHistorical;
 
     // Helpers UI
     const translateMarket = (market: string): string => {
@@ -147,15 +163,37 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
                 </div>
             </div>
 
-            {displayPicks.length > 0 ? (
+            {/* Plan info banner for non-historical dates */}
+            {!isHistorical && !isAdmin && mainPicks.length > 0 && (
+                <div className="flex items-center justify-between bg-slate-800/50 rounded-lg px-4 py-2 border border-white/5">
+                    <span className="text-sm text-slate-400">
+                        Mostrando <span className="text-white font-bold">{visiblePicks.length}</span> de <span className="text-white font-bold">{mainPicks.length}</span> oportunidades
+                        {plan.plan_name !== 'free' && (
+                            <span className="text-slate-500"> ({plan.predictions_percentage}% de tu plan {plan.display_name})</span>
+                        )}
+                    </span>
+                    {hasLockedPicks && (
+                        <button
+                            onClick={() => setShowUpgradePrompt(true)}
+                            className="text-xs text-brand hover:text-brand/80 font-bold transition-colors"
+                        >
+                            Desbloquear todas
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {visiblePicks.length > 0 || hasLockedPicks ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {displayPicks.map((pick) => (
+                    {/* Picks visibles */}
+                    {visiblePicks.map((pick) => (
                         <SinglePickCard
                             key={pick.id}
                             pick={pick}
                             translateMarket={translateMarket}
                             onView={() => onViewReport?.(pick.job_id, pick.fixture_id)}
                             isAdmin={!!isAdmin}
+                            presentationMode={presentationMode}
                             onOverride={async (result) => {
                                 try {
                                     await manualOverridePick(pick.id, result, {
@@ -176,9 +214,45 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
                             }}
                         />
                     ))}
+
+                    {/* Picks bloqueados (con blur) */}
+                    {lockedPicks.map((pick) => (
+                        <LockedPickCard
+                            key={pick.id}
+                            pick={pick}
+                            translateMarket={translateMarket}
+                            onUpgrade={() => setShowUpgradePrompt(true)}
+                        />
+                    ))}
                 </div>
             ) : (
                 <EmptyState onRetry={() => loadPicks(true)} message={infoMessage} inProgress={inProgress} />
+            )}
+
+            {/* Upgrade prompt modal */}
+            {showUpgradePrompt && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowUpgradePrompt(false)}>
+                    <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-bold text-white mb-2">Desbloquea Todas las Oportunidades</h3>
+                        <p className="text-slate-400 text-sm mb-4">
+                            Tienes {lockedPicks.length} oportunidades adicionales disponibles. Actualiza tu plan para acceder al {plan.predictions_percentage < 35 ? '35%' : plan.predictions_percentage < 80 ? '80%' : '100%'} o mas de los pronosticos.
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => { setShowUpgradePrompt(false); window.location.href = '/app/pricing'; }}
+                                className="flex-1 py-2.5 bg-brand text-white font-bold rounded-xl hover:bg-brand/80 transition-all"
+                            >
+                                Ver Planes
+                            </button>
+                            <button
+                                onClick={() => setShowUpgradePrompt(false)}
+                                className="px-4 py-2.5 bg-slate-800 text-slate-300 font-bold rounded-xl hover:bg-slate-700 transition-all"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
@@ -226,8 +300,8 @@ const EmptyState: React.FC<{ onRetry: () => void; message?: string | null; inPro
     </div>
 );
 
-const ResultBadge: React.FC<{ result?: string; actualScore?: string }> = ({ result, actualScore }) => {
-    if (!result || result === 'PENDING') return null;
+const ResultBadge: React.FC<{ result?: string; actualScore?: string; hidden?: boolean }> = ({ result, actualScore, hidden }) => {
+    if (!result || result === 'PENDING' || hidden) return null;
 
     const config: Record<string, { bg: string; text: string; label: string; border: string }> = {
         WON: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', label: 'GANADA', border: 'border-emerald-500/50' },
@@ -246,17 +320,56 @@ const ResultBadge: React.FC<{ result?: string; actualScore?: string }> = ({ resu
     );
 };
 
+const LockedPickCard: React.FC<{
+    pick: HighProbPick;
+    translateMarket: (m: string) => string;
+    onUpgrade: () => void;
+}> = ({ pick, translateMarket, onUpgrade }) => (
+    <div
+        className="bg-slate-900/60 border border-white/5 rounded-xl p-4 relative overflow-hidden cursor-pointer group"
+        onClick={onUpgrade}
+    >
+        {/* Blur overlay */}
+        <div className="absolute inset-0 backdrop-blur-md bg-slate-900/40 z-10 flex flex-col items-center justify-center">
+            <div className="p-3 bg-slate-800/80 rounded-full mb-2 border border-white/10">
+                <LockClosedIcon className="w-5 h-5 text-slate-400" />
+            </div>
+            <p className="text-white font-bold text-sm">Oportunidad Premium</p>
+            <p className="text-brand text-xs font-bold mt-1 group-hover:underline">Desbloquear</p>
+        </div>
+
+        {/* Contenido difuminado (parcialmente visible para generar interes) */}
+        <div className="opacity-30">
+            <div className="flex items-center gap-3 mb-4">
+                <div className="flex -space-x-2">
+                    <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700" />
+                    <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700" />
+                </div>
+                <div>
+                    <h4 className="text-white font-bold text-sm">{pick.home_team}</h4>
+                    <span className="text-xs text-slate-400">vs {pick.away_team}</span>
+                </div>
+            </div>
+            <div className="bg-black/40 rounded-lg p-3 border border-white/5">
+                <p className="text-[10px] uppercase text-slate-500">{translateMarket(pick.market)}</p>
+                <p className="text-white font-bold text-sm">***</p>
+            </div>
+        </div>
+    </div>
+);
+
 const SinglePickCard: React.FC<{
     pick: HighProbPick;
     translateMarket: (m: string) => string;
     onView: () => void;
     isAdmin: boolean;
+    presentationMode?: boolean;
     onOverride: (result: 'WON' | 'LOST') => Promise<void>;
-}> = ({ pick, translateMarket, onView, isAdmin, onOverride }) => {
+}> = ({ pick, translateMarket, onView, isAdmin, presentationMode, onOverride }) => {
     const [overriding, setOverriding] = useState(false);
     const isVerified = pick.result && pick.result !== 'PENDING';
-    const isLost = pick.result === 'LOST';
-    const isWon = pick.result === 'WON';
+    const isLost = !presentationMode && pick.result === 'LOST';
+    const isWon = !presentationMode && pick.result === 'WON';
     const canOverride = isAdmin && (!isVerified || pick.actual_score?.startsWith('Manual'));
 
     const handleOverride = async (e: React.MouseEvent, result: 'WON' | 'LOST') => {
@@ -279,7 +392,7 @@ const SinglePickCard: React.FC<{
             }`}
             onClick={onView}
         >
-            <ResultBadge result={pick.result} actualScore={pick.actual_score} />
+            <ResultBadge result={pick.result} actualScore={pick.actual_score} hidden={presentationMode} />
 
             <div className="absolute top-0 right-0 p-2 bg-blue-600/20 rounded-bl-xl border-b border-l border-blue-500/20">
                 <span className="text-blue-400 font-bold text-xs">{Math.round(pick.p_model * 100)}% Prob</span>

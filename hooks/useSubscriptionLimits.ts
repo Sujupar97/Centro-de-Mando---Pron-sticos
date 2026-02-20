@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import { useAuth } from './useAuth';
 import { useOrganization } from '../contexts/OrganizationContext';
 import {
-    getUserSubscription,
-    getUsageStats,
-    canViewPrediction,
-    canCreateParlay,
-    canRunAnalysis,
-    canAccessMLDashboard as checkMLAccess,
-    getRecommendedUpgrade
-} from '../services/subscriptionCheckService';
+    getCurrentUserPlan,
+    getCurrentUsage,
+    checkFeatureLimit,
+    getRecommendedUpgrade,
+    UserPlan,
+    UsageStats,
+    FeatureLimitResult
+} from '../services/subscriptionService';
 
 interface Subscription {
     planName: string;
@@ -17,8 +17,10 @@ interface Subscription {
     predictionsPercentage: number;
     monthlyParlayLimit: number;
     monthlyAnalysisLimit: number | null;
+    analysisPercentage: number;
     canAccessMLDashboard: boolean;
     canAnalyzeOwnTickets: boolean;
+    canAccessFullStats: boolean;
     hasPrioritySupport: boolean;
 }
 
@@ -30,13 +32,12 @@ interface Usage {
 
 export function useSubscriptionLimits() {
     const { user } = useAuth();
-    const { currentOrganization } = useOrganization();
+    const { currentOrg } = useOrganization();
 
     const [subscription, setSubscription] = useState<Subscription | null>(null);
     const [usage, setUsage] = useState<Usage | null>(null);
     const [loading, setLoading] = useState(true);
 
-    // Cargar suscripción y uso
     useEffect(() => {
         if (!user) {
             setLoading(false);
@@ -44,27 +45,29 @@ export function useSubscriptionLimits() {
         }
 
         const loadData = async () => {
-            const sub = await getUserSubscription(user.id, currentOrganization?.id);
-            const stats = await getUsageStats(user.id, currentOrganization?.id);
+            const plan = await getCurrentUserPlan(user.id, currentOrg?.id);
+            const stats = await getCurrentUsage(user.id, currentOrg?.id);
 
-            if (sub) {
+            if (plan) {
                 setSubscription({
-                    planName: sub.planName,
-                    displayName: sub.displayName,
-                    predictionsPercentage: sub.predictionsPercentage,
-                    monthlyParlayLimit: sub.monthlyParlayLimit,
-                    monthlyAnalysisLimit: sub.monthlyAnalysisLimit,
-                    canAccessMLDashboard: sub.canAccessMLDashboard,
-                    canAnalyzeOwnTickets: sub.canAnalyzeOwnTickets,
-                    hasPrioritySupport: sub.hasPrioritySupport
+                    planName: plan.plan_name,
+                    displayName: plan.display_name,
+                    predictionsPercentage: plan.predictions_percentage,
+                    monthlyParlayLimit: plan.monthly_parlay_limit,
+                    monthlyAnalysisLimit: plan.monthly_analysis_limit,
+                    analysisPercentage: plan.analysis_percentage ?? 0,
+                    canAccessMLDashboard: plan.can_access_ml_dashboard,
+                    canAnalyzeOwnTickets: plan.can_analyze_own_tickets,
+                    canAccessFullStats: plan.can_access_full_stats ?? false,
+                    hasPrioritySupport: plan.has_priority_support ?? false,
                 });
             }
 
             if (stats) {
                 setUsage({
-                    predictionsViewed: stats.predictionsViewed,
-                    parlaysCreated: stats.parlaysCreated,
-                    analysesRan: stats.analysesRan
+                    predictionsViewed: stats.predictions_used,
+                    parlaysCreated: stats.parlays_used,
+                    analysesRan: stats.analyses_used,
                 });
             }
 
@@ -72,45 +75,31 @@ export function useSubscriptionLimits() {
         };
 
         loadData();
-    }, [user, currentOrganization]);
+    }, [user, currentOrg]);
 
-    // Verificación de predicción
-    const checkPredictionAccess = async (probability: number) => {
-        if (!user) return { allowed: false, reason: 'No autenticado' };
-        return await canViewPrediction(user.id, probability, currentOrganization?.id);
+    const checkParlayAccess = async (): Promise<FeatureLimitResult> => {
+        if (!user || !currentOrg?.id) return { allowed: false, current: 0, limit: 0, message: 'No autenticado' };
+        return await checkFeatureLimit(user.id, currentOrg.id, 'parlays');
     };
 
-    // Verificación de parlay
-    const checkParlayAccess = async () => {
-        if (!user) return { allowed: false, remaining: 0, reason: 'No autenticado' };
-        return await canCreateParlay(user.id, currentOrganization?.id);
+    const checkAnalysisAccess = async (): Promise<FeatureLimitResult> => {
+        if (!user || !currentOrg?.id) return { allowed: false, current: 0, limit: 0, message: 'No autenticado' };
+        return await checkFeatureLimit(user.id, currentOrg.id, 'analyses');
     };
 
-    // Verificación de análisis
-    const checkAnalysisAccess = async () => {
-        if (!user) return { allowed: false, remaining: 0, reason: 'No autenticado' };
-        return await canRunAnalysis(user.id, currentOrganization?.id);
-    };
-
-    // Verificación de ML Dashboard
-    const checkMLDashboardAccess = async () => {
-        if (!user) return { allowed: false, reason: 'No autenticado' };
-        return await checkMLAccess(user.id, currentOrganization?.id);
-    };
-
-    // Obtener plan recomendado
     const recommendedUpgrade = subscription
         ? getRecommendedUpgrade(subscription.planName)
         : null;
 
-    // Stats calculados
     const parlaysRemaining = subscription && usage
-        ? Math.max(0, subscription.monthlyParlayLimit - usage.parlaysCreated)
+        ? subscription.monthlyParlayLimit === -1 || subscription.monthlyParlayLimit >= 999999
+            ? null // Ilimitado
+            : Math.max(0, subscription.monthlyParlayLimit - usage.parlaysCreated)
         : 0;
 
     const analysesRemaining = subscription && usage
         ? subscription.monthlyAnalysisLimit === null
-            ? null // Ilimitado
+            ? null
             : Math.max(0, subscription.monthlyAnalysisLimit - usage.analysesRan)
         : 0;
 
@@ -119,22 +108,17 @@ export function useSubscriptionLimits() {
         usage,
         loading,
 
-        // Funciones de verificación
-        checkPredictionAccess,
         checkParlayAccess,
         checkAnalysisAccess,
-        checkMLDashboardAccess,
 
-        // Stats útiles
         parlaysRemaining,
         analysesRemaining,
         recommendedUpgrade,
 
-        // Helpers
         isPremium: subscription?.planName === 'premium',
         isPro: subscription?.planName === 'pro',
         isStarter: subscription?.planName === 'starter',
         isFree: subscription?.planName === 'free',
-        isAdmin: subscription?.planName === 'unlimited', // Admin/Owner con acceso ilimitado
+        isAdmin: subscription?.planName === 'unlimited',
     };
 }

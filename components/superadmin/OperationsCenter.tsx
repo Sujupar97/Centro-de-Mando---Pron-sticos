@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseService';
-import { SparklesIcon, ComputerDesktopIcon, BoltIcon, CheckCircleIcon, ChartBarIcon } from '../icons/Icons';
+import { SparklesIcon, ComputerDesktopIcon, BoltIcon, CheckCircleIcon, ChartBarIcon, EyeSlashIcon } from '../icons/Icons';
 
 export const OperationsCenter: React.FC = () => {
     const [settings, setSettings] = useState<{ [key: string]: boolean }>({
         auto_analysis_enabled: true,
         auto_parlay_enabled: true,
         auto_verification_enabled: true,
+        presentation_mode: false,
     });
     const [loadingSettings, setLoadingSettings] = useState(true);
     const [displayBankroll, setDisplayBankroll] = useState<number>(100);
@@ -136,6 +137,31 @@ export const OperationsCenter: React.FC = () => {
                         <h3 className="font-bold text-gray-200">Verificador de Resultados</h3>
                         <p className="text-xs text-gray-400 mt-1">Verifica resultados cada hora vía SportMonks y actualiza picks WON/LOST.</p>
                     </div>
+                </div>
+            </div>
+
+            {/* Modo Presentación */}
+            <div className="glass p-6 rounded-xl border border-white/5 shadow-2xl bg-gradient-to-br from-slate-900 to-slate-800">
+                <div className={`p-4 rounded-xl border transition-all ${settings.presentation_mode ? 'bg-purple-900/20 border-purple-500/30' : 'bg-slate-800/50 border-slate-700'}`}>
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="p-2 rounded-lg bg-purple-500/10">
+                            <EyeSlashIcon className={`w-6 h-6 ${settings.presentation_mode ? 'text-purple-400' : 'text-slate-500'}`} />
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={settings.presentation_mode}
+                                onChange={() => toggleSetting('presentation_mode')}
+                            />
+                            <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-purple-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        </label>
+                    </div>
+                    <h3 className="font-bold text-gray-200">Modo Presentación</h3>
+                    <p className="text-xs text-gray-400 mt-1">Oculta resultados (GANADO/PERDIDO) y el tab de Resultados para demos y capturas de pantalla.</p>
+                    {settings.presentation_mode && (
+                        <p className="text-xs text-purple-400 mt-2 font-bold">ACTIVO — Los resultados están ocultos para todos los usuarios.</p>
+                    )}
                 </div>
             </div>
 
