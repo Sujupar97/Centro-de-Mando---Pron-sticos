@@ -7,7 +7,7 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { OrganizationProvider } from './contexts/OrganizationContext';
 import { SubscriptionProvider } from './contexts/SubscriptionContext';
 import { AuthPage } from './components/Auth';
-import { LandingPage } from './components/LandingPage';
+import { LandingPage } from './components/landing/LandingPage';
 import { AdminPage } from './components/Admin';
 import { PricingPage } from './components/pricing/PricingPage';
 import { PublicPricingPage } from './components/pricing/PublicPricingPage';
