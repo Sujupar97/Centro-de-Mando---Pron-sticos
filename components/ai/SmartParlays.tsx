@@ -15,6 +15,8 @@ import {
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { isHistoricalDate, canViewParlays, isUnlimitedParlays } from '../../utils/planAccessUtils';
 import { usePresentationMode } from '../../hooks/usePresentationMode';
+import { useAuth } from '../../hooks/useAuth';
+import { isAgencyRole } from '../../utils/roles';
 
 interface SmartParlaysProps {
     date: string;
@@ -26,18 +28,16 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
     const [generating, setGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [stats, setStats] = useState<any>(null);
-    const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
-
+    const { profile } = useAuth();
     const {
         plan,
         usage,
         limits,
         isAdmin,
         isFree,
-        checkLimit,
-        trackUsage,
     } = useSubscription();
     const { presentationMode } = usePresentationMode();
+    const isAgency = isAgencyRole(profile?.role);
 
     const historical = useMemo(() => isHistoricalDate(date), [date]);
     const parlayAccess = useMemo(
@@ -70,20 +70,11 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
         }
     };
 
+    // Solo la agencia puede generar — botón solo visible para isAgency
     const handleGenerate = async () => {
-        // Si es fecha historica, no se puede generar (solo ver)
         if (historical) {
             setError('No se pueden generar parlays para fechas anteriores.');
             return;
-        }
-
-        // Verificar limite antes de generar (a menos que sea admin)
-        if (!isAdmin) {
-            const limitResult = await checkLimit('parlays');
-            if (!limitResult.allowed) {
-                setShowUpgradePrompt(true);
-                return;
-            }
         }
 
         setGenerating(true);
@@ -95,10 +86,6 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
 
             if (result.success) {
                 setStats(result.stats);
-                // Trackear uso despues de generacion exitosa
-                if (!isAdmin) {
-                    await trackUsage('parlays');
-                }
                 await loadParlays();
             } else {
                 setError(result.error || result.message || 'Error desconocido');
@@ -111,6 +98,19 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
     };
 
     const formatProbability = (prob: number) => `${Math.round(prob * 100)}%`;
+
+    // Limitar parlays visibles según plan (agencia ve todo, clientes según limit)
+    const visibleParlays = useMemo(() => {
+        if (isAgency || isAdmin) return parlays;
+        if (historical) return parlays; // Transparencia histórica
+        if (unlimited) return parlays;
+        const limit = plan.monthly_parlay_limit;
+        if (limit === 0) return [];
+        if (limit > 0 && parlays.length > limit) return parlays.slice(0, limit);
+        return parlays;
+    }, [parlays, isAgency, isAdmin, historical, unlimited, plan.monthly_parlay_limit]);
+
+    const hiddenParlayCount = parlays.length - visibleParlays.length;
 
     // --- Plan Free sin acceso a parlays del dia actual ---
     if (!parlayAccess && !isAdmin) {
@@ -143,11 +143,10 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
         );
     }
 
-    // Calcular info del contador de uso
-    const parlayLimitDisplay = unlimited || isAdmin
+    // Info de limite de vista para clientes (no agencia)
+    const parlayLimitDisplay = (unlimited || isAdmin || isAgency)
         ? null
         : plan.monthly_parlay_limit;
-    const parlaysUsed = usage.parlays_used;
 
     return (
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-700/50 p-6">
@@ -164,14 +163,12 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* Contador de uso mensual (solo si no es historico y tiene limite) */}
-                    {!historical && parlayLimitDisplay !== null && (
+                    {/* Indicador de limite de vista (solo clientes con limite) */}
+                    {!historical && parlayLimitDisplay !== null && parlayLimitDisplay > 0 && (
                         <div className="text-right">
-                            <div className="text-gray-400 text-xs">Este mes</div>
-                            <div className={`text-sm font-medium ${
-                                parlaysUsed >= parlayLimitDisplay ? 'text-red-400' : 'text-emerald-400'
-                            }`}>
-                                {parlaysUsed} / {parlayLimitDisplay}
+                            <div className="text-gray-400 text-xs">Tu plan</div>
+                            <div className="text-sm font-medium text-emerald-400">
+                                {parlayLimitDisplay} parlays
                             </div>
                         </div>
                     )}
@@ -183,8 +180,8 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                         </span>
                     )}
 
-                    {/* Boton generar (solo para dia actual) */}
-                    {!historical && (
+                    {/* Boton generar (solo agencia, dia actual) */}
+                    {!historical && isAgency && (
                         <button
                             onClick={handleGenerate}
                             disabled={generating}
@@ -237,20 +234,23 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
             )}
 
             {/* Empty state */}
-            {!loading && parlays.length === 0 && (
+            {!loading && visibleParlays.length === 0 && parlays.length === 0 && (
                 <div className="text-center py-12 text-gray-400">
                     <p className="text-4xl mb-3">🎰</p>
                     <p>No hay Parlays para esta fecha.</p>
-                    {!historical && (
+                    {!historical && isAgency && (
                         <p className="text-sm mt-1">Analiza al menos 3 partidos y luego presiona "Generar Parlays".</p>
+                    )}
+                    {!historical && !isAgency && (
+                        <p className="text-sm mt-1">Los Parlays son generados por el equipo de analistas. Vuelve pronto.</p>
                     )}
                 </div>
             )}
 
             {/* Parlay combos list */}
-            {!loading && parlays.length > 0 && (
+            {!loading && visibleParlays.length > 0 && (
                 <div className="space-y-4">
-                    {parlays.map((combo, index) => (
+                    {visibleParlays.map((combo, index) => (
                         <div
                             key={combo.id}
                             className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden"
@@ -356,37 +356,21 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                 </div>
             )}
 
-            {/* Modal de upgrade cuando se alcanza limite */}
-            {showUpgradePrompt && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-md w-full">
-                        <div className="text-center">
-                            <div className="text-4xl mb-3">🎯</div>
-                            <h3 className="text-lg font-bold text-white mb-2">
-                                Límite de Parlays Alcanzado
-                            </h3>
-                            <p className="text-gray-400 text-sm mb-4">
-                                Has usado {parlaysUsed} de {parlayLimitDisplay} parlays este mes.
-                                Actualiza tu plan para generar más combinaciones.
-                            </p>
-                            <div className="flex gap-3 justify-center">
-                                <button
-                                    onClick={() => setShowUpgradePrompt(false)}
-                                    className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 transition-colors"
-                                >
-                                    Cerrar
-                                </button>
-                                <a
-                                    href="/pricing"
-                                    className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg hover:from-emerald-600 hover:to-green-700 transition-all font-medium"
-                                >
-                                    Ver planes
-                                </a>
-                            </div>
-                        </div>
-                    </div>
+            {/* Banner de parlays ocultos por plan */}
+            {!loading && hiddenParlayCount > 0 && (
+                <div className="mt-4 p-4 bg-gray-800/50 border border-gray-700/50 rounded-xl text-center">
+                    <p className="text-gray-300 text-sm mb-2">
+                        Mostrando {visibleParlays.length} de {parlays.length} parlays disponibles.
+                    </p>
+                    <a
+                        href="/pricing"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white text-sm font-medium rounded-lg hover:from-emerald-600 hover:to-green-700 transition-all"
+                    >
+                        Actualiza tu plan para ver todos
+                    </a>
                 </div>
             )}
+
         </div>
     );
 };

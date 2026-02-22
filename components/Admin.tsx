@@ -4,6 +4,7 @@ import { TeamManagement } from './admin/TeamManagement';
 import { AgencyLayout } from './agency/AgencyLayout';
 import { SubscriptionManagement } from './superadmin/SubscriptionManagement';
 import { SparklesIcon, CreditCardIcon } from './icons/Icons';
+import { isAgencyRole } from '../utils/roles';
 
 export const AdminPage: React.FC = () => {
     const { profile } = useAuth();
@@ -39,7 +40,7 @@ export const AdminPage: React.FC = () => {
                 </div>
 
                 <div className="flex gap-3">
-                    {profile?.role === 'superadmin' && (
+                    {isAgencyRole(profile?.role) && (
                         <>
                             <button
                                 onClick={() => setShowSubscriptions(true)}

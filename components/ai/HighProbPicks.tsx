@@ -11,6 +11,7 @@ import { useSubscription } from '../../contexts/SubscriptionContext';
 import { isHistoricalDate, getAllowedPickCount } from '../../utils/planAccessUtils';
 import { TrophyIcon, ChartBarIcon, ArrowPathIcon, ArrowTopRightOnSquareIcon, LockClosedIcon } from '../icons/Icons';
 import { usePresentationMode } from '../../hooks/usePresentationMode';
+import { isAgencyRole } from '../../utils/roles';
 
 interface HighProbPick {
     id: string;
@@ -40,7 +41,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
     const { profile } = useAuth();
     const { plan, isAdmin: isSubAdmin, trackUsage } = useSubscription();
     const { presentationMode } = usePresentationMode();
-    const isAdmin = isSubAdmin || (profile?.role && ['platform_owner', 'agency_admin', 'superadmin'].includes(profile.role));
+    const isAdmin = isSubAdmin || isAgencyRole(profile?.role);
     const [singles, setSingles] = useState<HighProbPick[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -364,15 +365,15 @@ const SinglePickCard: React.FC<{
     onView: () => void;
     isAdmin: boolean;
     presentationMode?: boolean;
-    onOverride: (result: 'WON' | 'LOST') => Promise<void>;
+    onOverride: (result: 'WON' | 'LOST' | 'VOID') => Promise<void>;
 }> = ({ pick, translateMarket, onView, isAdmin, presentationMode, onOverride }) => {
     const [overriding, setOverriding] = useState(false);
     const isVerified = pick.result && pick.result !== 'PENDING';
     const isLost = !presentationMode && pick.result === 'LOST';
     const isWon = !presentationMode && pick.result === 'WON';
-    const canOverride = isAdmin && (!isVerified || pick.actual_score?.startsWith('Manual'));
+    const canOverride = isAdmin; // Admin siempre puede corregir resultados
 
-    const handleOverride = async (e: React.MouseEvent, result: 'WON' | 'LOST') => {
+    const handleOverride = async (e: React.MouseEvent, result: 'WON' | 'LOST' | 'VOID') => {
         e.stopPropagation();
         if (overriding) return;
         setOverriding(true);
@@ -437,6 +438,13 @@ const SinglePickCard: React.FC<{
                         className="flex-1 py-1.5 rounded-lg text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all disabled:opacity-50"
                     >
                         {overriding ? '...' : 'PERDIDA'}
+                    </button>
+                    <button
+                        onClick={(e) => handleOverride(e, 'VOID')}
+                        disabled={overriding}
+                        className="py-1.5 px-3 rounded-lg text-xs font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30 hover:bg-slate-500/30 transition-all disabled:opacity-50"
+                    >
+                        {overriding ? '...' : 'NULA'}
                     </button>
                 </div>
             ) : (

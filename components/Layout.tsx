@@ -4,6 +4,8 @@ import { useAuth } from '../hooks/useAuth';
 import { OrganizationSwitcher } from './OrganizationSwitcher';
 import { Page } from '../App';
 import { CreateSubAccountModal } from './agency/CreateSubAccountModal';
+import { isAgencyRole } from '../utils/roles';
+import { useOrganization } from '../contexts/OrganizationContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -13,20 +15,11 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurrentPage }) => {
   const { profile, signOut } = useAuth();
+  const { isImpersonating, stopImpersonation, currentOrg } = useOrganization();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  // Determinar nivel de acceso basado en el nuevo sistema de roles
-  // platform_owner = Owner de la plataforma (Julian) → ACCESO TOTAL
-  // agency_admin = Empleado de agencia → ACCESO TOTAL
-  // org_owner = Dueño de organización/cliente → Acceso de admin de cuenta
-  // org_member = Miembro de organización → Acceso limitado
-  // user = Usuario individual → Acceso limitado
-  // Backward compatibility: superadmin, admin, usuario
-
-  const isAgencySuperadmin =
-    profile?.role === 'platform_owner' ||
-    profile?.role === 'agency_admin' ||
-    profile?.role === 'superadmin'; // Backward compatibility
+  // Roles: agency (full access) vs client (view only per plan)
+  const isAgencySuperadmin = isAgencyRole(profile?.role);
 
   const isAccountAdmin =
     profile?.role === 'org_owner' ||
@@ -116,6 +109,19 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
 
       {/* --- MAIN CONTENT AREA --- */}
       <div className="flex-1 flex flex-col relative h-full overflow-hidden md:ml-64 transition-all duration-300">
+        {/* Impersonation Banner */}
+        {isImpersonating && (
+          <div className="bg-amber-500/90 text-black px-4 py-2 flex items-center justify-between text-sm font-medium z-50 shrink-0">
+            <span>Viendo como: <strong>{currentOrg?.name || 'Usuario'}</strong></span>
+            <button
+              onClick={stopImpersonation}
+              className="bg-black/20 hover:bg-black/30 px-3 py-1 rounded text-xs font-bold transition-colors"
+            >
+              Salir
+            </button>
+          </div>
+        )}
+
         {/* Mobile Header */}
         <header className="md:hidden h-16 glass flex items-center justify-between px-6 sticky top-0 z-30 backdrop-blur-xl border-b border-white/5 shadow-lg">
           <img src="/derbix-logo.png" alt="Derbix" className="h-10 object-contain" />

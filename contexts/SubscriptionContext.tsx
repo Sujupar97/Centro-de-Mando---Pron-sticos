@@ -97,11 +97,15 @@ const SubscriptionContext = createContext<SubscriptionContextType | undefined>(u
 
 export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user } = useAuth();
-    const { currentOrg } = useOrganization();
+    const { currentOrg, isImpersonating, impersonatedUserId } = useOrganization();
     const [state, setState] = useState<SubscriptionState>(defaultState);
 
+    // Cuando impersonamos, usar el userId del owner del org impersonado
+    // para que get_user_plan retorne el plan REAL del cliente (no admin bypass)
+    const effectiveUserId = isImpersonating && impersonatedUserId ? impersonatedUserId : user?.id;
+
     const refreshSubscription = useCallback(async () => {
-        if (!user?.id || !currentOrg?.id) {
+        if (!effectiveUserId || !currentOrg?.id) {
             setState(defaultState);
             return;
         }
@@ -109,7 +113,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setState(prev => ({ ...prev, isLoading: true }));
 
         try {
-            const summary = await getSubscriptionSummary(user.id, currentOrg.id);
+            const summary = await getSubscriptionSummary(effectiveUserId, currentOrg.id);
 
             const planName = summary.plan.plan_name;
             setState({
@@ -142,27 +146,27 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
             console.error('Error loading subscription:', error);
             setState(prev => ({ ...prev, isLoading: false }));
         }
-    }, [user?.id, currentOrg?.id]);
+    }, [effectiveUserId, currentOrg?.id]);
 
     useEffect(() => {
         refreshSubscription();
     }, [refreshSubscription]);
 
     const checkLimit = useCallback(async (feature: 'predictions' | 'parlays' | 'analyses') => {
-        if (!user?.id || !currentOrg?.id) {
+        if (!effectiveUserId || !currentOrg?.id) {
             return { allowed: false, current: 0, limit: 0, message: 'Usuario no autenticado' };
         }
-        return checkFeatureLimit(user.id, currentOrg.id, feature);
-    }, [user?.id, currentOrg?.id]);
+        return checkFeatureLimit(effectiveUserId, currentOrg.id, feature);
+    }, [effectiveUserId, currentOrg?.id]);
 
     const trackUsage = useCallback(async (feature: 'predictions' | 'parlays' | 'analyses') => {
-        if (!user?.id || !currentOrg?.id) return false;
-        const result = await incrementUsage(user.id, currentOrg.id, feature);
+        if (!effectiveUserId || !currentOrg?.id) return false;
+        const result = await incrementUsage(effectiveUserId, currentOrg.id, feature);
         if (result) {
             await refreshSubscription();
         }
         return result;
-    }, [user?.id, currentOrg?.id, refreshSubscription]);
+    }, [effectiveUserId, currentOrg?.id, refreshSubscription]);
 
     const canUseParlays = useCallback(() => checkLimit('parlays'), [checkLimit]);
     const canUseAnalysis = useCallback(() => checkLimit('analyses'), [checkLimit]);

@@ -12,6 +12,7 @@ import { AdminPage } from './components/Admin';
 import { PricingPage } from './components/pricing/PricingPage';
 import { PublicPricingPage } from './components/pricing/PublicPricingPage';
 import { SignUpFlow } from './components/auth/SignUpFlow';
+import { isAgencyRole } from './utils/roles';
 
 export type Page = 'live' | 'admin' | 'pricing';
 
@@ -35,7 +36,7 @@ const Platform: React.FC = () => {
       case 'live':
         return <FixturesFeed />;
       case 'admin':
-        if (profile.role === 'superadmin' || profile.role === 'admin') {
+        if (isAgencyRole(profile.role)) {
           return <AdminPage />;
         }
         setCurrentPage('live');

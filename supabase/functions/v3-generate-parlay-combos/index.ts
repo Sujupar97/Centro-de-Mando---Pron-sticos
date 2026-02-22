@@ -148,9 +148,28 @@ serve(async (req) => {
 
         log(`[PARLAY-COMBOS] Generated ${combos.length} valid combinations`);
 
-        // 5. Sort by Expected Value (EV = odds × probability) and take top 5
+        // 5. Sort by EV and select with GREEDY EXCLUSION (no pick repeated across parlays)
+        // Rule: each individual pick can only appear in ONE parlay.
+        // If a pick fails, only 1 parlay is affected instead of all of them.
         combos.sort((a, b) => b.expected_value - a.expected_value);
-        const topCombos = combos.slice(0, 5);
+
+        const topCombos: Combo[] = [];
+        const usedPicks = new Set<string>(); // "fixture_id|market|selection"
+
+        for (const combo of combos) {
+            if (topCombos.length >= 5) break;
+
+            // Check if ANY pick in this combo was already used in a selected parlay
+            const pickKeys = combo.picks.map(p => `${p.fixture_id}|${p.market}|${p.selection}`);
+            const hasConflict = pickKeys.some(k => usedPicks.has(k));
+
+            if (!hasConflict) {
+                topCombos.push(combo);
+                pickKeys.forEach(k => usedPicks.add(k));
+            }
+        }
+
+        log(`[PARLAY-COMBOS] Selected ${topCombos.length} parlays with unique picks (from ${combos.length} candidates)`);
 
         if (topCombos.length === 0) {
             return new Response(JSON.stringify({

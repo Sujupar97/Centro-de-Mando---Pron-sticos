@@ -10,8 +10,12 @@ interface OrganizationContextType {
     userRole: OrganizationRole | null; // El rol del usuario en esa org
     userOrganizations: { org: Organization, role: OrganizationRole }[]; // Lista de orgs del usuario
     isLoading: boolean;
+    isImpersonating: boolean;
+    impersonatedUserId: string | null; // User ID del owner del org impersonado (para queries de plan)
     switchOrganization: (orgId: string) => Promise<void>;
     refreshOrganizations: () => Promise<void>;
+    impersonateOrganization: (orgId: string) => Promise<void>;
+    stopImpersonation: () => Promise<void>;
 }
 
 const OrganizationContext = createContext<OrganizationContextType | undefined>(undefined);
@@ -23,6 +27,7 @@ export const OrganizationProvider = ({ children }: { children: ReactNode }) => {
     const [userOrganizations, setUserOrganizations] = useState<{ org: Organization, role: OrganizationRole }[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isImpersonating, setIsImpersonating] = useState(false);
+    const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(null);
 
     // Cargar organizaciones al iniciar o cambiar usuario
     const refreshOrganizations = async () => {
@@ -103,9 +108,14 @@ export const OrganizationProvider = ({ children }: { children: ReactNode }) => {
         try {
             const org = await organizationService.getOrganizationById(orgId);
             if (org) {
+                // Buscar el owner del org para poder consultar su plan real
+                const members = await organizationService.getOrganizationMembers(orgId);
+                const owner = members.find(m => m.role === 'owner') || members[0];
+
                 setCurrentOrg(org);
-                setUserRole('owner'); // Give full access while impersonating
+                setUserRole('owner');
                 setIsImpersonating(true);
+                setImpersonatedUserId(owner?.user_id || null);
             }
         } catch (e) {
             console.error("Impersonation failed:", e);
@@ -116,6 +126,7 @@ export const OrganizationProvider = ({ children }: { children: ReactNode }) => {
 
     const stopImpersonation = async () => {
         setIsImpersonating(false);
+        setImpersonatedUserId(null);
         // Refresh will pick up the real user's default org
         await refreshOrganizations();
     };
@@ -127,6 +138,7 @@ export const OrganizationProvider = ({ children }: { children: ReactNode }) => {
             userOrganizations,
             isLoading,
             isImpersonating,
+            impersonatedUserId,
             switchOrganization,
             refreshOrganizations,
             impersonateOrganization,

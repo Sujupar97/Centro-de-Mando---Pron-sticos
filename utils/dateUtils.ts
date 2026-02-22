@@ -26,3 +26,16 @@ export const getLocalDayRange = (date: string): { startOfDay: string; endOfDay: 
         endOfDay: `${date}T23:59:59`
     };
 };
+
+/**
+ * Convierte un timestamp UTC al formato YYYY-MM-DD en timezone Bogotá.
+ * Ejemplo: "2026-02-20T03:00:00Z" → "2026-02-19" (porque 03:00 UTC = 22:00 Bogotá del día anterior)
+ */
+export const utcToBogotaDate = (utcTimestamp: string): string => {
+    return new Intl.DateTimeFormat('en-CA', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        timeZone: 'America/Bogota',
+    }).format(new Date(utcTimestamp));
+};

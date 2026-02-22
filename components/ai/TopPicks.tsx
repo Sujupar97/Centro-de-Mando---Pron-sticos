@@ -7,6 +7,7 @@ import { mapLeagueToSportKey, fastBatchOddsCheck, findPriceInEvent } from '../..
 import { TrophyIcon, ChartBarIcon, CheckCircleIcon, XCircleIcon, LockClosedIcon } from '../icons/Icons';
 import { useAuth } from '../../hooks/useAuth';
 import { getCurrentUserPlan } from '../../services/subscriptionService';
+import { isAgencyRole } from '../../utils/roles';
 import { UpgradePlanModal } from '../pricing/UpgradePlanModal';
 
 interface TopPicksProps {
@@ -53,7 +54,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
     const getAllowedCount = (totalPicks: number) => {
         if (!subscription) return 1;
 
-        const isAdmin = ['platform_owner', 'agency_admin', 'admin', 'superadmin'].includes(profile?.role || '');
+        const isAdmin = isAgencyRole(profile?.role);
         if (isAdmin || subscription.plan_name === 'unlimited') {
             return totalPicks;
         }

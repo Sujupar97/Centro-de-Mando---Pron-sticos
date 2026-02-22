@@ -1,7 +1,9 @@
 // supabase/functions/hourly-results-verifier/index.ts
-// Hourly Results Verification Engine V1
+// Hourly Results Verification Engine V2
 // CRON: Every hour (0 * * * *) — verifies picks and parlays using SportMonks API
 // Falls back to Gemini for complex markets (corners, cards, handicaps, combined markets)
+// V2: Fixed team abbreviation matching, combined market detection, Double Chance "o Empate",
+//     null→PENDING (not VOID), MAX_GEMINI_CALLS raised to 20
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -82,6 +84,37 @@ function extractStats(fixture: any): {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TEAM NAME MATCHING (handles abbreviations, partial names, etc.)
+// ═══════════════════════════════════════════════════════════════
+function teamsMatch(teamName: string, text: string): boolean {
+    const clean = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const ct = clean(teamName);
+    const cp = clean(text);
+
+    if (!ct || !cp) return false;
+
+    // Direct substring (either direction)
+    if (cp.includes(ct) || ct.includes(cp)) return true;
+
+    // Abbreviation: "Paris Saint-Germain" → "psg"
+    const words = ct.split(/[\s\-]+/).filter(w => w.length > 0);
+    if (words.length >= 2) {
+        const abbr = words.map(w => w[0]).join('');
+        if (abbr.length >= 2 && cp.includes(abbr)) return true;
+    }
+
+    // Last word matching: "Aston Villa" → "villa", "Real Madrid" → "madrid"
+    const lastWord = words[words.length - 1] || '';
+    if (lastWord.length >= 4 && cp.includes(lastWord)) return true;
+
+    // First significant word: "Barcelona SC" → "barcelona"
+    const firstWord = words[0] || '';
+    if (firstWord.length >= 5 && cp.includes(firstWord)) return true;
+
+    return false;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SUB-CONDITION EVALUATOR (for combined/combo markets)
 // ═══════════════════════════════════════════════════════════════
 function evaluateSubCondition(
@@ -117,14 +150,25 @@ function evaluateSubCondition(
     // Draw / Empate
     if (p === 'empate' || p === 'draw' || p === 'x') return draw;
 
-    // Double chance patterns
+    // Double chance patterns (coded formats)
     if (p.includes('1x') || (p.includes('local') && p.includes('empate'))) return homeWin || draw;
     if (p.includes('x2') || (p.includes('visita') && p.includes('empate')) || (p.includes('visitante') && p.includes('empate'))) return awayWin || draw;
 
-    // Team win (gana + team name)
-    if (p.includes('gana') || p.includes('win')) {
-        if (cleanHT && p.includes(cleanHT)) return homeWin;
-        if (cleanAT && p.includes(cleanAT)) return awayWin;
+    // "Team o Empate" / "Team or Draw" = Double Chance (e.g., "Aston Villa o Empate")
+    if (p.includes(' o empate') || p.includes(' or draw') || p.includes(' o draw')) {
+        if (teamsMatch(cleanHT, p)) return homeWin || draw;
+        if (teamsMatch(cleanAT, p)) return awayWin || draw;
+        // Fallback: if no team matched but pattern detected, check if "local"/"visita" nearby
+        if (p.includes('local') || p.includes('home')) return homeWin || draw;
+        if (p.includes('visita') || p.includes('away')) return awayWin || draw;
+    }
+
+    // Team win (gana + team name) — uses teamsMatch for abbreviation support
+    if (p.includes('gana') || p.includes('win') || p.includes('victoria')) {
+        if (teamsMatch(cleanHT, p)) return homeWin;
+        if (teamsMatch(cleanAT, p)) return awayWin;
+        if (p.includes('local') || p.includes('home')) return homeWin;
+        if (p.includes('visita') || p.includes('away') || p.includes('visitante')) return awayWin;
     }
 
     // Double Chance via "/" separator: "TeamA/Draw", "Home/Draw", "Local/Empate", etc.
@@ -139,9 +183,9 @@ function evaluateSubCondition(
                     subResults.push(homeWin);
                 } else if (sp === 'visitante' || sp === 'visita' || sp === 'away') {
                     subResults.push(awayWin);
-                } else if (cleanHT && sp.includes(cleanHT)) {
+                } else if (teamsMatch(cleanHT, sp)) {
                     subResults.push(homeWin);
-                } else if (cleanAT && sp.includes(cleanAT)) {
+                } else if (teamsMatch(cleanAT, sp)) {
                     subResults.push(awayWin);
                 } else {
                     return null; // Can't determine → Gemini fallback
@@ -151,19 +195,18 @@ function evaluateSubCondition(
         }
     }
 
-    // Team name alone = team wins
-    if (cleanHT && p.includes(cleanHT)) return homeWin;
-    if (cleanAT && p.includes(cleanAT)) return awayWin;
+    // Team name alone = team wins — uses teamsMatch
+    if (teamsMatch(cleanHT, p)) return homeWin;
+    if (teamsMatch(cleanAT, p)) return awayWin;
 
     // Portería a cero / Clean sheet
     if (p.includes('porteria a cero') || p.includes('clean sheet')) {
         if (p.includes('no') || p.includes('no marcara')) {
-            // "Team NO marcará" = other team clean sheet
-            if (cleanHT && p.includes(cleanHT)) return awayScore === 0;
-            if (cleanAT && p.includes(cleanAT)) return homeScore === 0;
+            if (teamsMatch(cleanHT, p)) return awayScore === 0;
+            if (teamsMatch(cleanAT, p)) return homeScore === 0;
         }
-        if (cleanHT && p.includes(cleanHT)) return awayScore === 0;
-        if (cleanAT && p.includes(cleanAT)) return homeScore === 0;
+        if (teamsMatch(cleanHT, p)) return awayScore === 0;
+        if (teamsMatch(cleanAT, p)) return homeScore === 0;
     }
 
     // Can't determine
@@ -194,12 +237,18 @@ function evaluatePickResult(
 
     // ═══ COMBINED/COMBO MARKETS (must be checked FIRST) ═══
     // Detect combined markets: "Team Win & Over X.5", "BTTS & Over X.5", "1X & Over X.5", etc.
+    const combineSeparatorRegex = /\s*[&]\s*|\s+y\s+|\s+and\s+/i;
     const isCombined = m.includes('combinado') || m.includes('combo') || m.includes('combined') ||
-        (s.includes('&') || s.includes(' y ') || s.includes(' and '));
+        combineSeparatorRegex.test(m) ||  // Check & in market name too
+        combineSeparatorRegex.test(s);     // Check & in selection
 
     if (isCombined) {
-        // Split selection into parts by & / y / and
-        const parts = s.split(/\s*[&]\s*|\s+y\s+|\s+and\s+/i).map(p => p.trim());
+        // Try splitting selection first, then market if selection has no separator
+        let parts = s.split(combineSeparatorRegex).map(p => p.trim()).filter(p => p.length > 0);
+        if (parts.length < 2) {
+            // Selection didn't split — try market name instead
+            parts = m.split(combineSeparatorRegex).map(p => p.trim()).filter(p => p.length > 0);
+        }
         if (parts.length >= 2) {
             const results: (boolean | null)[] = [];
             for (const part of parts) {
@@ -233,11 +282,11 @@ function evaluatePickResult(
             if (stats.homeCorners === null && stats.awayCorners === null) return null; // No data
 
             // Check team-specific corners
-            if (m.includes('local') || m.includes('home') || s.includes(cleanHT)) {
+            if (m.includes('local') || m.includes('home') || teamsMatch(cleanHT, s) || teamsMatch(cleanHT, m)) {
                 if (stats.homeCorners === null) return null;
                 return ['mas', 'over', '+', 'más'].some(t => type.includes(t)) ? stats.homeCorners > line : stats.homeCorners < line;
             }
-            if (m.includes('visita') || m.includes('away') || s.includes(cleanAT)) {
+            if (m.includes('visita') || m.includes('away') || teamsMatch(cleanAT, s) || teamsMatch(cleanAT, m)) {
                 if (stats.awayCorners === null) return null;
                 return ['mas', 'over', '+', 'más'].some(t => type.includes(t)) ? stats.awayCorners > line : stats.awayCorners < line;
             }
@@ -265,9 +314,9 @@ function evaluatePickResult(
 
         if (isTeamTotal) {
             const isHome = m.includes('local') || m.includes('home') || m.includes('casa') ||
-                (cleanHT && (m.includes(cleanHT) || s.includes(cleanHT)));
+                teamsMatch(cleanHT, m) || teamsMatch(cleanHT, s);
             const isAway = m.includes('visita') || m.includes('away') || m.includes('visitante') ||
-                (cleanAT && (m.includes(cleanAT) || s.includes(cleanAT)));
+                teamsMatch(cleanAT, m) || teamsMatch(cleanAT, s);
 
             const teamGoals = isHome ? homeScore : (isAway ? awayScore : null);
             if (teamGoals === null) return null;
@@ -292,6 +341,14 @@ function evaluatePickResult(
     // ═══ Home/Away Over 0.5 (Team Scores) ═══
     if (m === 'home_over_0.5' || m.includes('local anota')) return homeScore > 0;
     if (m === 'away_over_0.5' || m.includes('visita anota')) return awayScore > 0;
+
+    // ═══ "Team o Empate" Double Chance (e.g., "Aston Villa o Empate") ═══
+    if (s.includes(' o empate') || s.includes(' or draw') || s.includes(' o draw')) {
+        if (teamsMatch(cleanHT, s)) return homeWin || draw;
+        if (teamsMatch(cleanAT, s)) return awayWin || draw;
+        if (s.includes('local') || s.includes('home')) return homeWin || draw;
+        if (s.includes('visita') || s.includes('away')) return awayWin || draw;
+    }
 
     // ═══ 1X2 / Double Chance ═══
     // Double chance first (more specific)
@@ -323,10 +380,9 @@ function evaluatePickResult(
 
     // ═══ Draw No Bet ═══
     if (m.includes('draw no bet') || m.includes('empate no accion') || m.includes('empate no apuesta')) {
-        // Draw = VOID (money back). Team wins = WON. Other team wins = LOST.
         if (draw) return null; // VOID — will be handled by caller
-        if (cleanHT && s.includes(cleanHT)) return homeWin;
-        if (cleanAT && s.includes(cleanAT)) return awayWin;
+        if (teamsMatch(cleanHT, s)) return homeWin;
+        if (teamsMatch(cleanAT, s)) return awayWin;
         if (s.includes('local') || s.includes('home')) return homeWin;
         if (s.includes('visita') || s.includes('away') || s.includes('visitante')) return awayWin;
     }
@@ -334,25 +390,32 @@ function evaluatePickResult(
     // ═══ Clean Sheet / Portería a Cero ═══
     if (m.includes('porteria a cero') || m.includes('clean sheet') || m.includes('porteria')) {
         if (s.includes('no')) {
-            // "TeamX NO marcará" = opponent clean sheet
-            if (cleanHT && s.includes(cleanHT)) return awayScore === 0;
-            if (cleanAT && s.includes(cleanAT)) return homeScore === 0;
+            if (teamsMatch(cleanHT, s)) return awayScore === 0;
+            if (teamsMatch(cleanAT, s)) return homeScore === 0;
         }
-        if (cleanHT && s.includes(cleanHT)) return awayScore === 0;
-        if (cleanAT && s.includes(cleanAT)) return homeScore === 0;
+        if (teamsMatch(cleanHT, s)) return awayScore === 0;
+        if (teamsMatch(cleanAT, s)) return homeScore === 0;
     }
 
     // ═══ Ganador del Partido (1X2 with team name in market) ═══
     if (m.includes('ganador') || m.includes('1x2') || m.includes('winner') ||
         m.includes('resultado') || m.includes('match result')) {
-        if (cleanHT && s.includes(cleanHT)) return homeWin;
-        if (cleanAT && s.includes(cleanAT)) return awayWin;
+        if (teamsMatch(cleanHT, s)) return homeWin;
+        if (teamsMatch(cleanAT, s)) return awayWin;
         if (s.includes('empate') || s.includes('draw') || s === 'x') return draw;
     }
 
+    // ═══ Team win via "gana" keyword (e.g., "PSG Gana") ═══
+    if (s.includes('gana') || s.includes('win') || s.includes('victoria')) {
+        if (teamsMatch(cleanHT, s)) return homeWin;
+        if (teamsMatch(cleanAT, s)) return awayWin;
+        if (s.includes('local') || s.includes('home')) return homeWin;
+        if (s.includes('visita') || s.includes('away') || s.includes('visitante')) return awayWin;
+    }
+
     // Team name matching for 1X2 (last resort for simple team picks)
-    if (cleanHT && s.includes(cleanHT)) return homeWin;
-    if (cleanAT && s.includes(cleanAT)) return awayWin;
+    if (teamsMatch(cleanHT, s)) return homeWin;
+    if (teamsMatch(cleanAT, s)) return awayWin;
 
     // ═══ Cannot determine → return null for Gemini fallback ═══
     return null;
@@ -473,7 +536,7 @@ serve(async (req) => {
         let totalPicksVerified = 0;
         let totalParlaysVerified = 0;
         let totalGeminiCalls = 0;
-        const MAX_GEMINI_CALLS = 5;
+        const MAX_GEMINI_CALLS = 20;
 
         for (const checkDate of datesToCheck) {
             log(`[Verifier] ═══ Processing date: ${checkDate} ═══`);
@@ -656,16 +719,9 @@ serve(async (req) => {
                     }
 
                     if (isWon === null) {
-                        log(`[Verifier] SKIP: Cannot evaluate ${pick.market} | ${pick.selection}`);
-                        // Mark as VOID if we truly can't determine
-                        await supabase
-                            .from('value_picks_v2')
-                            .update({
-                                result: 'VOID',
-                                verified_at: new Date().toISOString(),
-                                actual_score: actualScore
-                            })
-                            .eq('id', pick.id);
+                        log(`[Verifier] SKIP (pending): Cannot evaluate ${pick.market} | ${pick.selection} — will retry next run`);
+                        // DON'T mark as VOID — leave as PENDING for next run
+                        // VOID is only for postponed/cancelled matches (handled above)
                         continue;
                     }
 

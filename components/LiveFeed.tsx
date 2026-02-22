@@ -20,6 +20,7 @@ import { incrementUsage } from '../services/subscriptionService';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { isHistoricalDate } from '../utils/planAccessUtils';
 import { usePresentationMode } from '../hooks/usePresentationMode';
+import { isAgencyRole } from '../utils/roles';
 
 // --- COMPONENTES AUXILIARES ---
 
@@ -41,7 +42,7 @@ const AnalysisGameCard: React.FC<{
 }> = ({ game, onAnalyze, onViewReport, jobStatus, hasReport, userRole }) => {
     const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
     const scoreAvailable = game.goals.home !== null && game.goals.away !== null;
-    const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+    const isAdmin = isAgencyRole(userRole);
 
     // Determinar estado visual del botón
     const isProcessing = jobStatus && ['queued', 'ingesting', 'data_ready', 'analyzing'].includes(jobStatus);
@@ -518,7 +519,7 @@ export const FixturesFeed: React.FC = () => {
         const accessCheck = await checkAnalysisAccess();
 
         if (!accessCheck.allowed) {
-            setUpgradeReason(accessCheck.reason || 'Actualiza tu plan para acceder a más análisis');
+            setUpgradeReason(accessCheck.message || 'Actualiza tu plan para acceder a más análisis');
             setIsUpgradeModalOpen(true);
             return;
         }
@@ -613,7 +614,7 @@ export const FixturesFeed: React.FC = () => {
         // Para el dia actual: verificar limites del plan
         const accessCheck = await checkAnalysisAccess();
         if (!accessCheck.allowed) {
-            setUpgradeReason(accessCheck.reason || 'Actualiza tu plan para acceder a los análisis de IA.');
+            setUpgradeReason(accessCheck.message || 'Actualiza tu plan para acceder a los análisis de IA.');
             setIsUpgradeModalOpen(true);
             return false;
         }
@@ -887,7 +888,7 @@ const LeagueSection: React.FC<{
     userRole?: string;
 }> = ({ league, onAnalyzeGame, onAnalyzeLeague, onViewReport, gameJobStatus, reportsAvailable, userRole }) => {
     const [isExpanded, setIsExpanded] = useState(true);
-    const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+    const isAdmin = isAgencyRole(userRole);
 
     return (
         <div className="mb-6 last:mb-0 shadow-lg shadow-black/20 rounded-xl overflow-hidden">

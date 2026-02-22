@@ -235,7 +235,7 @@ export async function setDisplayBankroll(amount: number): Promise<void> {
  */
 export async function manualOverridePick(
     pickId: string,
-    newResult: 'WON' | 'LOST',
+    newResult: 'WON' | 'LOST' | 'VOID',
     pickMeta?: { fixture_id: number; market: string; selection: string; p_model: number; odds: number | null; job_id?: string }
 ): Promise<void> {
     const now = new Date().toISOString();
@@ -314,7 +314,8 @@ export async function manualOverridePick(
             .eq('id', pick.id);
     }
 
-    // Step 3: Update profitability_tracking (only for Oportunidades)
+    // Step 3: Update profitability_tracking (only for Oportunidades, skip VOID)
+    if (newResult === 'VOID') return; // VOID = no profit/loss impact
     const prob = pick.p_model > 1 ? pick.p_model / 100 : pick.p_model;
     const isOportunidad = prob >= 0.80 && pick.odds && pick.odds >= 1.40;
     if (!isOportunidad) return;

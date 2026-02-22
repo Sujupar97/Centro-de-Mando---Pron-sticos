@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useAuth } from '../hooks/useAuth';
 import { ChevronDownIcon, CheckIcon, PlusIcon, BuildingOfficeIcon } from './icons/Icons';
+import { isAgencyRole } from '../utils/roles';
 
 interface OrganizationSwitcherProps {
     onCreateClick?: () => void;
@@ -88,7 +89,7 @@ export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({ onCr
                         ))}
                     </div>
 
-                    {profile?.role === 'superadmin' && (
+                    {isAgencyRole(profile?.role) && (
                         <div className="p-2 border-t border-white/5">
                             <button
                                 onClick={() => {

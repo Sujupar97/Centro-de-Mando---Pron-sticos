@@ -1,12 +1,34 @@
 // supabase/functions/v2-list-fixtures-sportmonks/index.ts
 // Proxy para listar partidos usando SportMonks (reemplaza football-data-proxy para listados)
 // Also syncs fixtures to daily_matches so analysis tables use consistent SportMonks IDs
+//
+// TIMEZONE FIX: `date` param is a Bogotá date (YYYY-MM-DD).
+// SportMonks /fixtures/date/{date} interprets dates as UTC.
+// Bogotá = UTC-5, so a Bogotá day spans two UTC days.
+// We fetch BOTH UTC days and filter to only include fixtures within the Bogotá day.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { getFixturesByDate } from '../_shared/sportmonks-client.ts'
 import { normalizeSportMonksToListGame } from '../_shared/sportmonks-normalizer.ts'
 import { corsHeaders } from '../_shared/cors.ts'
+
+/** Convert a UTC timestamp to YYYY-MM-DD in Bogotá timezone */
+function getBogotaDate(utcTimestamp: string): string {
+    const d = new Date(utcTimestamp);
+    // Intl.DateTimeFormat with en-CA locale gives YYYY-MM-DD natively
+    return new Intl.DateTimeFormat('en-CA', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        timeZone: 'America/Bogota'
+    }).format(d);
+}
+
+/** Get next day string YYYY-MM-DD */
+function getNextDay(dateStr: string): string {
+    const d = new Date(dateStr + 'T12:00:00Z'); // noon to avoid DST edge cases
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().split('T')[0];
+}
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -18,15 +40,43 @@ serve(async (req) => {
             throw new Error('Date is required (YYYY-MM-DD)');
         }
 
-        console.log(`[v2-list-fixtures-sportmonks] Fetching for date: ${date}`);
+        console.log(`[v2-list-fixtures-sportmonks] Fetching for Bogotá date: ${date}`);
 
-        // 1. Fetch data from SportMonks
-        const fixtures = await getFixturesByDate(date);
-        console.log(`[v2-list-fixtures-sportmonks] Found ${fixtures.length} raw fixtures`);
+        // ═══════════════════════════════════════════════════════════════
+        // TIMEZONE FIX: Fetch TWO UTC days to cover full Bogotá day
+        // Bogotá 00:00 = UTC 05:00 (same day)
+        // Bogotá 23:59 = UTC 04:59 (next day)
+        // So we need SportMonks data for `date` (UTC) + `date+1` (UTC)
+        // ═══════════════════════════════════════════════════════════════
+        const nextDayStr = getNextDay(date);
+
+        const [fixturesDay1, fixturesDay2] = await Promise.all([
+            getFixturesByDate(date),
+            getFixturesByDate(nextDayStr)
+        ]);
+
+        console.log(`[v2-list-fixtures-sportmonks] Raw: ${fixturesDay1.length} fixtures (${date} UTC) + ${fixturesDay2.length} fixtures (${nextDayStr} UTC)`);
+
+        // Merge + deduplicate by fixture ID
+        const seenIds = new Set<number>();
+        const allRaw: any[] = [];
+        for (const f of [...fixturesDay1, ...fixturesDay2]) {
+            if (f.id && !seenIds.has(f.id)) {
+                seenIds.add(f.id);
+                allRaw.push(f);
+            }
+        }
+
+        // Filter: only fixtures whose starting_at falls within the requested Bogotá date
+        const filtered = allRaw.filter(f => {
+            if (!f.starting_at) return false;
+            return getBogotaDate(f.starting_at) === date;
+        });
+
+        console.log(`[v2-list-fixtures-sportmonks] After Bogotá filter: ${filtered.length} fixtures (from ${allRaw.length} total)`);
 
         // 2. Normalize using shared logic
-        const normalized = fixtures.map(normalizeSportMonksToListGame);
-        console.log(`[v2-list-fixtures-sportmonks] Normalized ${normalized.length} fixtures`);
+        const normalized = filtered.map(normalizeSportMonksToListGame);
 
         // 3. Sync to daily_matches (non-blocking, best-effort)
         // This ensures v3-ai-analyzer can resolve fixture IDs correctly using SportMonks IDs
@@ -49,7 +99,7 @@ serve(async (req) => {
                     match_status: g.fixture.status?.short || 'NS',
                     home_score: g.goals?.home,
                     away_score: g.goals?.away,
-                    match_date: date,
+                    match_date: getBogotaDate(g.fixture.date), // Real Bogotá date from UTC timestamp
                     scan_date: new Date().toISOString().split('T')[0]
                 }));
 
@@ -63,6 +113,36 @@ serve(async (req) => {
                     console.error(`[v2-list-fixtures-sportmonks] daily_matches upsert error:`, upsertError.message);
                 } else {
                     console.log(`[v2-list-fixtures-sportmonks] Synced ${dailyMatchRows.length} matches to daily_matches`);
+                }
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // STALE CLEANUP: Remove daily_matches entries for this date
+            // that no longer exist in SportMonks (rescheduled/cancelled).
+            // This prevents showing stale fixtures on a wrong date.
+            // ═══════════════════════════════════════════════════════════════
+            const currentFixtureIds = normalized.map((g: any) => g.fixture?.id).filter(Boolean);
+            const { data: dbRows } = await supabase
+                .from('daily_matches')
+                .select('id, api_fixture_id')
+                .eq('match_date', date);
+
+            if (dbRows && dbRows.length > 0) {
+                const currentIdSet = new Set(currentFixtureIds);
+                const staleRows = dbRows.filter((r: any) => !currentIdSet.has(r.api_fixture_id));
+
+                if (staleRows.length > 0) {
+                    const staleIds = staleRows.map((r: any) => r.id);
+                    const { error: deleteError } = await supabase
+                        .from('daily_matches')
+                        .delete()
+                        .in('id', staleIds);
+
+                    if (deleteError) {
+                        console.error(`[v2-list-fixtures-sportmonks] Stale cleanup error:`, deleteError.message);
+                    } else {
+                        console.log(`[v2-list-fixtures-sportmonks] Cleaned ${staleRows.length} stale fixtures from ${date} (rescheduled/cancelled)`);
+                    }
                 }
             }
         } catch (syncErr: any) {

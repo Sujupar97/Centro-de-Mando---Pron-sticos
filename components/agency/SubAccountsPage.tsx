@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { organizationService } from '../../services/organizationService';
+import { getActivePlans, assignPlanToUser, SubscriptionPlan as PlanRecord } from '../../services/subscriptionService';
 import { Organization } from '../../types';
 import { useOrganization } from '../../contexts/OrganizationContext';
+import { useAuth } from '../../hooks/useAuth';
 import { useLanguage } from '../../contexts/LanguageContext';
 import {
     MagnifyingGlassIcon,
@@ -17,21 +19,36 @@ interface SubAccountsPageProps {
     onManageClick: (orgId: string) => void;
 }
 
+const PLAN_COLORS: Record<string, string> = {
+    free: 'bg-slate-500/20 text-slate-400 border-slate-500/20',
+    starter: 'bg-blue-500/20 text-blue-400 border-blue-500/20',
+    pro: 'bg-purple-500/20 text-purple-400 border-purple-500/20',
+    premium: 'bg-amber-500/20 text-amber-400 border-amber-500/20',
+    unlimited: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20',
+};
+
 export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick, onManageClick }) => {
     const { t } = useLanguage();
+    const { user } = useAuth();
     const [orgs, setOrgs] = useState<Organization[]>([]);
+    const [plans, setPlans] = useState<PlanRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [changingPlan, setChangingPlan] = useState<string | null>(null);
     const { impersonateOrganization } = useOrganization();
 
     useEffect(() => {
-        loadOrgs();
+        loadData();
     }, []);
 
-    const loadOrgs = async () => {
+    const loadData = async () => {
         try {
-            const data = await organizationService.getAllOrganizations();
-            setOrgs(data);
+            const [orgsData, plansData] = await Promise.all([
+                organizationService.getAllOrganizations(),
+                getActivePlans(),
+            ]);
+            setOrgs(orgsData);
+            setPlans(plansData);
         } catch (e) {
             console.error(e);
         } finally {
@@ -47,6 +64,44 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
     const handleImpersonate = async (orgId: string) => {
         if (confirm(t('confirm.impersonate'))) {
             await impersonateOrganization(orgId);
+        }
+    };
+
+    const handlePlanChange = async (org: Organization, newPlanName: string) => {
+        const plan = plans.find(p => p.name === newPlanName);
+        if (!plan || newPlanName === org.subscription_plan) return;
+
+        setChangingPlan(org.id);
+        try {
+            // Obtener owner del org para asignar el plan
+            const members = await organizationService.getOrganizationMembers(org.id);
+            const owner = members.find(m => m.role === 'owner') || members[0];
+            if (!owner) {
+                alert('No se encontró el dueño de esta cuenta.');
+                return;
+            }
+
+            const result = await assignPlanToUser(
+                owner.user_id,
+                org.id,
+                plan.id,
+                user?.id,
+                `Plan changed by agency admin`
+            );
+
+            if (result.success) {
+                // Actualizar el org local también
+                setOrgs(prev => prev.map(o =>
+                    o.id === org.id ? { ...o, subscription_plan: newPlanName as any } : o
+                ));
+            } else {
+                alert(`Error: ${result.error}`);
+            }
+        } catch (e: any) {
+            console.error('Error changing plan:', e);
+            alert(`Error: ${e.message}`);
+        } finally {
+            setChangingPlan(null);
         }
     };
 
@@ -92,7 +147,7 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
                             <div className="flex-1 text-center md:text-left min-w-0">
                                 <div className="flex items-center justify-center md:justify-start gap-3 mb-1">
                                     <h3 className="text-lg font-bold text-white truncate">{org.name}</h3>
-                                    <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider 
+                                    <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider
                                         ${org.status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/20 text-red-400 border border-red-500/20'}`}>
                                         {org.status}
                                     </span>
@@ -116,10 +171,29 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
                                 </div>
                             </div>
 
-                            {/* Metrics / Dates */}
+                            {/* Plan selector */}
                             <div className="text-center md:text-right px-4 border-l border-white/5">
                                 <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">{t('card.plan')}</p>
-                                <p className="text-sm font-bold text-white capitalize">{org.subscription_plan}</p>
+                                <select
+                                    value={org.subscription_plan}
+                                    onChange={(e) => handlePlanChange(org, e.target.value)}
+                                    disabled={changingPlan === org.id}
+                                    className={`bg-slate-800 border rounded-lg px-3 py-1.5 text-sm font-bold capitalize cursor-pointer focus:ring-2 focus:ring-brand transition-all ${
+                                        changingPlan === org.id ? 'opacity-50 cursor-wait' : ''
+                                    } ${PLAN_COLORS[org.subscription_plan] || PLAN_COLORS.free}`}
+                                >
+                                    {plans.map(p => (
+                                        <option key={p.id} value={p.name} className="bg-slate-800 text-white">
+                                            {p.display_name}
+                                        </option>
+                                    ))}
+                                    {/* Fallback si el plan actual no esta en la lista */}
+                                    {!plans.find(p => p.name === org.subscription_plan) && (
+                                        <option value={org.subscription_plan} className="bg-slate-800 text-white">
+                                            {org.subscription_plan}
+                                        </option>
+                                    )}
+                                </select>
                             </div>
 
                             <div className="text-center md:text-right px-4 border-l border-white/5 hidden md:block">
@@ -131,10 +205,10 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
                             <div className="flex items-center gap-3 pl-4 md:border-l border-white/5">
                                 <button
                                     onClick={() => handleImpersonate(org.id)}
-                                    className="flex items-center gap-2 px-4 py-2 bg-brand/10 hover:bg-brand/20 text-brand rounded-lg text-sm font-bold transition-all border border-brand/20"
+                                    className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg text-sm font-bold transition-all border border-amber-500/20"
                                 >
                                     <ArrowRightOnRectangleIcon className="w-4 h-4" />
-                                    {t('card.access')}
+                                    Ingresar como
                                 </button>
                                 <button
                                     onClick={() => onManageClick(org.id)}

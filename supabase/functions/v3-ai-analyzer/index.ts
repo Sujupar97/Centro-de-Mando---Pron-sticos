@@ -455,29 +455,40 @@ a tu nivel de confianza basado EXCLUSIVAMENTE en el contexto del partido.
 CONFIANZA FINAL = (Score Estadístico × 0.50) + (Score Inteligencia Partido × 0.50)
 
 ┌──────────┬──────────────────────────────────────────────────────────────────┐
-│ 85-95%   │ Stats sólidas Y contexto alineado (motivación alta, táctica     │
-│ (ÉLITE)  │ favorable, sin factores de riesgo). AMBOS pilares fuertes.     │
+│ 90-95%   │ ÉLITE: SOLO para convergencia EXTREMA de TODOS los factores.    │
+│ (ÉLITE)  │ Ambos pilares >85%. Forma impecable + motivación máxima +       │
+│          │ táctica ideal + H2H dominante + cuota con edge >15%. RARO.      │
 ├──────────┼──────────────────────────────────────────────────────────────────┤
-│ 80-84%   │ Un pilar dominante (>85) + el otro pilar sólido (>75).          │
-│ (ALTA)   │ Ej: Stats brutales + contexto aceptable, O contexto perfecto   │
-│          │ + stats decentes.                                               │
+│ 82-89%   │ ALTA: Ambos pilares >78%. Evidencia clara y consistente.        │
+│ (ALTA)   │ Mínimo 3 de 5 factores alineados (forma, H2H, motivación,      │
+│          │ táctica, valor en cuota). Sin riesgos significativos.            │
 ├──────────┼──────────────────────────────────────────────────────────────────┤
-│ 75-79%   │ Una pata fuerte con la otra aceptable. Edge claro pero con      │
-│ (MEDIA+) │ algún factor de riesgo identificado.                            │
+│ 75-81%   │ MEDIA+: Una pata fuerte con la otra aceptable. Edge claro       │
+│ (MEDIA+) │ pero con algún factor de riesgo identificado. ESTO ES LO        │
+│          │ NORMAL para un buen pick — no fuerces probabilidades más altas. │
 ├──────────┼──────────────────────────────────────────────────────────────────┤
-│ 70-74%   │ Señales mixtas. Edge identificado pero con incertidumbre.       │
+│ 70-74%   │ MEDIA: Señales mixtas. Edge identificado pero con incertidumbre.│
 │ (MEDIA)  │                                                                  │
 ├──────────┼──────────────────────────────────────────────────────────────────┤
-│ <70%     │ Contradicciones serias entre pilares → NO_BET recomendado.      │
+│ <70%     │ BAJA: Contradicciones serias entre pilares → NO_BET recomendado.│
 │ (BAJA)   │                                                                  │
 └──────────┴──────────────────────────────────────────────────────────────────┘
+
+⚠️ REGLA ANTI-INFLACIÓN (CRÍTICA):
+- Un equipo favorito NO tiene automáticamente >80% de ganar. Un favorito claro es 65-75%.
+- Over 2.5 en liga con promedio 2.8 goles NO es automáticamente >80%. Es 65-75%.
+- Solo asigna >85% si hay convergencia EXTREMA de TODOS los factores.
+- La MAYORÍA de picks buenos caen en el rango 72-82%. Las >85% deben ser EXCEPCIONALES.
+- Si asignas >85% a más de 1 pick por partido, estás inflando. Revisa.
+- PREGÚNTATE: "¿Apostaría mi propio dinero con esta confianza?" Si dudas → baja 5-10%.
 
 ⚠️ REGLA CRÍTICA V6:
 - Stats SOLAS ya no son suficientes para >80%. Necesitas TAMBIÉN contexto favorable.
 - Contexto SOLO tampoco es suficiente para >80%. Necesitas TAMBIÉN stats.
-- PERO: Si el contexto CONTRADICE las stats (ej: stats geniales pero juegan 
+- PERO: Si el contexto CONTRADICE las stats (ej: stats geniales pero juegan
   con suplentes porque tienen final de Copa en 3 días), REDUCE la confianza 10-15%.
-- BONUS +5%: Si 4+ factores se alinean (stats + H2H + motivación + táctica + contexto).
+- BONUS +5%: Si 4+ factores se alinean (stats + H2H + motivación + táctica + contexto)
+  Y NINGUNO contradice → permite subir hasta el techo de la banda.
 
 ═══ ANÁLISIS DE EVENTOS MINUTO A MINUTO (NUEVO V8) ═══
 
@@ -542,6 +553,49 @@ Sigue esta jerarquía de búsqueda:
 
 NOTA: Si después de buscar en las 3 capas aún no encuentras un pick ≥80%,
 tu pick más alto DEBE ser reportado con su confianza REAL, no inflada.
+
+════════════════════════════════════════════════════════════════════════════════
+⚽ MERCADOS DE CORNERS Y TARJETAS — OBLIGATORIO EVALUAR
+════════════════════════════════════════════════════════════════════════════════
+
+DEBES analizar explícitamente al menos 2 mercados de corners y 1 de tarjetas en cada partido:
+
+CORNERS (usa datos de corner_stats proporcionados):
+- Correlacionar: equipos con alta posesión + muchos tiros = muchos corners
+- Correlacionar: equipos defensivos que despejan mucho = corners para el rival
+- Si ambos equipos promedian >5 corners cada uno → evaluar "Corners Más de 9.5" y "Corners Más de 10.5"
+- Si un equipo domina corners (>6.5 promedio) → evaluar corners individuales del equipo
+- Los corners son mercados MUY rentables porque las bookies ponen menos atención en ellos
+
+TARJETAS (usa datos de disciplina):
+- Correlacionar: árbitro estricto (>4.5 tarjetas/partido) + derby/rivalidad = Over tarjetas
+- Si ambos equipos promedian >2 tarjetas cada uno → evaluar "Tarjetas Más de 4.5"
+- Tarjeta roja: solo si hay historial claro del árbitro + partido muy caliente
+
+Si no hay datos suficientes de corners/tarjetas en los datos proporcionados,
+indica explícitamente "Sin datos de corners/tarjetas disponibles" y no inventes.
+
+════════════════════════════════════════════════════════════════════════════════
+📋 FORMATO OBLIGATORIO DE MERCADOS (para verificación automática)
+════════════════════════════════════════════════════════════════════════════════
+
+Para el campo "mercado" en pronosticos, usa EXACTAMENTE estos formatos:
+- "Resultado 1X2" (NO "Ganador del Partido", NO "Victoria Local")
+- "Más de X.5 Goles" (NO "Over X.5 Goals", NO "Total Goals Over")
+- "Menos de X.5 Goles" (NO "Under X.5")
+- "Ambos Anotan" (NO "BTTS", NO "Both Teams Score")
+- "Doble Oportunidad" (NO "Double Chance", NO "1X")
+- "Corners Más de X.5" (NO "Total Corners Over")
+- "Tarjetas Más de X.5" (NO "Total Cards Over")
+- "Resultado y Total: [Equipo] & Más de X.5 Goles" (para combinados)
+- "Goles del Local Más de X.5" / "Goles del Visitante Más de X.5" (team totals)
+
+Para el campo "seleccion" en pronosticos:
+- Para 1X2: nombre COMPLETO del equipo tal como aparece en los datos (NUNCA abreviaciones como PSG, Barça, Real)
+- Para Over/Under: "Más de X.5" o "Menos de X.5"
+- Para BTTS: "Sí" o "No"
+- Para Doble Oportunidad: "Local o Empate" / "Visitante o Empate" / "Local o Visitante"
+- Para combinados: "NombreCompleto & Más de X.5 Goles"
 
 ════════════════════════════════════════════════════════════════════════════════
 🚨 INSTRUCCIONES DE EMERGENCIA Y FALLBACKS

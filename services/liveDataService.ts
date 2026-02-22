@@ -1,5 +1,5 @@
 import { DashboardData, Game, AnalyzedGameDB, TopPickItem, League, Country, GameDetails } from '../types';
-import { getCurrentDateInBogota, getLocalDayRange } from '../utils/dateUtils';
+import { getCurrentDateInBogota, getLocalDayRange, utcToBogotaDate } from '../utils/dateUtils';
 import { supabase } from './supabaseService';
 
 // --- CONSTANTES ---
@@ -76,10 +76,22 @@ export const fetchFixturesByDate = async (date: string): Promise<DashboardData> 
 
         console.log(`[DEBUG] SportMonks returned ${data?.length} fixtures for ${date}`);
 
-        // No necesitamos filtrar localDate aquí porque SportMonks ya recibe la fecha YYYY-MM-DD
-        // y devuelve partidos de ese día.
+        // Safety net: filter fixtures to match the requested Bogotá date
+        // The edge function already does this, but we double-check in case of edge cases
+        const filteredData = (data || []).filter((g: any) => {
+            if (!g.fixture?.date) return true;
+            try {
+                return utcToBogotaDate(g.fixture.date) === date;
+            } catch {
+                return true; // keep if date parsing fails
+            }
+        });
 
-        const processed = processFixturesResponse(data || []);
+        if (filteredData.length !== (data || []).length) {
+            console.warn(`[DEBUG] Frontend Bogotá filter removed ${(data || []).length - filteredData.length} fixtures from wrong date`);
+        }
+
+        const processed = processFixturesResponse(filteredData);
         console.log(`[DEBUG] Processed data:`, processed);
         return processed;
 
@@ -196,11 +208,11 @@ export const fetchTopPicks = async (date: string) => {
         let games: Game[] = [];
 
         // 1. ESTRATEGIA DB-FIRST: Consultar daily_matches (Nuestra Fuente de Verdad)
+        // FIX: Usar match_date (DATE) en vez de match_time (TIMESTAMPTZ) para evitar timezone mismatch
         const { data: localMatches, error: localError } = await supabase
             .from('daily_matches')
             .select('*')
-            .gte('match_time', `${date}T00:00:00`)
-            .lt('match_time', `${date}T23:59:59`);
+            .eq('match_date', date);
 
         if (localMatches && localMatches.length > 0) {
             console.log(`[TopPicks] ✅ Usando ${localMatches.length} partidos de daily_matches (DB Local)`);
@@ -703,12 +715,18 @@ export const fetchTopPicks = async (date: string) => {
         if (!jobs || jobs.length < 3) {
             console.log('[TopPicks] ⚠️ Pocos jobs por fixture IDs, buscando por fecha de creación...');
 
+            // FIX: Use timezone-aware UTC range for Bogotá day
+            // Bogotá 00:00 = UTC 05:00, Bogotá 23:59 = next day UTC 04:59
+            const nextDay = new Date(date + 'T12:00:00Z');
+            nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+            const nextDayStr = nextDay.toISOString().split('T')[0];
+
             const { data: jobsByDate } = await supabase
                 .from('analysis_jobs')
                 .select('id, api_fixture_id, created_at')
                 .eq('status', 'done')
-                .gte('created_at', `${date}T00:00:00`)
-                .lt('created_at', `${date}T23:59:59`)
+                .gte('created_at', `${date}T05:00:00+00:00`)
+                .lt('created_at', `${nextDayStr}T05:00:00+00:00`)
                 .order('created_at', { ascending: false });
 
             if (jobsByDate && jobsByDate.length > (jobs?.length || 0)) {
