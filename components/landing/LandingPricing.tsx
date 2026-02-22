@@ -7,28 +7,44 @@ import { useScrollReveal } from './useScrollReveal';
 
 type BillingPeriod = 'monthly' | 'annual';
 
-const FEATURE_LABELS: Record<string, (plan: SubscriptionPlan) => string> = {
-  opportunities: (p) =>
-    p.predictions_percentage === 100
-      ? 'Todas las oportunidades diarias'
-      : p.predictions_percentage === 1
-      ? '1 oportunidad diaria de muestra'
-      : `${p.predictions_percentage}% de oportunidades diarias`,
-  parlays: (p) =>
-    p.monthly_parlay_limit === -1
-      ? 'Parlays ilimitados'
-      : p.monthly_parlay_limit === 0
-      ? 'Sin parlays'
-      : `${p.monthly_parlay_limit} parlays al mes`,
-  analysis: (p) =>
-    p.analysis_percentage === 100
-      ? 'Análisis completo de todos los partidos'
-      : p.analysis_percentage === 0
-      ? 'Sin análisis de partidos'
-      : `Análisis del ${p.analysis_percentage}% de partidos`,
-  stats: (p) => (p.can_access_full_stats ? 'Estadísticas completas' : 'Estadísticas básicas'),
-  history: () => 'Historial de resultados',
-  support: (p) => (p.has_priority_support ? 'Soporte prioritario' : 'Soporte por email'),
+const getFeatures = (plan: SubscriptionPlan): string[] => {
+  const features: string[] = [];
+
+  // Oportunidades
+  if (plan.predictions_percentage >= 100) {
+    features.push('Todas las oportunidades diarias');
+  } else if (plan.predictions_percentage > 0) {
+    features.push(`${plan.predictions_percentage}% de oportunidades diarias`);
+  } else {
+    features.push('1 oportunidad diaria de muestra');
+  }
+
+  // Parlays
+  if (plan.monthly_parlay_limit === -1) {
+    features.push('Parlays ilimitados');
+  } else if (plan.monthly_parlay_limit > 0) {
+    features.push(`${plan.monthly_parlay_limit} parlays al mes`);
+  }
+
+  // Análisis
+  if (plan.predictions_percentage >= 100) {
+    features.push('Análisis completo de todos los partidos');
+  } else if (plan.predictions_percentage >= 50) {
+    features.push('Análisis de la mayoría de partidos');
+  } else if (plan.predictions_percentage > 0) {
+    features.push('Análisis de partidos seleccionados');
+  }
+
+  // Stats
+  features.push(plan.can_access_full_stats ? 'Estadísticas completas' : 'Estadísticas básicas');
+
+  // History
+  features.push('Historial de resultados');
+
+  // Support
+  features.push(plan.has_priority_support ? 'Soporte prioritario' : 'Soporte por email');
+
+  return features;
 };
 
 // Fallback plans if DB doesn't load
@@ -126,7 +142,8 @@ export const LandingPricing: React.FC = () => {
           }`} style={{ transitionDelay: '200ms' }}>
             {(displayPlans.length > 0 ? displayPlans : FALLBACK_PLANS.filter(p => p.price_cents > 0)).map((plan, i) => {
               const isPro = plan.name === 'pro';
-              const price = getPlanPrice(plan.price_cents, plan.annual_price_cents, billingPeriod);
+              const annualCents = (plan as any).annual_price_cents ?? Math.round(plan.price_cents * 12 * 0.8);
+              const price = getPlanPrice(plan.price_cents, annualCents, billingPeriod);
 
               return (
                 <div
@@ -154,13 +171,13 @@ export const LandingPricing: React.FC = () => {
                     <div className="mb-8">
                       <div className="flex items-baseline gap-1">
                         <span className={`text-4xl font-display font-bold ${isPro ? 'text-brand' : 'text-white'}`}>
-                          {billingPeriod === 'annual' && plan.annual_price_cents > 0
-                            ? `$${(plan.annual_price_cents / 12 / 100).toFixed(0)}`
-                            : `$${(plan.price_cents / 100).toFixed(0)}`}
+                          {billingPeriod === 'annual' && annualCents > 0
+                            ? `$${(annualCents / 12 / 100).toFixed(2)}`
+                            : `$${(plan.price_cents / 100).toFixed(2)}`}
                         </span>
                         <span className="text-slate-500 text-sm">/mes</span>
                       </div>
-                      {billingPeriod === 'annual' && plan.annual_price_cents > 0 && (
+                      {billingPeriod === 'annual' && annualCents > 0 && (
                         <p className="text-xs text-brand/80 mt-1">
                           {price.savings} — Facturado anualmente
                         </p>
@@ -170,10 +187,10 @@ export const LandingPricing: React.FC = () => {
                     {/* Features */}
                     {'predictions_percentage' in plan ? (
                       <ul className="space-y-3 mb-8">
-                        {Object.entries(FEATURE_LABELS).map(([key, fn]) => (
-                          <li key={key} className="flex items-start gap-3">
+                        {getFeatures(plan as SubscriptionPlan).map((feat, fi) => (
+                          <li key={fi} className="flex items-start gap-3">
                             <CheckIcon className="w-5 h-5 text-brand flex-shrink-0 mt-0.5" />
-                            <span className="text-sm text-slate-300">{fn(plan as SubscriptionPlan)}</span>
+                            <span className="text-sm text-slate-300">{feat}</span>
                           </li>
                         ))}
                       </ul>
