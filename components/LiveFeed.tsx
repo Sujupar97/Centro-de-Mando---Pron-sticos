@@ -509,7 +509,7 @@ export const FixturesFeed: React.FC = () => {
     // 3. Iniciar Análisis (Individual)
     // Hook de suscripciones
     const { subscription, checkAnalysisAccess, analysesRemaining, recommendedUpgrade } = useSubscriptionLimits();
-    const { currentOrg } = useOrganization();
+    const { currentOrg, isImpersonating } = useOrganization();
     const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
     const [upgradeReason, setUpgradeReason] = useState('');
 
@@ -779,7 +779,7 @@ export const FixturesFeed: React.FC = () => {
                                                 onViewReport={(gameId) => handleViewReport(gameId)}
                                                 gameJobStatus={gameJobStatus}
                                                 reportsAvailable={reportsAvailable}
-                                                userRole={profile?.role}
+                                                userRole={isImpersonating ? 'user' : profile?.role}
                                             />
                                         ))}
                                     </div>
@@ -797,7 +797,7 @@ export const FixturesFeed: React.FC = () => {
                                             onViewReport={handleViewReport}
                                             gameJobStatus={gameJobStatus}
                                             reportsAvailable={reportsAvailable}
-                                            userRole={profile?.role}
+                                            userRole={isImpersonating ? 'user' : profile?.role}
                                         />
                                     ))}
                                 </div>

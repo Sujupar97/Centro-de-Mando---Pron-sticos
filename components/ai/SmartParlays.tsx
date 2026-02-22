@@ -13,10 +13,11 @@ import {
     getRiskLabel
 } from '../../services/smartParlayService';
 import { useSubscription } from '../../contexts/SubscriptionContext';
-import { isHistoricalDate, canViewParlays, isUnlimitedParlays } from '../../utils/planAccessUtils';
+import { isHistoricalDate, canViewParlays, getAllowedParlayCount } from '../../utils/planAccessUtils';
 import { usePresentationMode } from '../../hooks/usePresentationMode';
 import { useAuth } from '../../hooks/useAuth';
 import { isAgencyRole } from '../../utils/roles';
+import { useOrganization } from '../../contexts/OrganizationContext';
 
 interface SmartParlaysProps {
     date: string;
@@ -37,16 +38,13 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
         isFree,
     } = useSubscription();
     const { presentationMode } = usePresentationMode();
-    const isAgency = isAgencyRole(profile?.role);
+    const { isImpersonating } = useOrganization();
+    const isAgency = isAgencyRole(profile?.role) && !isImpersonating;
 
     const historical = useMemo(() => isHistoricalDate(date), [date]);
     const parlayAccess = useMemo(
-        () => canViewParlays(plan.monthly_parlay_limit, historical),
-        [plan.monthly_parlay_limit, historical]
-    );
-    const unlimited = useMemo(
-        () => isUnlimitedParlays(plan.monthly_parlay_limit),
-        [plan.monthly_parlay_limit]
+        () => canViewParlays(plan.parlay_percentage, historical),
+        [plan.parlay_percentage, historical]
     );
 
     useEffect(() => {
@@ -99,16 +97,13 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
 
     const formatProbability = (prob: number) => `${Math.round(prob * 100)}%`;
 
-    // Limitar parlays visibles según plan (agencia ve todo, clientes según limit)
+    // Limitar parlays visibles según plan (agencia ve todo, clientes según porcentaje)
     const visibleParlays = useMemo(() => {
         if (isAgency || isAdmin) return parlays;
         if (historical) return parlays; // Transparencia histórica
-        if (unlimited) return parlays;
-        const limit = plan.monthly_parlay_limit;
-        if (limit === 0) return [];
-        if (limit > 0 && parlays.length > limit) return parlays.slice(0, limit);
-        return parlays;
-    }, [parlays, isAgency, isAdmin, historical, unlimited, plan.monthly_parlay_limit]);
+        const allowed = getAllowedParlayCount(parlays.length, plan.parlay_percentage, false);
+        return parlays.slice(0, allowed);
+    }, [parlays, isAgency, isAdmin, historical, plan.parlay_percentage]);
 
     const hiddenParlayCount = parlays.length - visibleParlays.length;
 
@@ -123,8 +118,8 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                     </h3>
                     <p className="text-gray-400 mb-6 max-w-md mx-auto">
                         {isFree
-                            ? 'Los Parlays están disponibles a partir del plan Starter. Actualiza para acceder a combinaciones inteligentes de apuestas.'
-                            : 'Has alcanzado el límite de parlays de tu plan. Actualiza para generar más combinaciones.'}
+                            ? 'Los Parlays están disponibles a partir del plan Pro. Actualiza para acceder a combinaciones inteligentes.'
+                            : 'Los Parlays no están incluidos en tu plan actual. Actualiza para ver combinaciones de alto valor.'}
                     </p>
                     <a
                         href="/pricing"
@@ -143,10 +138,10 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
         );
     }
 
-    // Info de limite de vista para clientes (no agencia)
-    const parlayLimitDisplay = (unlimited || isAdmin || isAgency)
+    // Info de porcentaje de vista para clientes (no agencia)
+    const parlayPercentageDisplay = (isAdmin || isAgency || plan.parlay_percentage >= 100)
         ? null
-        : plan.monthly_parlay_limit;
+        : plan.parlay_percentage;
 
     return (
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-700/50 p-6">
@@ -163,12 +158,12 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* Indicador de limite de vista (solo clientes con limite) */}
-                    {!historical && parlayLimitDisplay !== null && parlayLimitDisplay > 0 && (
+                    {/* Indicador de porcentaje de vista (solo clientes con limite) */}
+                    {!historical && parlayPercentageDisplay !== null && parlayPercentageDisplay > 0 && (
                         <div className="text-right">
                             <div className="text-gray-400 text-xs">Tu plan</div>
                             <div className="text-sm font-medium text-emerald-400">
-                                {parlayLimitDisplay} parlays
+                                {parlayPercentageDisplay}% parlays
                             </div>
                         </div>
                     )}

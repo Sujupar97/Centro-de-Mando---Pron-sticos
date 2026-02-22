@@ -12,6 +12,7 @@ import { isHistoricalDate, getAllowedPickCount } from '../../utils/planAccessUti
 import { TrophyIcon, ChartBarIcon, ArrowPathIcon, ArrowTopRightOnSquareIcon, LockClosedIcon } from '../icons/Icons';
 import { usePresentationMode } from '../../hooks/usePresentationMode';
 import { isAgencyRole } from '../../utils/roles';
+import { useOrganization } from '../../contexts/OrganizationContext';
 
 interface HighProbPick {
     id: string;
@@ -41,7 +42,8 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
     const { profile } = useAuth();
     const { plan, isAdmin: isSubAdmin, trackUsage } = useSubscription();
     const { presentationMode } = usePresentationMode();
-    const isAdmin = isSubAdmin || isAgencyRole(profile?.role);
+    const { isImpersonating } = useOrganization();
+    const isAdmin = (isSubAdmin || isAgencyRole(profile?.role)) && !isImpersonating;
     const [singles, setSingles] = useState<HighProbPick[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);

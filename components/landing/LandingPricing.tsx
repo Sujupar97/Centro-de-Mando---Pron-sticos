@@ -20,10 +20,11 @@ const getFeatures = (plan: SubscriptionPlan): string[] => {
   }
 
   // Parlays
-  if (plan.monthly_parlay_limit === -1) {
-    features.push('Parlays ilimitados');
-  } else if (plan.monthly_parlay_limit > 0) {
-    features.push(`${plan.monthly_parlay_limit} parlays al mes`);
+  const parlayPct = plan.parlay_percentage ?? 0;
+  if (parlayPct >= 100) {
+    features.push('100% de los parlays');
+  } else if (parlayPct > 0) {
+    features.push(`${parlayPct}% de los parlays`);
   }
 
   // Análisis

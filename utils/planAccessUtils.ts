@@ -34,14 +34,32 @@ export const getAllowedPickCount = (
 /**
  * Determina si el usuario puede ver parlays de una fecha especifica.
  * - Historico: siempre true
- * - Free (limit=0): no ve parlays del dia actual
+ * - Free/Starter (percentage=0): no ve parlays del dia actual
  */
 export const canViewParlays = (
-    planParlayLimit: number,
+    parlayPercentage: number,
     isHistorical: boolean
 ): boolean => {
     if (isHistorical) return true;
-    return planParlayLimit !== 0; // 0 = plan free
+    return parlayPercentage > 0;
+};
+
+/**
+ * Calcula cuantos parlays puede ver el usuario segun su plan.
+ * - Historico: todos visibles
+ * - Free/Starter (percentage=0): 0 parlays
+ * - Pro (30%): 30% del total
+ * - Premium (80%): 80% del total
+ */
+export const getAllowedParlayCount = (
+    totalParlays: number,
+    parlayPercentage: number,
+    isHistorical: boolean
+): number => {
+    if (isHistorical) return totalParlays;
+    if (parlayPercentage >= 100) return totalParlays;
+    if (parlayPercentage <= 0) return 0;
+    return Math.ceil(totalParlays * (parlayPercentage / 100));
 };
 
 /**

@@ -28,6 +28,7 @@ interface PlanState {
     renews_at: string | null;
     ls_subscription_id: string | null;
     customer_portal_url: string | null;
+    parlay_percentage: number;
 }
 
 interface SubscriptionState {
@@ -72,6 +73,7 @@ const defaultPlan: PlanState = {
     renews_at: null,
     ls_subscription_id: null,
     customer_portal_url: null,
+    parlay_percentage: 0,
 };
 
 const defaultState: SubscriptionState = {
@@ -132,6 +134,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
                     renews_at: summary.plan.renews_at ?? null,
                     ls_subscription_id: summary.plan.ls_subscription_id ?? null,
                     customer_portal_url: summary.plan.customer_portal_url ?? null,
+                    parlay_percentage: summary.plan.parlay_percentage ?? 0,
                 },
                 usage: summary.usage,
                 limits: summary.limits,

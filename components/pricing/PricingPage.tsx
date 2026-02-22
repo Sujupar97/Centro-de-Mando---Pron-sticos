@@ -17,7 +17,7 @@ interface PricingCardProps {
 
 const PricingCard: React.FC<PricingCardProps> = ({ plan, isCurrentPlan, isPopular, isProcessing, billingPeriod, onSelect }) => {
     const priceDisplay = getPlanPrice(plan.price_cents, plan.annual_price_cents, billingPeriod);
-    const isUnlimitedParlays = plan.monthly_parlay_limit === -1 || plan.monthly_parlay_limit >= 999999;
+    const parlayPct = plan.parlay_percentage ?? 0;
 
     const features = [
         {
@@ -30,13 +30,13 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isCurrentPlan, isPopula
             included: true
         },
         {
-            label: 'Parlays mensuales',
-            value: plan.monthly_parlay_limit === 0
+            label: 'Parlays diarios',
+            value: parlayPct === 0
                 ? 'No incluido'
-                : isUnlimitedParlays
-                    ? 'Ilimitados'
-                    : `${plan.monthly_parlay_limit}/mes`,
-            included: plan.monthly_parlay_limit > 0 || isUnlimitedParlays
+                : parlayPct >= 100
+                    ? '100% (Todos)'
+                    : `${parlayPct}%`,
+            included: parlayPct > 0
         },
         {
             label: 'Análisis de partidos',

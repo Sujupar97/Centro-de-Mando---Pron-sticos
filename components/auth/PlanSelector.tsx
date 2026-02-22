@@ -29,7 +29,7 @@ export const PlanSelector: React.FC<PlanSelectorProps> = ({
     }, []);
 
     const features = (plan: SubscriptionPlan) => {
-        const isUnlimitedParlays = plan.monthly_parlay_limit === -1 || plan.monthly_parlay_limit >= 999999;
+        const parlayPct = plan.parlay_percentage ?? 0;
         return [
             {
                 label: 'Oportunidades',
@@ -37,10 +37,10 @@ export const PlanSelector: React.FC<PlanSelectorProps> = ({
                 included: true
             },
             {
-                label: 'Parlays mensuales',
-                value: plan.monthly_parlay_limit === 0 ? 'No incluido' :
-                    isUnlimitedParlays ? 'Ilimitados' : `${plan.monthly_parlay_limit}/mes`,
-                included: plan.monthly_parlay_limit > 0 || isUnlimitedParlays
+                label: 'Parlays diarios',
+                value: parlayPct === 0 ? 'No incluido' :
+                    parlayPct >= 100 ? '100% (Todos)' : `${parlayPct}%`,
+                included: parlayPct > 0
             },
             {
                 label: 'Análisis de partidos',
