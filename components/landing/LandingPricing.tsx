@@ -34,9 +34,9 @@ const FEATURE_LABELS: Record<string, (plan: SubscriptionPlan) => string> = {
 // Fallback plans if DB doesn't load
 const FALLBACK_PLANS = [
   { name: 'free', display_name: 'Free', price_cents: 0, annual_price_cents: 0, description: 'Para explorar la plataforma' },
-  { name: 'starter', display_name: 'Starter', price_cents: 1999, annual_price_cents: 19190, description: 'Para empezar con ventaja' },
-  { name: 'pro', display_name: 'Pro', price_cents: 4999, annual_price_cents: 47990, description: 'Para apostadores serios' },
-  { name: 'premium', display_name: 'Premium', price_cents: 14999, annual_price_cents: 143990, description: 'Acceso total sin límites' },
+  { name: 'pro', display_name: 'Pro', price_cents: 999, annual_price_cents: 9590, description: 'Para apostadores serios' },
+  { name: 'premium', display_name: 'Premium', price_cents: 4999, annual_price_cents: 47990, description: 'Acceso completo' },
+  { name: 'unlimited', display_name: 'Unlimited', price_cents: 14999, annual_price_cents: 143990, description: 'Acceso total sin límites' },
 ];
 
 export const LandingPricing: React.FC = () => {

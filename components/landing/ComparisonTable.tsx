@@ -64,7 +64,7 @@ const rows: ComparisonRow[] = [
   },
   {
     feature: 'Precio desde',
-    derbix: '$19.99/mes',
+    derbix: '$9.99/mes',
     sofascore: 'Gratis + ads',
     tipsters: '$50-300/mes',
     aiGeneric: '$20+/mes',
