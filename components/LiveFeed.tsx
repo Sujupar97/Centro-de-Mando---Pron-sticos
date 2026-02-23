@@ -300,7 +300,7 @@ export const FixturesFeed: React.FC = () => {
                     // ═══════════════════════════════════════════════════════════════
                     const { data: v2Jobs, error: v2Error } = await supabase
                         .from('analysis_jobs_v2')
-                        .select('fixture_id, status, id')
+                        .select('fixture_id, status, id, created_at')
                         .in('fixture_id', allSearchIds)
                         .or('analysis_type.eq.standard,analysis_type.is.null');
 
@@ -310,12 +310,23 @@ export const FixturesFeed: React.FC = () => {
                             if (job.status === 'done') {
                                 newReportsAvailable[fid] = true;
                                 newActiveJobs[fid] = job.id;
-                            } else if (!newActiveJobs[fid]) {
+                            } else if (job.status === 'failed' || job.status === 'insufficient_data') {
+                                // Don't block the game — let user retry
                                 newGameJobStatus[fid] = job.status as any;
-                                newActiveJobs[fid] = job.id;
+                            } else if (!newActiveJobs[fid]) {
+                                // For non-terminal statuses (analyzing, etl, etc.), check if stale (>10 min)
+                                const jobAge = Date.now() - new Date(job.created_at || 0).getTime();
+                                const STALE_MS = 10 * 60 * 1000;
+                                if (jobAge > STALE_MS) {
+                                    console.warn(`[LiveFeed] Stale job ${job.id} (${job.status}, ${Math.round(jobAge/60000)}min old) — treating as failed`);
+                                    newGameJobStatus[fid] = 'failed' as any;
+                                } else {
+                                    newGameJobStatus[fid] = job.status as any;
+                                    newActiveJobs[fid] = job.id;
+                                }
                             }
                         });
-                        console.log(`[LiveFeed] V2 Jobs: ${v2Jobs.filter(j => j.status === 'done').length} done, ${v2Jobs.filter(j => j.status !== 'done').length} in-progress`);
+                        console.log(`[LiveFeed] V2 Jobs: ${v2Jobs.filter(j => j.status === 'done').length} done, ${v2Jobs.filter(j => j.status !== 'done' && j.status !== 'failed').length} in-progress`);
                     }
 
                     // Check 'analisis' table
