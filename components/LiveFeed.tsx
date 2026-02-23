@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { DashboardData, League, Game, VisualAnalysisResult, Country, AnalysisJob } from '../types';
 import { fetchFixturesByDate, fetchLiveFixtures } from '../services/liveDataService';
-import { createAnalysisJob, getAnalysisJob, getAnalysisResult, getAnalysisResultByRunId, getAnalysisResultByFixtureId } from '../services/analysisService';
+import { createAnalysisJob, getAnalysisJob, getAnalysisResult, getAnalysisResultByRunId, getAnalysisResultByFixtureId, markJobAsTimedOut } from '../services/analysisService';
 import { useAnalysisCache } from '../hooks/useAnalysisCache';
 import { BrainIcon, CalendarDaysIcon, CheckCircleIcon, ChevronDownIcon, ChevronUpIcon, SparklesIcon, ArrowPathIcon, ListBulletIcon, TrophyIcon, SignalIcon, ChartBarIcon } from './icons/Icons';
 import { getCurrentDateInBogota } from '../utils/dateUtils';
@@ -430,7 +430,7 @@ export const FixturesFeed: React.FC = () => {
         if (!activeBatchJobId) return;
 
         const startTime = Date.now();
-        const MAX_WAIT_MS = 180000; // 3 minutes max per job
+        const MAX_WAIT_MS = 300000; // 5 minutes max per job
 
         const advanceBatch = (fixtureId: number, result: 'done' | 'failed') => {
             setActiveBatchJobId(null);
@@ -455,6 +455,8 @@ export const FixturesFeed: React.FC = () => {
                 if (elapsed > MAX_WAIT_MS) {
                     console.warn(`[Batch] Job ${activeBatchJobId} timed out after ${Math.round(elapsed/1000)}s. Skipping.`);
                     pollErrorCount.current = 0;
+                    // Mark job as failed in DB to prevent "stuck in-progress" in Oportunidades
+                    markJobAsTimedOut(activeBatchJobId).catch(() => {});
                     if (processingFixtureId) {
                         setGameJobStatus(prev => ({ ...prev, [processingFixtureId]: 'failed' }));
                         advanceBatch(processingFixtureId, 'failed');

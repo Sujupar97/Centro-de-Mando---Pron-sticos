@@ -344,6 +344,24 @@ export const getAnalysisJob = async (jobId: string): Promise<AnalysisJob | null>
 };
 
 /**
+ * Marca un job como 'failed' en la DB cuando el frontend hace timeout.
+ * Esto evita que jobs stuck bloqueen la vista de Oportunidades indefinidamente.
+ */
+export const markJobAsTimedOut = async (jobId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('analysis_jobs_v2')
+        .update({ status: 'failed', error_message: 'FRONTEND_TIMEOUT' })
+        .eq('id', jobId)
+        .neq('status', 'done');
+
+    if (error) {
+        console.error(`[markJobAsTimedOut] Error updating job ${jobId}:`, error.message);
+    } else {
+        console.log(`[markJobAsTimedOut] Job ${jobId} marked as failed (timeout)`);
+    }
+};
+
+/**
  * Busca análisis por fixture_id (para persistencia al refrescar).
  * Prioriza V2, luego fallback a V1.
  */

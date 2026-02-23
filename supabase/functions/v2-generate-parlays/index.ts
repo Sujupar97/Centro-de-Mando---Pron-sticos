@@ -136,7 +136,7 @@ serve(async (req) => {
         // 2C: Check for jobs (status info + fallback source, exclude parlay jobs)
         const { data: jobs } = await supabase
             .from('analysis_jobs_v2')
-            .select('id, fixture_id, status')
+            .select('id, fixture_id, status, created_at')
             .in('fixture_id', fixtureIds)
             .or('analysis_type.eq.standard,analysis_type.is.null')
             .order('created_at', { ascending: false });
@@ -173,7 +173,14 @@ serve(async (req) => {
         });
 
         const doneCount = (jobs || []).filter((j: any) => j.status === 'done').length;
-        const analyzingCount = (jobs || []).filter((j: any) => j.status === 'analyzing' || j.status === 'interpret').length;
+        // Only count jobs as "analyzing" if created within last 10 minutes (ignore stuck jobs)
+        const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+        const now = Date.now();
+        const analyzingCount = (jobs || []).filter((j: any) => {
+            if (j.status !== 'analyzing' && j.status !== 'interpret') return false;
+            const age = now - new Date(j.created_at).getTime();
+            return age < STALE_THRESHOLD_MS;
+        }).length;
 
         log(`[OPP-V8.1] Query results: ${reports?.length || 0} reports, ${valuePicks?.length || 0} value_picks, jobs: ${doneCount} done + ${analyzingCount} analyzing`);
 
