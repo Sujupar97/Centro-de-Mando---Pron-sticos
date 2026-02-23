@@ -80,7 +80,7 @@ serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
     const startTime = Date.now();
-    const GEMINI_MODEL = 'gemini-2.0-flash';
+    const GEMINI_MODEL = 'gemini-3.1-pro-preview';
 
     try {
         const { job_id, fixture_id, payload } = await req.json();

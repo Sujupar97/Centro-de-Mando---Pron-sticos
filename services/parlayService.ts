@@ -58,7 +58,7 @@ async function verifyParlayLeg(predictionText: string, marketReceived: string, m
   `;
 
   const request: GenerateContentParameters = {
-    model: 'gemini-2.0-flash',
+    model: 'gemini-3.1-pro-preview',
     contents: { parts: [{ text: prompt }] },
     config: { responseMimeType: 'text/plain', temperature: 0.1 }
   };

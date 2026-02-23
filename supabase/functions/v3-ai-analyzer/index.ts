@@ -148,7 +148,7 @@ serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
     const startTime = Date.now();
-    const GEMINI_MODEL = 'gemini-3-pro-preview';
+    const GEMINI_MODEL = 'gemini-3.1-pro-preview';
     const ENGINE_VERSION = 'V8-MASTERMIND';
     let _jobId: string | null = null; // For error handler access
 
