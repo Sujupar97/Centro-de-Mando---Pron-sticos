@@ -1,11 +1,12 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseService';
+import { normalizeRole, PlatformRole } from '../utils/roles';
 
 interface Profile {
   id: string;
   full_name: string;
-  role: 'platform_owner' | 'agency_admin' | 'org_owner' | 'org_member' | 'user' | 'superadmin' | 'admin' | 'usuario'; // Incluye backward compatibility
+  role: PlatformRole;
 }
 
 interface AuthContextType {
@@ -56,7 +57,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error('Error al obtener el perfil:', error);
             setProfile(null);
           } else if (data) {
-            setProfile(data as Profile);
+            setProfile({
+              ...data,
+              role: normalizeRole(data.role),
+            } as Profile);
           }
         });
     } else {

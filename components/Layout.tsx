@@ -20,15 +20,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
 
   // Roles: agency (full access) vs client (view only per plan)
   const isAgencySuperadmin = isAgencyRole(profile?.role);
-
-  const isAccountAdmin =
-    profile?.role === 'org_owner' ||
-    profile?.role === 'admin'; // Backward compatibility
-
-  const isUser =
-    profile?.role === 'org_member' ||
-    profile?.role === 'user' ||
-    profile?.role === 'usuario'; // Backward compatibility
+  const isAccountAdmin = profile?.role === 'org_owner';
+  const isUser = !isAgencySuperadmin && !isAccountAdmin;
 
   // Opciones del sidebar simplificadas
   const navItems = [
@@ -94,7 +87,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
             </div>
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-medium text-white truncate">{profile?.full_name || 'Usuario'}</p>
-              <p className="text-xs text-slate-400 truncate capitalize">{profile?.role}</p>
+              <p className="text-xs text-slate-400 truncate">
+                {profile?.role === 'platform_owner' ? 'Owner' :
+                 profile?.role === 'agency_admin' ? 'Agencia' :
+                 profile?.role === 'org_owner' ? 'Admin' : 'Usuario'}
+              </p>
             </div>
           </div>
           <button

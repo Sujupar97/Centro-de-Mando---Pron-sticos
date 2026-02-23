@@ -32,7 +32,7 @@ export const adminService = {
      * Update a user's global system role (user, admin, superadmin).
      * Only accessible by Superadmins via RLS.
      */
-    async updateUserRole(userId: string, newRole: 'user' | 'admin' | 'superadmin'): Promise<void> {
+    async updateUserRole(userId: string, newRole: string): Promise<void> {
         const { error } = await supabase
             .from('profiles')
             .update({ role: newRole })

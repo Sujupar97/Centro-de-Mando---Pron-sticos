@@ -36,13 +36,20 @@ export const UsersList: React.FC = () => {
         return () => clearTimeout(timer);
     }, [searchTerm]);
 
-    const handleRoleUpdate = async (userId: string, newRole: 'user' | 'admin' | 'superadmin') => {
-        if (!confirm(`¿Estás seguro de cambiar el rol de este usuario a ${newRole.toUpperCase()}?`)) return;
+    const handleRoleUpdate = async (userId: string, newRole: string) => {
+        const roleLabels: Record<string, string> = {
+            platform_owner: 'Platform Owner',
+            agency_admin: 'Agency Admin',
+            org_owner: 'Org Owner',
+            org_member: 'Org Member',
+            user: 'User',
+        };
+        if (!confirm(`¿Estás seguro de cambiar el rol de este usuario a ${roleLabels[newRole] || newRole}?`)) return;
 
         try {
             await adminService.updateUserRole(userId, newRole);
             setEditingUser(null);
-            loadUsers(); // Refresh
+            loadUsers();
         } catch (e) {
             alert('Error al actualizar rol');
         }
@@ -131,22 +138,28 @@ export const UsersList: React.FC = () => {
                         <h3 className="text-lg font-bold text-white mb-4">Editar Rol: <span className="text-purple-400">{editingUser.email}</span></h3>
 
                         <div className="space-y-4">
-                            {(['user', 'admin', 'superadmin'] as const).map((role) => (
+                            {([
+                                { value: 'platform_owner', label: 'Platform Owner' },
+                                { value: 'agency_admin', label: 'Agency Admin' },
+                                { value: 'org_owner', label: 'Org Owner' },
+                                { value: 'org_member', label: 'Org Member' },
+                                { value: 'user', label: 'User' },
+                            ]).map(({ value, label }) => (
                                 <button
-                                    key={role}
-                                    onClick={() => handleRoleUpdate(editingUser.id, role)}
+                                    key={value}
+                                    onClick={() => handleRoleUpdate(editingUser.id, value)}
                                     className={`w-full flex items-center justify-between p-4 rounded-lg border transition-all
-                                        ${editingUser.role === role
+                                        ${editingUser.role === value
                                             ? 'bg-purple-600/20 border-purple-500 text-white'
                                             : 'bg-slate-700/50 border-white/5 text-gray-400 hover:bg-slate-700 hover:text-white'
                                         }
                                     `}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <ShieldCheckIcon className={`w-5 h-5 ${editingUser.role === role ? 'text-purple-400' : 'text-gray-500'}`} />
-                                        <span className="uppercase font-bold text-sm">{role}</span>
+                                        <ShieldCheckIcon className={`w-5 h-5 ${editingUser.role === value ? 'text-purple-400' : 'text-gray-500'}`} />
+                                        <span className="uppercase font-bold text-sm">{label}</span>
                                     </div>
-                                    {editingUser.role === role && <span className="text-xs text-purple-400 font-bold">ACTUAL</span>}
+                                    {editingUser.role === value && <span className="text-xs text-purple-400 font-bold">ACTUAL</span>}
                                 </button>
                             ))}
                         </div>
@@ -166,8 +179,10 @@ export const UsersList: React.FC = () => {
 
 function getContentByRole(role: string) {
     switch (role) {
-        case 'superadmin': return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
-        case 'admin': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+        case 'platform_owner': return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
+        case 'agency_admin': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+        case 'org_owner': return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+        case 'org_member': return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30';
         default: return 'bg-slate-700/50 text-slate-400 border-slate-600/30';
     }
 }

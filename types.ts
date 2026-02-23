@@ -80,7 +80,7 @@ export interface OrganizationInvitation {
 export interface UserProfile {
     id: string;
     email: string;
-    role: 'superadmin' | 'admin' | 'user';
+    role: 'platform_owner' | 'agency_admin' | 'org_owner' | 'org_member' | 'user';
     full_name?: string;
     avatar_url?: string;
     organization_id?: string;
