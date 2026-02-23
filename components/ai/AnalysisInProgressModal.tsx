@@ -92,6 +92,19 @@ export const AnalysisInProgressModal: React.FC<AnalysisInProgressModalProps> = (
                                 <p>No se alcanzó el umbral de datos. El sistema abortó el análisis para proteger la integridad del pronóstico.</p>
                             </div>
                         )}
+                        {job.status === 'failed' && (
+                            <div className="mt-3 p-3 bg-red-900/20 border border-red-900/50 rounded text-red-400 text-xs flex items-start">
+                                <ExclamationTriangleIcon className="w-4 h-4 mr-2 flex-shrink-0" />
+                                <div>
+                                    <p className="font-bold">El análisis falló.</p>
+                                    {job.error_message ? (
+                                        <p className="mt-1 font-mono text-red-500/80 break-all">{job.error_message}</p>
+                                    ) : (
+                                        <p className="mt-1">Error desconocido. Revisa los logs del servidor.</p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Backend Activity Log */}

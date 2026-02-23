@@ -107,7 +107,7 @@ serve(async (req) => {
                 .from('analysis_jobs_v2')
                 .update({
                     status: 'failed', // FIXED: Use 'failed' (valid enum) instead of 'insufficient_data'
-                    error_log: 'Aborted: Match is LIVE/FT but missing stats & lineups.'
+                    error_message: 'Aborted: Match is LIVE/FT but missing stats & lineups.'
                 })
                 .eq('id', jobId);
 
@@ -414,7 +414,7 @@ serve(async (req) => {
                 .from('analysis_jobs_v2')
                 .update({
                     status: 'failed',
-                    error_log: error.message
+                    error_message: error.message?.substring(0, 500)
                 })
                 .eq('id', jobId);
         }

@@ -525,7 +525,7 @@ REGLAS FINALES:
                 const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
                 const supabase = createClient(sbUrl, sbKey);
                 await supabase.from('analysis_jobs_v2')
-                    .update({ status: 'failed', error_log: e.message, execution_time_ms: Date.now() - startTime })
+                    .update({ status: 'failed', error_message: e.message?.substring(0, 500), execution_time_ms: Date.now() - startTime })
                     .eq('id', job_id);
             }
         } catch (_) { /* ignore */ }

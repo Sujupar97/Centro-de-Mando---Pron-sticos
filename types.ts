@@ -108,6 +108,7 @@ export interface AnalysisJob {
     actual_calls: number;
     progress_jsonb: JobProgress;
     last_error?: string;
+    error_message?: string;
     created_at: string;
 }
 

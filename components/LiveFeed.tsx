@@ -393,7 +393,7 @@ export const FixturesFeed: React.FC = () => {
                         await handleViewReport(updatedJob.id, updatedJob.api_fixture_id);
                     }, 1500);
                 } else if (updatedJob.status === 'failed' || updatedJob.status === 'insufficient_data') {
-                    setTimeout(() => setIsJobModalOpen(false), 3000);
+                    setTimeout(() => setIsJobModalOpen(false), 8000);
                 }
             }
         }, 2000);
