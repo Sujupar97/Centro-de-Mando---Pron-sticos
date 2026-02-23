@@ -150,9 +150,11 @@ serve(async (req) => {
     const startTime = Date.now();
     const GEMINI_MODEL = 'gemini-3-pro-preview';
     const ENGINE_VERSION = 'V8-MASTERMIND';
+    let _jobId: string | null = null; // For error handler access
 
     try {
         const { job_id, fixture_id, payload } = await req.json();
+        _jobId = job_id;
         if (!job_id || !fixture_id || !payload) {
             throw new Error('job_id, fixture_id, and payload are required');
         }
@@ -752,11 +754,25 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
             }
         };
 
-        const genRes = await fetch(genUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
-        });
+        const geminiController = new AbortController();
+        const geminiTimeout = setTimeout(() => geminiController.abort(), 240000); // 4 min max
+
+        let genRes;
+        try {
+            genRes = await fetch(genUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+                signal: geminiController.signal
+            });
+        } catch (fetchErr: any) {
+            clearTimeout(geminiTimeout);
+            if (fetchErr.name === 'AbortError') {
+                throw new Error('Gemini timeout: response took longer than 4 minutes');
+            }
+            throw fetchErr;
+        }
+        clearTimeout(geminiTimeout);
 
         if (!genRes.ok) {
             const errorText = await genRes.text();
@@ -1213,7 +1229,7 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
 
         // CRITICAL FIX: Update job status to 'failed' so it doesn't stay stuck at 'analyzing'
         try {
-            const { job_id: failedJobId } = await req.clone().json().catch(() => ({ job_id: null }));
+            const failedJobId = _jobId;
             if (failedJobId) {
                 const sbUrl = Deno.env.get('SUPABASE_URL')!;
                 const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
