@@ -78,29 +78,36 @@ ALTER TABLE public.profiles ADD CONSTRAINT valid_profile_role
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
 
 -- ============================================
--- PASO 2: Recrear RLS policies con TEXT roles
+-- PASO 2: Función SECURITY DEFINER para verificar admin (evita recursión RLS)
+-- ============================================
+
+CREATE OR REPLACE FUNCTION public.is_platform_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid()
+      AND role IN ('platform_owner', 'agency_admin')
+  );
+$$;
+
+-- ============================================
+-- PASO 3: Recrear RLS policies usando is_platform_admin()
 -- ============================================
 
 -- user_subscriptions: agency admins can manage all
 CREATE POLICY "Platform and Agency admins can manage subscriptions" ON public.user_subscriptions
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid()
-        AND p.role IN ('platform_owner', 'agency_admin')
-    )
-  );
+  FOR ALL USING (public.is_platform_admin());
 
 -- organizations: agency can view all
 CREATE POLICY "admin_select_all_v4" ON public.organizations
   FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE profiles.id = auth.uid()
-        AND profiles.role IN ('platform_owner', 'agency_admin')
-    )
-    OR
-    id IN (
+    public.is_platform_admin()
+    OR id IN (
       SELECT organization_id FROM public.organization_members
       WHERE user_id = auth.uid()
     )
@@ -113,27 +120,16 @@ CREATE POLICY "Users can view own profile" ON public.profiles
 CREATE POLICY "Users can update own profile" ON public.profiles
   FOR UPDATE USING (auth.uid() = id);
 
+-- IMPORTANTE: Usa is_platform_admin() para evitar recursión infinita (42P17)
 CREATE POLICY "Admins can view all profiles" ON public.profiles
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles p2
-      WHERE p2.id = auth.uid()
-        AND p2.role IN ('platform_owner', 'agency_admin')
-    )
-  );
+  FOR SELECT USING (public.is_platform_admin());
 
 -- organization_members: superadmins can manage all
 CREATE POLICY "Superadmins can manage all memberships" ON public.organization_members
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND role IN ('platform_owner', 'agency_admin')
-    )
-  );
+  FOR ALL USING (public.is_platform_admin());
 
 -- ============================================
--- PASO 3: Marcar organización de la agencia
+-- PASO 4: Marcar organización de la agencia
 -- ============================================
 
 ALTER TABLE public.organizations
@@ -148,7 +144,7 @@ WHERE id = (
 );
 
 -- ============================================
--- PASO 4: Fix inmediato para Johann
+-- PASO 5: Fix inmediato para Johann
 -- ============================================
 
 UPDATE public.profiles
@@ -169,7 +165,7 @@ WHERE p.email = 'johanngonza1999@gmail.com'
 ON CONFLICT (organization_id, user_id) DO UPDATE SET role = 'admin';
 
 -- ============================================
--- PASO 5: Trigger de sincronización automática
+-- PASO 6: Trigger de sincronización automática
 -- ============================================
 
 -- 5a. Función para INSERT/UPDATE en organization_members
@@ -229,7 +225,7 @@ CREATE TRIGGER trg_unsync_agency_member_role
   EXECUTE FUNCTION public.unsync_agency_member_role();
 
 -- ============================================
--- PASO 6: Recrear handle_new_user() para TEXT
+-- PASO 7: Recrear handle_new_user() para TEXT
 -- ============================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -286,7 +282,7 @@ COMMENT ON FUNCTION public.handle_new_user() IS
 'Crea org personal, perfil y membresía para nuevos usuarios. Rol default: user (TEXT).';
 
 -- ============================================
--- PASO 7: Recrear get_user_plan para TEXT
+-- PASO 8: Recrear get_user_plan para TEXT
 -- ============================================
 
 CREATE OR REPLACE FUNCTION public.get_user_plan(p_user_id UUID, p_org_id UUID DEFAULT NULL)
@@ -407,7 +403,7 @@ COMMENT ON FUNCTION public.get_user_plan IS
 Roles válidos: platform_owner, agency_admin, org_owner, org_member, user.';
 
 -- ============================================
--- PASO 8: Limpiar enums antiguos
+-- PASO 9: Limpiar enums antiguos
 -- ============================================
 
 DROP TYPE IF EXISTS user_role_original CASCADE;
