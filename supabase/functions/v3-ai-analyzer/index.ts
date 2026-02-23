@@ -1236,7 +1236,7 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                 const sbClient = createClient(sbUrl, sbKey);
                 await sbClient
                     .from('analysis_jobs_v2')
-                    .update({ status: 'failed', error_log: e.message?.substring(0, 500) })
+                    .update({ status: 'failed', error_message: e.message?.substring(0, 500) })
                     .eq('id', failedJobId);
                 console.log(`[V3-AI-ANALYZER] Job ${failedJobId} marked as failed`);
             }
