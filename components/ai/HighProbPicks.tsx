@@ -51,6 +51,8 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
     const [infoMessage, setInfoMessage] = useState<string | null>(null);
     const [inProgress, setInProgress] = useState(0);
     const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+    const [verificationFilter, setVerificationFilter] = useState<'all' | 'pending' | 'verified'>('all');
+    const [matchScores, setMatchScores] = useState<Record<number, string>>({});
 
     // Transparencia historica: fechas anteriores = todo visible
     const isHistorical = isHistoricalDate(date);
@@ -74,8 +76,10 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
             }
 
             console.log('[HighProbPicks] Response:', data.stats);
-            setSingles(data.singles || []);
+            const newSingles = data.singles || [];
+            setSingles(newSingles);
             setInProgress(data.stats?.in_progress || 0);
+            loadMatchScores(newSingles);
 
             // Show info message if no picks but analysis exists or is in progress
             if ((!data.singles || data.singles.length === 0) && data.message) {
@@ -90,13 +94,51 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
         }
     };
 
+    // Load match scores from daily_matches for PENDING picks (admin verification aid)
+    const loadMatchScores = async (picks: HighProbPick[]) => {
+        if (!isAdmin) return;
+        const pendingFixtureIds = [...new Set(picks.filter(p => !p.result || p.result === 'PENDING').map(p => p.fixture_id))];
+        if (pendingFixtureIds.length === 0) return;
+
+        try {
+            const { data: matches } = await supabase
+                .from('daily_matches')
+                .select('api_fixture_id, home_score, away_score, match_status')
+                .in('api_fixture_id', pendingFixtureIds);
+
+            if (matches) {
+                const scores: Record<number, string> = {};
+                for (const m of matches) {
+                    const finished = ['FT', 'AET', 'PEN'].includes(m.match_status || '');
+                    if (finished && m.home_score !== null && m.away_score !== null) {
+                        scores[m.api_fixture_id] = `${m.home_score}-${m.away_score}`;
+                    }
+                }
+                setMatchScores(scores);
+            }
+        } catch (err) {
+            console.error('[HighProbPicks] Error loading match scores:', err);
+        }
+    };
+
     useEffect(() => {
         loadPicks(false);
     }, [date]);
 
     // Filtering Logic: picks with odds >= 1.40 are "main", odds < 1.40 OR no odds are "low/complementary"
-    const mainPicks = singles.filter(p => p.odds && p.odds >= 1.40);
+    const allMainPicks = singles.filter(p => p.odds && p.odds >= 1.40);
     const lowOddsPicks = singles.filter(p => !p.odds || p.odds < 1.40);
+
+    // Verification filter (admin only)
+    const pendingCount = allMainPicks.filter(p => !p.result || p.result === 'PENDING').length;
+    const verifiedCount = allMainPicks.filter(p => p.result && p.result !== 'PENDING').length;
+
+    const mainPicks = isAdmin && verificationFilter !== 'all'
+        ? allMainPicks.filter(p => {
+            const isPending = !p.result || p.result === 'PENDING';
+            return verificationFilter === 'pending' ? isPending : !isPending;
+        })
+        : allMainPicks;
 
     // SUBSCRIPTION GATING: Calcular cuantos picks puede ver el usuario
     const allowedCount = useMemo(() => {
@@ -145,21 +187,36 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
                 </div>
                 
                 <div className="flex items-center gap-2">
-                    {/* TEMPORARILY HIDDEN — Cuotas bajas ocultas
-                    {lowOddsPicks.length > 0 && (
-                        <button
-                            onClick={() => setShowLowOdds(!showLowOdds)}
-                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
-                                showLowOdds
-                                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50'
-                                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-                            }`}
-                        >
-                            {showLowOdds ? 'Ocultar' : 'Ver'} Cuotas Bajas ({lowOddsPicks.length})
-                        </button>
+                    {/* Admin verification filter */}
+                    {isAdmin && allMainPicks.length > 0 && (
+                        <div className="flex items-center bg-slate-800/50 rounded-lg border border-white/5 p-0.5">
+                            <button
+                                onClick={() => setVerificationFilter('all')}
+                                className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                                    verificationFilter === 'all' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
+                                }`}
+                            >
+                                Todos ({allMainPicks.length})
+                            </button>
+                            <button
+                                onClick={() => setVerificationFilter('pending')}
+                                className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                                    verificationFilter === 'pending' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-slate-400 hover:text-white'
+                                }`}
+                            >
+                                Pendientes ({pendingCount})
+                            </button>
+                            <button
+                                onClick={() => setVerificationFilter('verified')}
+                                className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                                    verificationFilter === 'verified' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-400 hover:text-white'
+                                }`}
+                            >
+                                Verificados ({verifiedCount})
+                            </button>
+                        </div>
                     )}
-                    */}
-                    
+
                     <button onClick={() => loadPicks(true)} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors" title="Actualizar Oportunidades">
                         <ArrowPathIcon className="w-5 h-5" />
                     </button>
@@ -197,6 +254,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
                             onView={() => onViewReport?.(pick.job_id, pick.fixture_id)}
                             isAdmin={!!isAdmin}
                             presentationMode={presentationMode}
+                            matchScore={matchScores[pick.fixture_id]}
                             onOverride={async (result) => {
                                 try {
                                     await manualOverridePick(pick.id, result, {
@@ -367,8 +425,9 @@ const SinglePickCard: React.FC<{
     onView: () => void;
     isAdmin: boolean;
     presentationMode?: boolean;
+    matchScore?: string;
     onOverride: (result: 'WON' | 'LOST' | 'VOID') => Promise<void>;
-}> = ({ pick, translateMarket, onView, isAdmin, presentationMode, onOverride }) => {
+}> = ({ pick, translateMarket, onView, isAdmin, presentationMode, matchScore, onOverride }) => {
     const [overriding, setOverriding] = useState(false);
     const isVerified = pick.result && pick.result !== 'PENDING';
     const isLost = !presentationMode && pick.result === 'LOST';
@@ -406,10 +465,17 @@ const SinglePickCard: React.FC<{
                     <img src={pick.logo_home || ''} className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 object-contain p-1" />
                     <img src={pick.logo_away || ''} className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 object-contain p-1" />
                 </div>
-                <div>
+                <div className="flex-1">
                     <h4 className="text-white font-bold text-sm leading-tight">{pick.home_team}</h4>
                     <span className="text-xs text-slate-400">vs {pick.away_team}</span>
                 </div>
+                {/* Show match score for admin verification (PENDING picks with finished match) */}
+                {isAdmin && matchScore && (!pick.result || pick.result === 'PENDING') && (
+                    <div className="flex-shrink-0 bg-slate-800 border border-white/10 rounded-lg px-2.5 py-1.5 text-center">
+                        <span className="text-[9px] uppercase text-slate-500 block leading-none mb-0.5">Score</span>
+                        <span className="text-white font-black text-sm">{matchScore}</span>
+                    </div>
+                )}
             </div>
 
             <div className="bg-black/40 rounded-lg p-3 border border-white/5 flex justify-between items-center mb-3">
