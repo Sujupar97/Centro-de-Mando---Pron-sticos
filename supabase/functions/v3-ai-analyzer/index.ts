@@ -476,13 +476,34 @@ CONFIANZA FINAL = (Score Estadístico × 0.50) + (Score Inteligencia Partido × 
 │ (BAJA)   │                                                                  │
 └──────────┴──────────────────────────────────────────────────────────────────┘
 
-⚠️ REGLA ANTI-INFLACIÓN (CRÍTICA):
+⚠️ REGLA ANTI-INFLACIÓN (CRÍTICA — CALIBRADA CON DATOS REALES):
 - Un equipo favorito NO tiene automáticamente >80% de ganar. Un favorito claro es 65-75%.
 - Over 2.5 en liga con promedio 2.8 goles NO es automáticamente >80%. Es 65-75%.
 - Solo asigna >85% si hay convergencia EXTREMA de TODOS los factores.
 - La MAYORÍA de picks buenos caen en el rango 72-82%. Las >85% deben ser EXCEPCIONALES.
 - Si asignas >85% a más de 1 pick por partido, estás inflando. Revisa.
 - PREGÚNTATE: "¿Apostaría mi propio dinero con esta confianza?" Si dudas → baja 5-10%.
+
+📊 DATOS REALES DE CALIBRACIÓN (Feb 2026 — 63 picks verificados manualmente):
+- Picks que asignamos 80-82% → ganaron solo 55.6%. ESTAMOS INFLANDO ~25 PUNTOS.
+- Picks que asignamos 83-85% → ganaron 91.7%. EXCELENTE CALIBRACIÓN AQUÍ.
+- Picks que asignamos 86-89% → ganaron solo 62.5%. INFLANDO ~24 PUNTOS.
+- CONCLUSIÓN: Solo asigna 80-82% si realmente crees que gana ~55%. Si crees que gana >70%, asigna 83-85%.
+- CONCLUSIÓN 2: El rango 86-89% está MÁS INFLADO que el 80-82%. No subas de 85% salvo evidencia ABRUMADORA.
+- EN LA PRÁCTICA: Tu "85%" real es más como un "62%" de probabilidad real. Sé BRUTALMENTE honesto.
+
+🏆 LIGAS CON RENDIMIENTO HISTÓRICO (usa para ajustar confianza):
+LIGAS FUERTES (podemos confiar más en nuestro análisis):
+- Serie A → 100% WR histórico. Podemos ser más agresivos.
+- UEFA Champions League → 100% WR. Los grandes equipos son predecibles aquí.
+- Liga Argentina → 80% WR. Buen terreno para análisis.
+- Championship → 75% WR. Ligas inglesas nos van bien.
+- Eredivisie → 75% WR.
+LIGAS DÉBILES (reducir confianza 5-10% automáticamente):
+- La Liga (España) → solo 25% WR. REDUCIR confianza 10% en TODOS los picks de La Liga.
+- Europa League → solo 33% WR. Reducir confianza 8%.
+- Eerste Divisie → solo 40% WR. Reducir confianza 5%.
+- Ligas menores (1. Lig turca, etc.) → Reducir confianza 5%.
 
 ⚠️ REGLA CRÍTICA V6:
 - Stats SOLAS ya no son suficientes para >80%. Necesitas TAMBIÉN contexto favorable.
@@ -524,37 +545,42 @@ OPORTUNIDADES OCULTAS QUE LOS NÚMEROS NO VEN:
 🎯 CAZA DE OPORTUNIDADES 80%+ (MÓDULO DE MÁXIMA PRIORIDAD)
 ════════════════════════════════════════════════════════════════════════════════
 
-TU MISIÓN PRINCIPAL: Encontrar AL MENOS 1 pick con ≥80% de confianza por partido.
-Sigue esta jerarquía de búsqueda:
+TU MISIÓN PRINCIPAL: Encontrar picks con ≥83% de confianza REAL por partido.
+RECUERDA: Tu "83%" real gana ~92% de las veces. Tu "80%" solo gana 55%.
+Solo reporta picks que GENUINAMENTE merecen ≥83%.
 
-1. MERCADOS COMBINADOS (Sección "MERCADOS COMBINADOS" en las cuotas):
-   Estos ya tienen la cuota calculada por la casa de apuestas. Ejemplos:
-   - "Home Win & Over 1.5" @ 1.80 → Si ambas condiciones son probables, confianza alta.
-   - "Home Win & BTTS Yes" @ 2.50 → Cuota atractiva si el local gana pero también concede.
-   - "Home/Draw & Under 3.5" @ 1.45 → Cuota baja pero confianza muy alta.
-   PRIORIZA estos mercados para tus picks de alta confianza.
+Sigue esta jerarquía de búsqueda (ORDENADA POR RENDIMIENTO HISTÓRICO):
 
-2. PICKS BANKER (Cuota ≥1.20, Confianza ≥85%):
-   Busca en mercados de alta probabilidad:
-   - "Double Chance" (1X o X2) → Cubres 2 de 3 resultados.
-   - "Over 0.5 Goals" o "Over 1.5 Goals" → Casi seguro en muchos partidos.
-   - "Home Team to Score: Yes" → En partidos donde el local es claramente superior.
-   Marca estos como tipo_pick: "banker".
+1. 🏆 MERCADOS COMBINADOS — NUESTRO MEJOR PRODUCTO (70% WR, ROI positivo):
+   Estos son CONSISTENTEMENTE nuestros picks más exitosos. PRIORÍZALOS.
+   Subtipos que funcionan mejor:
+   - "Resultado y Total" (ej: "Equipo & Más de 1.5 Goles") → 100% WR histórico
+   - "Doble Oportunidad & Total" (ej: "Local o Empate & Más de 1.5") → 100% WR
+   - "Goles & BTTS" (ej: "Más de 2.5 & Ambos Anotan") → 100% WR
+   Usa las cuotas combinadas que aparecen en la sección "MERCADOS COMBINADOS" de los datos.
+   APUNTA A CUOTAS ≥1.70 en combinados — ese rango tiene +29% ROI.
 
-3. ⚠️ GESTIÓN DE CUOTAS BAJAS (<1.40)
-   Si encuentras un pick con confianza >80% pero cuota <1.40 (ej: 1.25):
-   PRIMERO: Intenta buscar un "SOCIO" para combinarlo y superar 1.40.
-   - Ejemplo: "Gana Local" (1.25) combinada con "Over 1.5" (1.22) = Combo @ 1.52.
-   
-   SEGUNDO: Si NO es posible crear un combo seguro:
-   - REPORTA el pick individual PERO márcalo explícitamente como "banker".
-   - NO lo descartes si la confianza es muy alta (>85%).
-   - PERO SIEMPRE prioriza buscar la combinación primero.
+2. MERCADOS INDIVIDUALES FUERTES:
+   - BTTS/Ambos Anotan → Buen rendimiento (100% WR)
+   - Draw No Bet → Buen rendimiento
+   - Over/Under Goles (con datos claros) → 67% WR
+   - Corners de equipo → Rentables con buena data
+   - Goles del Local/Visitante → Buenos cuando la data es clara
 
-   Tu objetivo es ofrecer valor (>1.40), pero no ocultar ganadores seguros.
+3. ⛔ MERCADOS A EVITAR O USAR CON EXTREMA CAUTELA:
+   - "Doble Oportunidad" SOLO (sin combinar) → 0% WR HISTÓRICO (0 de 5 picks ganados).
+     NUNCA recomiendes Doble Oportunidad como pick individual.
+     Solo úsala DENTRO de un combinado (ej: "DC + Over 1.5").
+   - Resultado 1X2 puro (sin combinar) → Solo 50% WR. Evitar salvo evidencia extrema.
 
-NOTA: Si después de buscar en las 3 capas aún no encuentras un pick ≥80%,
-tu pick más alto DEBE ser reportado con su confianza REAL, no inflada.
+4. ⚠️ GESTIÓN DE CUOTAS:
+   - CUOTAS IDEALES: 1.70-2.00 → Rango con MEJOR ROI (+29.3%). Priorizar.
+   - CUOTAS ACEPTABLES: 1.40-1.69 → Rango más voluminoso pero ROI ~0%.
+   - CUOTAS BAJAS (<1.40): Buscar "SOCIO" para combinar y superar 1.40.
+     Si no es posible, reportar como "banker" solo si confianza ≥88%.
+
+NOTA: Si no encuentras un pick que GENUINAMENTE merezca ≥83%, reporta el mejor
+con su confianza REAL. Preferimos MENOS picks de MEJOR calidad.
 
 ════════════════════════════════════════════════════════════════════════════════
 ⚽ MERCADOS DE CORNERS Y TARJETAS — OBLIGATORIO EVALUAR
@@ -1166,7 +1192,7 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                     p_model: prob,
                     decision: decision,
                     confidence: mapConf(p.nivel_confianza || p.confianza),
-                    engine_version: "V8-MASTERMIND",
+                    engine_version: "V8.1-MASTERMIND",
                     odds: p.cuota_actual || null,
                     created_at: new Date().toISOString()
                 };

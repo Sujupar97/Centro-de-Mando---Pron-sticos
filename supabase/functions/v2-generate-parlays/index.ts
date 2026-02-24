@@ -22,7 +22,7 @@ serve(async (req) => {
         const { date } = await req.json();
         if (!date) throw new Error('date is required (YYYY-MM-DD)');
 
-        log(`[OPP-V8.1] Fetching picks >=80% for date: ${date}`);
+        log(`[OPP-V8.1] Fetching picks >=83% for date: ${date}`);
 
         // ═══════════════════════════════════════════════════════════════
         // STEP 1: Get daily matches for the date (use match_date for reliability)
@@ -185,7 +185,7 @@ serve(async (req) => {
         log(`[OPP-V8.1] Query results: ${reports?.length || 0} reports, ${valuePicks?.length || 0} value_picks, jobs: ${doneCount} done + ${analyzingCount} analyzing`);
 
         // ═══════════════════════════════════════════════════════════════
-        // STEP 3: Extract picks >= 80% from ALL sources
+        // STEP 3: Extract picks >= 83% from ALL sources (raised from 80%)
         // ═══════════════════════════════════════════════════════════════
         const highProbPicks: any[] = [];
         const seenPickKeys = new Set<string>();
@@ -295,8 +295,9 @@ serve(async (req) => {
                         log(`[OPP-V8.1]   Pick[${idx}]: ${p.mercado} | ${p.seleccion} | prob=${prob.toFixed(1)}% | odds=${validOdds || 'null'}`);
                     }
 
-                    // FILTER >= 80%
-                    if (prob >= 80) {
+                    // FILTER >= 83% (raised from 80% based on performance data:
+                    // 80-82% band had only 55.6% WR vs 83-85% band at 91.7%)
+                    if (prob >= 83) {
                         const pickKey = `${resolvedFixtureId}_${p.mercado}_${p.seleccion}`;
                         if (seenPickKeys.has(pickKey)) return;
                         seenPickKeys.add(pickKey);
@@ -453,13 +454,13 @@ serve(async (req) => {
             if (hasOnlyInProgress) {
                 message = `Hay ${analyzingCount} análisis en progreso. Espera unos segundos y vuelve a intentar.`;
             } else if (hasAnalysis) {
-                // We found reports but no picks >= 80%
+                // We found reports but no picks >= 83%
                 const allProbs = (valuePicks || []).map((vp: any) => {
                     const p = vp.p_model > 0 && vp.p_model < 1 ? vp.p_model * 100 : vp.p_model;
                     return p;
                 }).sort((a: number, b: number) => b - a);
                 const maxProb = allProbs.length > 0 ? allProbs[0].toFixed(1) : '?';
-                message = `Se analizaron ${reports?.length || 0} partidos. Máxima probabilidad encontrada: ${maxProb}%. No hay picks >= 80%.`;
+                message = `Se analizaron ${reports?.length || 0} partidos. Máxima probabilidad encontrada: ${maxProb}%. No hay picks >= 83%.`;
             } else {
                 message = 'No hay análisis completados para esta fecha. Ejecuta el análisis primero.';
             }

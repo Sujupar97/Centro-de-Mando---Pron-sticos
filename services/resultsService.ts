@@ -43,7 +43,7 @@ export async function getPublicResults(startDate: string, endDate: string): Prom
         .from('value_picks_v2')
         .select('id, fixture_id, market, selection, p_model, odds, result, verified_at, actual_score')
         .in('result', ['WON', 'LOST'])
-        .gte('p_model', 0.80)
+        .gte('p_model', 0.83)
         .gte('odds', 1.40)
         .in('fixture_id', fixtureIdsInRange)
         .order('verified_at', { ascending: false });
@@ -165,7 +165,7 @@ async function calculateProfitFromPicks(baseBankroll: number, startDate: string,
         .from('value_picks_v2')
         .select('result, odds')
         .in('fixture_id', fixtureIds)
-        .gte('p_model', 0.80)
+        .gte('p_model', 0.83)
         .gte('odds', 1.40)
         .in('result', ['WON', 'LOST']);
 
@@ -317,7 +317,7 @@ export async function manualOverridePick(
     // Step 3: Update profitability_tracking (only for Oportunidades, skip VOID)
     if (newResult === 'VOID') return; // VOID = no profit/loss impact
     const prob = pick.p_model > 1 ? pick.p_model / 100 : pick.p_model;
-    const isOportunidad = prob >= 0.80 && pick.odds && pick.odds >= 1.40;
+    const isOportunidad = prob >= 0.83 && pick.odds && pick.odds >= 1.40;
     if (!isOportunidad) return;
 
     const baseBankroll = await fetchBaseBankroll();
@@ -401,7 +401,7 @@ export async function recalculateResults(startDate: string, endDate: string): Pr
         .from('value_picks_v2')
         .update({ result: 'PENDING', verified_at: null, actual_score: null })
         .in('fixture_id', fixtureIds)
-        .gte('p_model', 0.80)
+        .gte('p_model', 0.83)
         .gte('odds', 1.40)
         .in('result', ['WON', 'LOST', 'VOID'])
         .select('id');
@@ -468,12 +468,12 @@ export async function getAdvancedAnalytics(filters: AdvancedAnalyticsFilters): P
         return emptyAnalytics(filters.startingBankroll);
     }
 
-    // Step 2: Get verified picks (Oportunidades: p_model >= 0.80, odds >= 1.40)
+    // Step 2: Get verified picks (Oportunidades: p_model >= 0.83, odds >= 1.40)
     let query = supabase
         .from('value_picks_v2')
         .select('id, fixture_id, market, selection, p_model, odds, result, verified_at, actual_score, created_at')
         .in('fixture_id', fixtureIds)
-        .gte('p_model', 0.80)
+        .gte('p_model', 0.83)
         .gte('odds', 1.40)
         .in('result', ['WON', 'LOST', 'VOID'])
         .order('verified_at', { ascending: true });
@@ -490,7 +490,7 @@ export async function getAdvancedAnalytics(filters: AdvancedAnalyticsFilters): P
         .from('value_picks_v2')
         .select('id', { count: 'exact', head: true })
         .in('fixture_id', fixtureIds)
-        .gte('p_model', 0.80)
+        .gte('p_model', 0.83)
         .gte('odds', 1.40)
         .eq('result', 'PENDING');
 
