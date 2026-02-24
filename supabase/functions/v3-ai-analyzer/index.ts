@@ -149,23 +149,46 @@ serve(async (req) => {
 
     const startTime = Date.now();
     const GEMINI_MODEL = 'gemini-3.1-pro-preview';
-    const ENGINE_VERSION = 'V8-MASTERMIND';
+    const ENGINE_VERSION = 'V8.1-MASTERMIND';
     let _jobId: string | null = null; // For error handler access
 
     try {
-        const { job_id, fixture_id, payload } = await req.json();
+        const { job_id, fixture_id: inFixtureId, payload: inPayload } = await req.json();
         _jobId = job_id;
-        if (!job_id || !fixture_id || !payload) {
-            throw new Error('job_id, fixture_id, and payload are required');
-        }
 
-        console.log(`[V4-MASTERMIND] Starting analysis using ${GEMINI_MODEL} for fixture: ${fixture_id}`);
+        if (!job_id) {
+            throw new Error('job_id is required');
+        }
 
         const sbUrl = Deno.env.get('SUPABASE_URL')!;
         const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const geminiKey = Deno.env.get('GEMINI_API_KEY')!;
 
         const supabase = createClient(sbUrl, sbKey);
+
+        // If no payload provided, read from etl_context saved by the ETL stage
+        let payload = inPayload;
+        let fixture_id = inFixtureId;
+        if (!payload) {
+            console.log(`[V4-MASTERMIND] No payload in body, reading etl_context from DB for job ${job_id}...`);
+            const { data: jobData, error: jobErr } = await supabase
+                .from('analysis_jobs_v2')
+                .select('etl_context, fixture_id')
+                .eq('id', job_id)
+                .single();
+            if (jobErr || !jobData?.etl_context) {
+                throw new Error(`Cannot read etl_context for job ${job_id}: ${jobErr?.message || 'no data'}`);
+            }
+            payload = jobData.etl_context;
+            fixture_id = fixture_id || jobData.fixture_id;
+            console.log(`[V4-MASTERMIND] Loaded etl_context from DB (${JSON.stringify(payload).length} chars)`);
+        }
+
+        if (!fixture_id || !payload) {
+            throw new Error('fixture_id and payload are required (either via body or etl_context)');
+        }
+
+        console.log(`[V4-MASTERMIND] Starting analysis using ${GEMINI_MODEL} for fixture: ${fixture_id}`);
 
         // Update job status
         await supabase
