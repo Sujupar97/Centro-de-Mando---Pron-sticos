@@ -64,17 +64,65 @@ serve(async (req) => {
 
         log(`[PARLAY-COMBOS] Found ${picks?.length || 0} parlay picks`);
 
-        if (!picks || picks.length < 3) {
+        // FALLBACK: If parlay_picks_v2 has insufficient picks, complement with value_picks_v2
+        let allPicks = [...(picks || [])];
+
+        if (allPicks.length < 3 || new Set(allPicks.map(p => p.fixture_id)).size < 3) {
+            log(`[PARLAY-COMBOS] Insufficient parlay picks (${allPicks.length}), falling back to value_picks_v2`);
+
+            const { data: valuePicks, error: vpErr } = await supabase
+                .from('value_picks_v2')
+                .select('*')
+                .in('fixture_id', allIds)
+                .gte('p_model', 0.50);
+
+            if (!vpErr && valuePicks && valuePicks.length > 0) {
+                // Get team info from daily_matches for enrichment
+                const { data: matchInfo } = await supabase
+                    .from('daily_matches')
+                    .select('api_fixture_id, home_team, away_team, league_name')
+                    .in('api_fixture_id', allIds);
+
+                const matchMap = new Map<number, any>();
+                matchInfo?.forEach(m => matchMap.set(m.api_fixture_id, m));
+
+                const existingKeys = new Set(allPicks.map(p => `${p.fixture_id}|${p.market}|${p.selection}`));
+
+                for (const vp of valuePicks) {
+                    const key = `${vp.fixture_id}|${vp.market}|${vp.selection}`;
+                    if (existingKeys.has(key)) continue;
+
+                    const match = matchMap.get(vp.fixture_id);
+                    allPicks.push({
+                        fixture_id: vp.fixture_id,
+                        market: vp.market,
+                        selection: vp.selection,
+                        odds: vp.odds || 1.80,
+                        p_model: vp.p_model,
+                        home_team: match?.home_team || 'Local',
+                        away_team: match?.away_team || 'Visitante',
+                        league_name: match?.league_name || '',
+                        reasoning: '',
+                        risk_level: vp.p_model >= 0.70 ? 'bajo' : vp.p_model >= 0.55 ? 'medio' : 'alto',
+                        market_category: vp.market || '',
+                    });
+                }
+
+                log(`[PARLAY-COMBOS] After fallback: ${allPicks.length} total picks (${valuePicks.length} from value_picks_v2)`);
+            }
+        }
+
+        if (allPicks.length < 3) {
             return new Response(JSON.stringify({
                 success: false,
-                message: `Solo hay ${picks?.length || 0} picks disponibles. Se necesitan al menos 3 de diferentes partidos.`,
+                message: `Solo hay ${allPicks.length} picks disponibles. Se necesitan al menos 3 de diferentes partidos.`,
                 logs
             }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
         // 3. Group picks by fixture_id
-        const picksByFixture = new Map<number, typeof picks>();
-        picks.forEach(p => {
+        const picksByFixture = new Map<number, typeof allPicks>();
+        allPicks.forEach(p => {
             if (!picksByFixture.has(p.fixture_id)) picksByFixture.set(p.fixture_id, []);
             picksByFixture.get(p.fixture_id)!.push(p);
         });
@@ -201,7 +249,7 @@ serve(async (req) => {
             success: true,
             date: targetDate,
             stats: {
-                total_picks: picks.length,
+                total_picks: allPicks.length,
                 fixtures_with_picks: fixtureGroups.length,
                 combinations_evaluated: combos.length,
                 combos_saved: topCombos.length
