@@ -803,29 +803,71 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
             }
         };
 
-        const geminiController = new AbortController();
-        const geminiTimeout = setTimeout(() => geminiController.abort(), 240000); // 4 min max
+        // ═══ RETRY WITH EXPONENTIAL BACKOFF ═══
+        // Retries on 429 (quota), 503 (overloaded), 500 (server error)
+        const MAX_RETRIES = 3;
+        const RETRY_DELAYS = [15000, 30000, 60000]; // 15s, 30s, 60s
+        let genRes: Response | null = null;
 
-        let genRes;
-        try {
-            genRes = await fetch(genUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody),
-                signal: geminiController.signal
-            });
-        } catch (fetchErr: any) {
-            clearTimeout(geminiTimeout);
-            if (fetchErr.name === 'AbortError') {
-                throw new Error('Gemini timeout: response took longer than 4 minutes');
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            const geminiController = new AbortController();
+            const geminiTimeout = setTimeout(() => geminiController.abort(), 120000); // 2 min per attempt
+
+            try {
+                genRes = await fetch(genUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody),
+                    signal: geminiController.signal
+                });
+                clearTimeout(geminiTimeout);
+
+                if (genRes.ok) break; // Success — exit retry loop
+
+                const statusCode = genRes.status;
+                const isRetryable = statusCode === 429 || statusCode === 503 || statusCode === 500;
+
+                if (isRetryable && attempt < MAX_RETRIES) {
+                    const delay = RETRY_DELAYS[attempt];
+                    console.warn(`[V3-AI-ANALYZER] Gemini returned ${statusCode}, retrying in ${delay/1000}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
+                    await new Promise(r => setTimeout(r, delay));
+                    continue;
+                }
+
+                // Non-retryable error or max retries exhausted
+                const errorText = await genRes.text();
+                if (statusCode === 429) {
+                    throw new Error(`QUOTA_EXCEEDED: Tu API key de Gemini alcanzó el límite. Espera unos minutos e intenta de nuevo. (${errorText.substring(0, 200)})`);
+                } else if (statusCode === 503) {
+                    throw new Error(`GEMINI_OVERLOADED: Gemini está sobrecargado. Intenta de nuevo en unos minutos. (${errorText.substring(0, 200)})`);
+                } else {
+                    throw new Error(`Gemini Error (${statusCode}): ${errorText}`);
+                }
+
+            } catch (fetchErr: any) {
+                clearTimeout(geminiTimeout);
+                if (fetchErr.name === 'AbortError') {
+                    if (attempt < MAX_RETRIES) {
+                        console.warn(`[V3-AI-ANALYZER] Gemini timeout on attempt ${attempt + 1}, retrying...`);
+                        continue;
+                    }
+                    throw new Error('GEMINI_TIMEOUT: Gemini no respondió después de múltiples intentos. Intenta de nuevo más tarde.');
+                }
+                // Re-throw user-facing errors (QUOTA_EXCEEDED, etc.)
+                if (fetchErr.message?.startsWith('QUOTA_') || fetchErr.message?.startsWith('GEMINI_')) {
+                    throw fetchErr;
+                }
+                if (attempt < MAX_RETRIES) {
+                    console.warn(`[V3-AI-ANALYZER] Fetch error: ${fetchErr.message}, retrying...`);
+                    await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+                    continue;
+                }
+                throw fetchErr;
             }
-            throw fetchErr;
         }
-        clearTimeout(geminiTimeout);
 
-        if (!genRes.ok) {
-            const errorText = await genRes.text();
-            throw new Error(`Gemini Error: ${errorText}`);
+        if (!genRes || !genRes.ok) {
+            throw new Error('Gemini failed after all retry attempts');
         }
 
         const genJson = await genRes.json();
