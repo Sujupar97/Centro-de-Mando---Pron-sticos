@@ -805,13 +805,15 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
 
         // ═══ RETRY WITH EXPONENTIAL BACKOFF ═══
         // Retries on 429 (quota), 503 (overloaded), 500 (server error)
-        const MAX_RETRIES = 3;
-        const RETRY_DELAYS = [15000, 30000, 60000]; // 15s, 30s, 60s
+        // Budget: ~240s max (frontend timeout = 300s, Supabase limit = 150s per invocation)
+        // 2 retries × 90s timeout + delays (10s+20s) = ~220s worst case
+        const MAX_RETRIES = 2;
+        const RETRY_DELAYS = [10000, 20000]; // 10s, 20s
         let genRes: Response | null = null;
 
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             const geminiController = new AbortController();
-            const geminiTimeout = setTimeout(() => geminiController.abort(), 120000); // 2 min per attempt
+            const geminiTimeout = setTimeout(() => geminiController.abort(), 90000); // 90s per attempt
 
             try {
                 genRes = await fetch(genUrl, {
@@ -1297,6 +1299,45 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
 
         const executionTime = Date.now() - startTime;
         console.log(`[V3-AI-ANALYZER] ✅ Analysis complete in ${executionTime}ms (${tokensUsed} tokens)`);
+
+        // ═══ SEQUENTIAL PARLAY ANALYSIS (fire-and-forget AFTER standard analysis succeeds) ═══
+        // This runs AFTER the standard analysis is done, avoiding dual Gemini calls
+        try {
+            const parlayPayload = payload; // Same ETL payload
+            const { data: parlayJob, error: parlayJobErr } = await supabase
+                .from('analysis_jobs_v2')
+                .insert({
+                    fixture_id: finalFixtureId,
+                    status: 'etl',
+                    current_motor: 'PARLAY-ANALYZER',
+                    engine_version: ENGINE_VERSION,
+                    analysis_type: 'parlay'
+                })
+                .select()
+                .single();
+
+            if (!parlayJobErr && parlayJob) {
+                console.log(`[V3-AI-ANALYZER] Launching parlay analyzer for job ${parlayJob.id} (sequential, after success)`);
+                const parlayUrl = `${sbUrl}/functions/v1/v3-parlay-analyzer`;
+                // Fire-and-forget — parlay runs independently after standard is done
+                fetch(parlayUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${sbKey}`
+                    },
+                    body: JSON.stringify({
+                        job_id: parlayJob.id,
+                        fixture_id: finalFixtureId,
+                        payload: parlayPayload
+                    })
+                }).catch(err => console.warn(`[V3-AI-ANALYZER] Parlay fire-and-forget failed:`, err.message));
+            } else {
+                console.warn(`[V3-AI-ANALYZER] Parlay job creation skipped:`, parlayJobErr?.message);
+            }
+        } catch (parlayErr: any) {
+            console.warn(`[V3-AI-ANALYZER] Parlay sequential launch failed (non-blocking):`, parlayErr.message);
+        }
 
         return new Response(JSON.stringify({
             success: true,

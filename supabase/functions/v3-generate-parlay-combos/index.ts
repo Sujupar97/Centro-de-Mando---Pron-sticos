@@ -62,10 +62,11 @@ serve(async (req) => {
 
         if (pickErr) throw pickErr;
 
-        log(`[PARLAY-COMBOS] Found ${picks?.length || 0} parlay picks`);
+        log(`[PARLAY-COMBOS] Found ${picks?.length || 0} parlay picks from DEDICATED system (parlay_picks_v2)`);
 
         // FALLBACK: If parlay_picks_v2 has insufficient picks, complement with value_picks_v2
         let allPicks = [...(picks || [])];
+        let usedFallback = false;
 
         if (allPicks.length < 3 || new Set(allPicks.map(p => p.fixture_id)).size < 3) {
             log(`[PARLAY-COMBOS] Insufficient parlay picks (${allPicks.length}), falling back to value_picks_v2`);
@@ -108,7 +109,8 @@ serve(async (req) => {
                     });
                 }
 
-                log(`[PARLAY-COMBOS] After fallback: ${allPicks.length} total picks (${valuePicks.length} from value_picks_v2)`);
+                usedFallback = true;
+                log(`[PARLAY-COMBOS] ⚠️ FALLBACK ACTIVE: ${allPicks.length} total picks (${valuePicks.length} from value_picks_v2)`);
             }
         }
 
@@ -217,6 +219,8 @@ serve(async (req) => {
             }
         }
 
+        const source = usedFallback ? 'FALLBACK (value_picks_v2)' : 'DEDICATED (parlay_picks_v2)';
+        log(`[PARLAY-COMBOS] Source: ${source}`);
         log(`[PARLAY-COMBOS] Selected ${topCombos.length} parlays with unique picks (from ${combos.length} candidates)`);
 
         if (topCombos.length === 0) {
@@ -248,6 +252,7 @@ serve(async (req) => {
         return new Response(JSON.stringify({
             success: true,
             date: targetDate,
+            source,
             stats: {
                 total_picks: allPicks.length,
                 fixtures_with_picks: fixtureGroups.length,

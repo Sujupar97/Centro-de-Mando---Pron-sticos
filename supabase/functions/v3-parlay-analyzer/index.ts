@@ -358,8 +358,12 @@ REGLAS FINALES:
         // ═══════════════════════════════════════════════════════════════
         const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`;
 
+        const geminiController = new AbortController();
+        const geminiTimeout = setTimeout(() => geminiController.abort(), 90000); // 90s timeout
+
         const genRes = await fetch(genUrl, {
             method: 'POST',
+            signal: geminiController.signal,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 contents: [{ parts: [{ text: prompt }] }],
@@ -370,6 +374,8 @@ REGLAS FINALES:
                 }
             })
         });
+
+        clearTimeout(geminiTimeout);
 
         const genJson = await genRes.json();
 
@@ -515,7 +521,10 @@ REGLAS FINALES:
         });
 
     } catch (e: any) {
-        console.error('[PARLAY-ANALYZER] Fatal error:', e.message);
+        const errorMsg = e.name === 'AbortError'
+            ? 'Gemini timeout (90s) - el modelo no respondió a tiempo'
+            : e.message?.substring(0, 500) || 'Error desconocido';
+        console.error(`[PARLAY-ANALYZER] Fatal error: ${errorMsg}`);
 
         // Try to mark job as failed
         try {
@@ -525,7 +534,7 @@ REGLAS FINALES:
                 const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
                 const supabase = createClient(sbUrl, sbKey);
                 await supabase.from('analysis_jobs_v2')
-                    .update({ status: 'failed', error_message: e.message?.substring(0, 500), execution_time_ms: Date.now() - startTime })
+                    .update({ status: 'failed', error_message: errorMsg, execution_time_ms: Date.now() - startTime })
                     .eq('id', job_id);
             }
         } catch (_) { /* ignore */ }
