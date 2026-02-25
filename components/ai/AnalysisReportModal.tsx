@@ -1122,26 +1122,6 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                             </span>
                                         </h3>
 
-                                        {/* Resumen General */}
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                                            <div className="bg-slate-800 p-4 rounded-lg text-center">
-                                                <span className="text-3xl font-black text-white">{(data as any).analisis_mercados_calculados.resumen?.goles_esperados?.toFixed(1) || '-'}</span>
-                                                <span className="block text-xs text-gray-400 uppercase mt-1">Goles Esperados</span>
-                                            </div>
-                                            <div className="bg-slate-800 p-4 rounded-lg text-center">
-                                                <span className="text-3xl font-black text-white">{(data as any).analisis_mercados_calculados.resumen?.corners_esperados?.toFixed(1) || '-'}</span>
-                                                <span className="block text-xs text-gray-400 uppercase mt-1">Corners Esperados</span>
-                                            </div>
-                                            <div className="bg-slate-800 p-4 rounded-lg text-center">
-                                                <span className="text-3xl font-black text-white">{(data as any).analisis_mercados_calculados.resumen?.tarjetas_esperadas?.toFixed(1) || '-'}</span>
-                                                <span className="block text-xs text-gray-400 uppercase mt-1">Amarillas Esperadas</span>
-                                            </div>
-                                            <div className="bg-slate-800 p-4 rounded-lg text-center">
-                                                <span className="text-3xl font-black text-white">{(data as any).analisis_mercados_calculados.resumen?.btts_probabilidad || '-'}%</span>
-                                                <span className="block text-xs text-gray-400 uppercase mt-1">BTTS Prob.</span>
-                                            </div>
-                                        </div>
-
                                         {/* Ranking de Oportunidades */}
                                         <h4 className="text-lg font-bold text-purple-300 mb-3">🔥 Top Oportunidades por Value</h4>
                                         <div className="space-y-3">

@@ -307,8 +307,8 @@ serve(async (req) => {
         console.log(`[v2] Calling analyzer at ${analyzerUrl} with payload size: ${payloadSize} chars`);
 
         // FIRE-AND-FORGET: Launch analyzer WITHOUT waiting for response
-        // This prevents the ETL function from timing out waiting for Gemini (~30-60s)
-        // The analyzer updates the job status directly in the DB when done
+        // The analyzer reads etl_context from the DB (saved above in Stage 4)
+        // Body is intentionally minimal — payload is NOT sent (too large, causes Deno isolate issues)
         fetch(analyzerUrl, {
             method: 'POST',
             headers: {
@@ -317,8 +317,8 @@ serve(async (req) => {
             },
             body: JSON.stringify({
                 job_id: jobId,
-                fixture_id,
-                payload: normalizedPayload
+                fixture_id
+                // payload omitted — v3-ai-analyzer reads etl_context from DB
             })
         }).then(async (res) => {
             if (!res.ok) {
@@ -329,6 +329,9 @@ serve(async (req) => {
         }).catch(err => {
             console.error(`[v2] Analyzer call failed:`, err.message);
         });
+
+        // Give Deno runtime time to send the fire-and-forget request
+        await new Promise(r => setTimeout(r, 1000));
 
         // ═══════════════════════════════════════════════════════════════
         // STAGE 5: PARLAY ANALYZER — DISABLED (moved to v3-ai-analyzer)

@@ -799,21 +799,21 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
             generationConfig: {
                 temperature: 0.3, // Más determinístico para análisis
                 responseMimeType: 'application/json',
-                maxOutputTokens: 8192
+                maxOutputTokens: 16384
             }
         };
 
         // ═══ RETRY WITH EXPONENTIAL BACKOFF ═══
         // Retries on 429 (quota), 503 (overloaded), 500 (server error)
-        // Budget: ~240s max (frontend timeout = 300s, Supabase limit = 150s per invocation)
-        // 2 retries × 90s timeout + delays (10s+20s) = ~220s worst case
-        const MAX_RETRIES = 2;
-        const RETRY_DELAYS = [10000, 20000]; // 10s, 20s
+        // Budget: ~250s max (frontend timeout = 300s, Supabase limit = 300s)
+        // 1 retry × 120s timeout + delay (10s) = ~250s worst case
+        const MAX_RETRIES = 1;
+        const RETRY_DELAYS = [10000]; // 10s
         let genRes: Response | null = null;
 
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             const geminiController = new AbortController();
-            const geminiTimeout = setTimeout(() => geminiController.abort(), 90000); // 90s per attempt
+            const geminiTimeout = setTimeout(() => geminiController.abort(), 120000); // 120s per attempt
 
             try {
                 genRes = await fetch(genUrl, {
@@ -878,6 +878,12 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
 
         console.log(`[V3-AI-ANALYZER] Gemini responded with ${tokensUsed} tokens`);
 
+        // Detectar truncamiento por límite de tokens
+        const finishReason = genJson.candidates?.[0]?.finishReason;
+        if (finishReason === 'MAX_TOKENS') {
+            console.warn(`[V3-AI-ANALYZER] WARNING: Gemini response TRUNCATED (${tokensUsed} tokens). Attempting JSON repair...`);
+        }
+
         // Clean and parse response
         aiResponseText = aiResponseText.replace(/```json/g, '').replace(/```/g, '').trim();
         const startIndex = aiResponseText.indexOf('{');
@@ -886,159 +892,206 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
             aiResponseText = aiResponseText.substring(startIndex, endIndex + 1);
         }
 
-        let analysisResult;
+        // Reparar JSON truncado: contar llaves/corchetes y cerrar los faltantes
+        if (finishReason === 'MAX_TOKENS') {
+            let openBraces = 0, openBrackets = 0;
+            let inString = false, escaped = false;
+            for (const ch of aiResponseText) {
+                if (escaped) { escaped = false; continue; }
+                if (ch === '\\') { escaped = true; continue; }
+                if (ch === '"') { inString = !inString; continue; }
+                if (inString) continue;
+                if (ch === '{') openBraces++;
+                if (ch === '}') openBraces--;
+                if (ch === '[') openBrackets++;
+                if (ch === ']') openBrackets--;
+            }
+            const suffix = ']'.repeat(Math.max(0, openBrackets)) + '}'.repeat(Math.max(0, openBraces));
+            if (suffix) {
+                aiResponseText += suffix;
+                console.log(`[V3-AI-ANALYZER] JSON repair: added ${suffix.length} closing chars`);
+            }
+        }
+
+        let analysisResult: any;
+
+        // ═══ PARSING MULTI-INTENTO ═══
+        // Estrategia 1: JSON5 (más permisivo, maneja trailing commas, etc.)
+        // Estrategia 2: JSON nativo
+        // Estrategia 3: Limpiar control chars + trailing commas y reintentar
+        // Fallback: Extraer datos parciales con regex
+
         try {
             analysisResult = JSON5.parse(aiResponseText);
+        } catch (e1: any) {
+            console.warn('[V3-AI-ANALYZER] JSON5 parse failed:', e1.message);
+            try {
+                analysisResult = JSON.parse(aiResponseText);
+            } catch (e2: any) {
+                console.warn('[V3-AI-ANALYZER] Native JSON also failed, trying cleanup...');
+                try {
+                    const cleaned = aiResponseText
+                        .replace(/[\x00-\x1F\x7F]/g, ' ')
+                        .replace(/,\s*([}\]])/g, '$1');
+                    analysisResult = JSON5.parse(cleaned);
+                    console.log('[V3-AI-ANALYZER] Parse succeeded after cleanup');
+                } catch (e3: any) {
+                    console.error('[V3-AI-ANALYZER] All parse strategies failed');
+                    console.error('[V3-AI-ANALYZER] Raw response (first 1000 chars):', aiResponseText.substring(0, 1000));
 
-            // ═══════════════════════════════════════════════════════════════
-            // ROBUSTNESS LAYER: Normalize AI Response (V5 CRITICAL FIX)
-            // ═══════════════════════════════════════════════════════════════
-            // Ensure analysisResult has the expected structure even if AI hallucinated or omitted fields
-
-            // 1. Ensure 'resumen_ejecutivo' exists
-            if (!analysisResult.resumen_ejecutivo) {
-                // Check for legacy/hallucinated 'conclusion_final'
-                if (analysisResult.conclusion_final) {
-                    console.warn('[V3] Normalizing schema: Mapping conclusion_final to resumen_ejecutivo');
-                    analysisResult.resumen_ejecutivo = {
-                        titular: analysisResult.conclusion_final.razon_principal || "Análisis completado",
-                        veredicto: analysisResult.conclusion_final.veredicto || "OBSERVAR",
-                        confianza_global: analysisResult.conclusion_final.nivel_confianza || "MEDIA",
-                        picks_principales: []
+                    // Fallback: extraer datos parciales del texto crudo
+                    analysisResult = {
+                        resumen_ejecutivo: {
+                            titular: "Análisis completado con datos parciales",
+                            veredicto: "OBSERVAR",
+                            confianza_global: "BAJA",
+                            picks_principales: []
+                        },
+                        pronosticos: [],
+                        analisis_profundo: {
+                            razonamiento_central: aiResponseText.substring(0, 2000)
+                        }
                     };
-                } else {
-                    // Total failure fallback
-                    analysisResult.resumen_ejecutivo = {
-                        titular: "Análisis completado (Datos insuficientes)",
-                        veredicto: "OBSERVAR",
-                        confianza_global: "BAJA",
-                        picks_principales: []
-                    };
+                    // Intentar rescatar titular y veredicto del texto crudo
+                    const titularMatch = aiResponseText.match(/"titular"\s*:\s*"([^"]+)"/);
+                    if (titularMatch) analysisResult.resumen_ejecutivo.titular = titularMatch[1];
+                    const veredictoMatch = aiResponseText.match(/"veredicto"\s*:\s*"(APOSTAR|NO_BET|OBSERVAR)"/);
+                    if (veredictoMatch) analysisResult.resumen_ejecutivo.veredicto = veredictoMatch[1];
                 }
             }
+        }
 
-            // 2. Ensure 'titular' is populated (Critical for Frontend Adapter)
-            if (!analysisResult.resumen_ejecutivo.titular) {
-                analysisResult.resumen_ejecutivo.titular = analysisResult.resumen_ejecutivo.frase_principal || "Análisis de Inteligencia Finalizado";
-            }
+        // ═══════════════════════════════════════════════════════════════
+        // ROBUSTNESS LAYER: Normalize AI Response (V5 CRITICAL FIX)
+        // ═══════════════════════════════════════════════════════════════
+        // Ensure analysisResult has the expected structure even if AI hallucinated or omitted fields
 
-            // 3. Ensure 'veredicto' is valid
-            if (!['APOSTAR', 'NO_BET', 'OBSERVAR'].includes(analysisResult.resumen_ejecutivo.veredicto)) {
-                analysisResult.resumen_ejecutivo.veredicto = 'OBSERVAR';
-            }
-
-            // 4. Ensure 'picks_principales' is array
-            if (!Array.isArray(analysisResult.resumen_ejecutivo.picks_principales)) {
-                analysisResult.resumen_ejecutivo.picks_principales = [];
-            }
-
-            // 5. Ensure 'analisis_profundo' exists
-            if (!analysisResult.analisis_profundo) {
-                analysisResult.analisis_profundo = {};
-            }
-
-            // ═══════════════════════════════════════════════════════════════
-            // DEEP NORMALIZATION LAYER (GEMINI 2.5 HALLUCINATION FIX)
-            // ═══════════════════════════════════════════════════════════════
-
-            // FIX 1: Map 'pronosticos_listado' (Hallucinated) to 'pronosticos' (Standard)
-            if (!analysisResult.pronosticos && Array.isArray(analysisResult.pronosticos_listado)) {
-                console.warn('[V3] Normalizing: Mapping pronosticos_listado -> pronosticos');
-                analysisResult.pronosticos = analysisResult.pronosticos_listado;
-            }
-
-            // FIX 2: Map 'probabilidades_derbix' or 'probabilities' to 'pronosticos' if array is empty
-            const probSource = analysisResult.probabilidades_derbix || analysisResult.probabilities || analysisResult.probabilidades;
-            if ((!analysisResult.pronosticos || analysisResult.pronosticos.length === 0) && probSource) {
-                console.warn('[V3] Normalizing: Extracting probabilities from object source:', Object.keys(probSource));
-                analysisResult.pronosticos = [];
-
-                // Map known keys to picks
-                const mapKeyToPick = (key: string, label: string) => {
-                    if (probSource[key] !== undefined) {
-                        const valStr = String(probSource[key]).replace('%', '');
-                        const val = parseFloat(valStr);
-
-                        // Determinar selección basada en key
-                        let seleccion = "Sí";
-                        if (key.includes('home') || key.includes('local')) seleccion = datasets.home_team || 'Local';
-                        if (key.includes('away') || key.includes('visit')) seleccion = datasets.away_team || 'Visita';
-                        if (key.includes('draw') || key.includes('empate')) seleccion = "Empate";
-                        if (key.includes('over')) seleccion = "Más de 2.5";
-                        if (key.includes('under')) seleccion = "Menos de 2.5";
-
-                        if (!isNaN(val) && val > 0) {
-                            analysisResult.pronosticos.push({
-                                mercado: label,
-                                seleccion: seleccion,
-                                probabilidad_calculada_porcentaje: val,
-                                justificacion: {
-                                    estadistica: "Alta probabilidad detectada por modelo Derbix.",
-                                    tactica: "Ineficiencia en cuotas detectada."
-                                }
-                            });
-                        }
-                    }
+        // 1. Ensure 'resumen_ejecutivo' exists
+        if (!analysisResult.resumen_ejecutivo) {
+            // Check for legacy/hallucinated 'conclusion_final'
+            if (analysisResult.conclusion_final) {
+                console.warn('[V3] Normalizing schema: Mapping conclusion_final to resumen_ejecutivo');
+                analysisResult.resumen_ejecutivo = {
+                    titular: analysisResult.conclusion_final.razon_principal || "Análisis completado",
+                    veredicto: analysisResult.conclusion_final.veredicto || "OBSERVAR",
+                    confianza_global: analysisResult.conclusion_final.nivel_confianza || "MEDIA",
+                    picks_principales: []
                 };
-
-                // Intentar todas las variaciones posibles de keys
-                const keys = Object.keys(probSource);
-                keys.forEach(k => {
-                    const lowerK = k.toLowerCase();
-                    if (lowerK.includes('home') || lowerK.includes('local')) mapKeyToPick(k, 'Ganador del Partido (1X2)');
-                    else if (lowerK.includes('away') || lowerK.includes('visit')) mapKeyToPick(k, 'Ganador del Partido (1X2)');
-                    else if (lowerK.includes('draw') || lowerK.includes('empate')) mapKeyToPick(k, 'Ganador del Partido (1X2)');
-                    else if (lowerK.includes('btts') || lowerK.includes('ambos')) mapKeyToPick(k, 'Ambos Equipos Anotan (BTTS)');
-                    else if (lowerK.includes('over') || lowerK.includes('mas')) mapKeyToPick(k, 'Total de Goles (Over/Under)');
-                    else if (lowerK.includes('under') || lowerK.includes('menos')) mapKeyToPick(k, 'Total de Goles (Over/Under)');
-                });
-
-                // Filtrar solo las mejores para no saturar
-                analysisResult.pronosticos = analysisResult.pronosticos.filter((p: any) => p.probabilidad_calculada_porcentaje > 45);
-            }
-
-            // 6. Ensure 'pronosticos' exists and is normalized (EXISTING LOGIC)
-            if (!Array.isArray(analysisResult.pronosticos)) {
-                analysisResult.pronosticos = [];
             } else {
-                // NORMALIZE PREDICTIONS (Map synonyms and fix types)
-                analysisResult.pronosticos = analysisResult.pronosticos.map((p: any) => {
-                    const prob = p.probabilidad_calculada_porcentaje || p.probabilidad || p.probability || p.confidence_score || p.probabilidad_estimada || 50;
-                    const edge = p.edge_porcentaje || p.edge || p.valor || 0;
-
-                    // ROBUST ODDS EXTRACTION
-                    const rawOdds = p.cuota_actual || p.cuota || p.odds || p.odd || p.price || 1.0;
-                    const odds = typeof rawOdds === 'string' ? parseFloat(rawOdds) : rawOdds;
-
-                    return {
-                        ...p,
-                        mercado: p.mercado || "Mercado Principal",
-                        seleccion: p.seleccion || "Seleccion",
-                        probabilidad_calculada_porcentaje: typeof prob === 'string' ? parseFloat(prob.replace('%', '')) : prob,
-                        probabilidad_implicita_porcentaje: p.probabilidad_implicita_porcentaje || 50,
-                        edge_porcentaje: typeof edge === 'string' ? parseFloat(edge) : edge,
-                        cuota_actual: odds,
-                        justificacion: p.justificacion || p.justificacion_detallada || { estadistica: "N/A", tactica: "N/A" }
-                    };
-                });
-            }
-
-        } catch (parseError: any) {
-            // JSON5 parsing failed - create a fallback response
-            console.error('[V3-AI-ANALYZER] Failed to parse AI response:', parseError.message);
-            console.error('[V3-AI-ANALYZER] Raw response was:', aiResponseText.substring(0, 500));
-
-            // Create minimal valid structure
-            analysisResult = {
-                resumen_ejecutivo: {
-                    titular: "Error de parseo en respuesta IA",
+                // Total failure fallback
+                analysisResult.resumen_ejecutivo = {
+                    titular: "Análisis completado (Datos insuficientes)",
                     veredicto: "OBSERVAR",
                     confianza_global: "BAJA",
                     picks_principales: []
-                },
-                pronosticos: [],
-                analisis_profundo: {}
+                };
+            }
+        }
+
+        // 2. Ensure 'titular' is populated (Critical for Frontend Adapter)
+        if (!analysisResult.resumen_ejecutivo.titular) {
+            analysisResult.resumen_ejecutivo.titular = analysisResult.resumen_ejecutivo.frase_principal || "Análisis de Inteligencia Finalizado";
+        }
+
+        // 3. Ensure 'veredicto' is valid
+        if (!['APOSTAR', 'NO_BET', 'OBSERVAR'].includes(analysisResult.resumen_ejecutivo.veredicto)) {
+            analysisResult.resumen_ejecutivo.veredicto = 'OBSERVAR';
+        }
+
+        // 4. Ensure 'picks_principales' is array
+        if (!Array.isArray(analysisResult.resumen_ejecutivo.picks_principales)) {
+            analysisResult.resumen_ejecutivo.picks_principales = [];
+        }
+
+        // 5. Ensure 'analisis_profundo' exists
+        if (!analysisResult.analisis_profundo) {
+            analysisResult.analisis_profundo = {};
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // DEEP NORMALIZATION LAYER (GEMINI 2.5 HALLUCINATION FIX)
+        // ═══════════════════════════════════════════════════════════════
+
+        // FIX 1: Map 'pronosticos_listado' (Hallucinated) to 'pronosticos' (Standard)
+        if (!analysisResult.pronosticos && Array.isArray(analysisResult.pronosticos_listado)) {
+            console.warn('[V3] Normalizing: Mapping pronosticos_listado -> pronosticos');
+            analysisResult.pronosticos = analysisResult.pronosticos_listado;
+        }
+
+        // FIX 2: Map 'probabilidades_derbix' or 'probabilities' to 'pronosticos' if array is empty
+        const probSource = analysisResult.probabilidades_derbix || analysisResult.probabilities || analysisResult.probabilidades;
+        if ((!analysisResult.pronosticos || analysisResult.pronosticos.length === 0) && probSource) {
+            console.warn('[V3] Normalizing: Extracting probabilities from object source:', Object.keys(probSource));
+            analysisResult.pronosticos = [];
+
+            // Map known keys to picks
+            const mapKeyToPick = (key: string, label: string) => {
+                if (probSource[key] !== undefined) {
+                    const valStr = String(probSource[key]).replace('%', '');
+                    const val = parseFloat(valStr);
+
+                    // Determinar selección basada en key
+                    let seleccion = "Sí";
+                    if (key.includes('home') || key.includes('local')) seleccion = datasets.home_team || 'Local';
+                    if (key.includes('away') || key.includes('visit')) seleccion = datasets.away_team || 'Visita';
+                    if (key.includes('draw') || key.includes('empate')) seleccion = "Empate";
+                    if (key.includes('over')) seleccion = "Más de 2.5";
+                    if (key.includes('under')) seleccion = "Menos de 2.5";
+
+                    if (!isNaN(val) && val > 0) {
+                        analysisResult.pronosticos.push({
+                            mercado: label,
+                            seleccion: seleccion,
+                            probabilidad_calculada_porcentaje: val,
+                            justificacion: {
+                                estadistica: "Alta probabilidad detectada por modelo Derbix.",
+                                tactica: "Ineficiencia en cuotas detectada."
+                            }
+                        });
+                    }
+                }
             };
+
+            // Intentar todas las variaciones posibles de keys
+            const keys = Object.keys(probSource);
+            keys.forEach(k => {
+                const lowerK = k.toLowerCase();
+                if (lowerK.includes('home') || lowerK.includes('local')) mapKeyToPick(k, 'Ganador del Partido (1X2)');
+                else if (lowerK.includes('away') || lowerK.includes('visit')) mapKeyToPick(k, 'Ganador del Partido (1X2)');
+                else if (lowerK.includes('draw') || lowerK.includes('empate')) mapKeyToPick(k, 'Ganador del Partido (1X2)');
+                else if (lowerK.includes('btts') || lowerK.includes('ambos')) mapKeyToPick(k, 'Ambos Equipos Anotan (BTTS)');
+                else if (lowerK.includes('over') || lowerK.includes('mas')) mapKeyToPick(k, 'Total de Goles (Over/Under)');
+                else if (lowerK.includes('under') || lowerK.includes('menos')) mapKeyToPick(k, 'Total de Goles (Over/Under)');
+            });
+
+            // Filtrar solo las mejores para no saturar
+            analysisResult.pronosticos = analysisResult.pronosticos.filter((p: any) => p.probabilidad_calculada_porcentaje > 45);
+        }
+
+        // 6. Ensure 'pronosticos' exists and is normalized (EXISTING LOGIC)
+        if (!Array.isArray(analysisResult.pronosticos)) {
+            analysisResult.pronosticos = [];
+        } else {
+            // NORMALIZE PREDICTIONS (Map synonyms and fix types)
+            analysisResult.pronosticos = analysisResult.pronosticos.map((p: any) => {
+                const prob = p.probabilidad_calculada_porcentaje || p.probabilidad || p.probability || p.confidence_score || p.probabilidad_estimada || 50;
+                const edge = p.edge_porcentaje || p.edge || p.valor || 0;
+
+                // ROBUST ODDS EXTRACTION
+                const rawOdds = p.cuota_actual || p.cuota || p.odds || p.odd || p.price || 1.0;
+                const odds = typeof rawOdds === 'string' ? parseFloat(rawOdds) : rawOdds;
+
+                return {
+                    ...p,
+                    mercado: p.mercado || "Mercado Principal",
+                    seleccion: p.seleccion || "Seleccion",
+                    probabilidad_calculada_porcentaje: typeof prob === 'string' ? parseFloat(prob.replace('%', '')) : prob,
+                    probabilidad_implicita_porcentaje: p.probabilidad_implicita_porcentaje || 50,
+                    edge_porcentaje: typeof edge === 'string' ? parseFloat(edge) : edge,
+                    cuota_actual: odds,
+                    justificacion: p.justificacion || p.justificacion_detallada || { estadistica: "N/A", tactica: "N/A" }
+                };
+            });
         }
 
         // SAVE RESULTS
