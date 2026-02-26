@@ -1183,7 +1183,6 @@ serve(async (req) => {
                     if (parlayStatus !== 'pending' || updatedPicks.some((p: any) => p.result !== 'PENDING')) {
                         const updatePayload: any = {
                             picks: updatedPicks,
-                            updated_at: new Date().toISOString()
                         };
 
                         if (parlayStatus !== 'pending') {
@@ -1191,10 +1190,14 @@ serve(async (req) => {
                             updatePayload.verified_at = new Date().toISOString();
                         }
 
-                        await supabase
+                        const { error: updateErr } = await supabase
                             .from('parlay_combos_v2')
                             .update(updatePayload)
                             .eq('id', parlay.id);
+
+                        if (updateErr) {
+                            log(`[Verifier] ERROR updating parlay ${parlay.id.substring(0, 8)}: ${updateErr.message}`);
+                        }
 
                         if (parlayStatus !== 'pending') {
                             totalParlaysVerified++;
@@ -1619,16 +1622,19 @@ serve(async (req) => {
                     if (parlayStatus !== 'pending' || updatedPicks.some((p: any) => p.result !== 'PENDING')) {
                         const updatePayload: any = {
                             picks: updatedPicks,
-                            updated_at: new Date().toISOString()
                         };
                         if (parlayStatus !== 'pending') {
                             updatePayload.status = parlayStatus;
                             updatePayload.verified_at = new Date().toISOString();
                         }
 
-                        await supabase.from('parlay_combos_v2')
+                        const { error: catchupUpdateErr } = await supabase.from('parlay_combos_v2')
                             .update(updatePayload)
                             .eq('id', parlay.id);
+
+                        if (catchupUpdateErr) {
+                            log(`[Verifier] CATCH-UP ERROR updating parlay ${parlay.id.substring(0, 8)}: ${catchupUpdateErr.message}`);
+                        }
 
                         if (parlayStatus !== 'pending') {
                             totalParlaysVerified++;

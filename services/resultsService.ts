@@ -568,16 +568,19 @@ export async function manualOverrideParlayLeg(
     const updatePayload: any = {
         picks,
         status: parlayStatus,
-        updated_at: now,
     };
     if (parlayStatus !== 'pending') {
         updatePayload.verified_at = now;
     }
 
-    await supabase
+    const { error: updateErr } = await supabase
         .from('parlay_combos_v2')
         .update(updatePayload)
         .eq('id', parlayId);
+
+    if (updateErr) {
+        console.error('[ResultsService] Error updating parlay:', updateErr.message);
+    }
 
     // Step 5: Update profitability_tracking when parlay resolves (WON or LOST)
     if (parlayStatus === 'won' || parlayStatus === 'lost') {
