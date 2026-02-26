@@ -7,10 +7,13 @@
 -- =====================================================
 -- PASO 1: Eliminar cron jobs anteriores (si existen)
 -- =====================================================
-SELECT cron.unschedule('daily-match-scanner');
-SELECT cron.unschedule('daily-analysis-generator');
-SELECT cron.unschedule('daily-parlay-generator');
-SELECT cron.unschedule('daily-results-verifier');
+DO $$ BEGIN PERFORM cron.unschedule('daily-match-scanner'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN PERFORM cron.unschedule('daily-analysis-generator'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN PERFORM cron.unschedule('daily-parlay-generator'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN PERFORM cron.unschedule('daily-results-verifier'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN PERFORM cron.unschedule('daily-results-verifier-cron'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN PERFORM cron.unschedule('daily-results-verifier-schedule'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN PERFORM cron.unschedule('hourly-results-verifier'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- =====================================================
 -- PASO 2: Configurar nuevos cron jobs
@@ -61,15 +64,16 @@ SELECT cron.schedule(
     $$
 );
 
--- 4. VERIFICADOR DE RESULTADOS - 11:00 PM Colombia (4:00 AM UTC del día siguiente)
--- Ejecuta al final del día para verificar resultados de partidos
+-- 4. VERIFICADOR DE RESULTADOS - Cada hora (usa SportMonks API + Gemini fallback)
+-- Reemplaza daily-results-verifier (legacy, API-Football) con hourly-results-verifier (V3)
+-- Incluye: catch-up pass global, sync reports_v2→value_picks_v2, threshold 0.83
 SELECT cron.schedule(
-    'daily-results-verifier',
-    '0 4 * * *',  -- 4:00 AM UTC = 11:00 PM Colombia del día anterior
+    'hourly-results-verifier',
+    '0 * * * *',  -- Cada hora en punto
     $$
     SELECT
       net.http_post(
-          url:='https://nokejmhlpsaoerhddcyc.supabase.co/functions/v1/daily-results-verifier',
+          url:='https://nokejmhlpsaoerhddcyc.supabase.co/functions/v1/hourly-results-verifier',
           headers:='{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5va2VqbWhscHNhb2VyaGRkY3ljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTgxNjAwNywiZXhwIjoyMDgxMzkyMDA3fQ.cMBnVvWGmxyTBqLqQQtPcymKdXMqF0Xr1_EI_Y1G3ZU"}'::jsonb,
           body:='{}'::jsonb
       ) as request_id;

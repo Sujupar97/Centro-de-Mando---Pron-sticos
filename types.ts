@@ -580,6 +580,7 @@ export interface PublicResultsData {
         verified_at: string;
         league?: string;
         match_date?: string;
+        profit_loss: number;
     }>;
     bankroll?: {
         base: number;
@@ -587,6 +588,8 @@ export interface PublicResultsData {
         profit: number;
         roi: number;
         periodProfit?: number;
+        periodROI?: number;
+        periodStaked?: number;
     };
 }
 

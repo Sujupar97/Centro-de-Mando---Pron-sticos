@@ -8,6 +8,8 @@ import { getCurrentDateInBogota } from '../utils/dateUtils';
 import { AnalysisInProgressModal } from './ai/AnalysisInProgressModal';
 import { AnalysisReportModal } from './ai/AnalysisReportModal';
 import { GameCard as DetailsGameCard } from './live/GameCard';
+import FlashscoreLeagueGroup from './live/FlashscoreLeagueGroup';
+import MatchDetailModal from './live/MatchDetailModal';
 import HighProbPicks from './ai/HighProbPicks';
 import SmartParlays from './ai/SmartParlays';
 import BatchProgressBanner from './ai/BatchProgressBanner';
@@ -157,6 +159,11 @@ export const FixturesFeed: React.FC = () => {
     const [error, setError] = useState('');
     const [selectedDate, setSelectedDate] = useState(getCurrentDateInBogota());
     const [viewMode, setViewMode] = useState<'fixtures' | 'top-picks' | 'parlays' | 'profitability'>('top-picks');
+    const [resultsRefreshKey, setResultsRefreshKey] = useState(0);
+    const handlePickOverridden = useCallback(() => setResultsRefreshKey(k => k + 1), []);
+    const [showLiveOnly, setShowLiveOnly] = useState(false);
+    const [detailGame, setDetailGame] = useState<Game | null>(null);
+    const handleOpenDetail = useCallback((game: Game) => setDetailGame(game), []);
 
     // Si presentationMode se activa y estamos en tab Resultados, redirigir
     useEffect(() => {
@@ -726,6 +733,15 @@ export const FixturesFeed: React.FC = () => {
                             >
                                 <ListBulletIcon className="w-5 h-5 mr-2" /> Partidos
                             </button>
+                            {viewMode === 'fixtures' && (
+                                <button
+                                    onClick={() => setShowLiveOnly(!showLiveOnly)}
+                                    className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${showLiveOnly ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/50' : 'text-slate-500 hover:text-red-400 hover:bg-red-500/10'}`}
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                                    EN VIVO
+                                </button>
+                            )}
                             {!presentationMode && (
                                 <button
                                     onClick={() => setViewMode('profitability')}
@@ -744,6 +760,7 @@ export const FixturesFeed: React.FC = () => {
                         <HighProbPicks
                             date={selectedDate}
                             onViewReport={handleViewReport}
+                            onPickOverridden={handlePickOverridden}
                         />
                     </div>
                 ) : viewMode === 'parlays' ? (
@@ -752,7 +769,7 @@ export const FixturesFeed: React.FC = () => {
                     </div>
                 ) : viewMode === 'profitability' ? (
                     <div className="glass rounded-2xl p-6 min-h-[500px] animate-fade-in border border-white/5">
-                        <ResultadosPublic />
+                        <ResultadosPublic refreshTrigger={resultsRefreshKey} />
                     </div>
                 ) : (
                     <>
@@ -776,44 +793,58 @@ export const FixturesFeed: React.FC = () => {
                                     }}
                                 />
 
-                                {/* Ligas Importantes */}
-                                {data.importantLeagues.length > 0 && (
-                                    <div className="space-y-4">
-                                        <div className="flex items-center gap-2 px-2">
-                                            <TrophyIcon className="w-6 h-6 text-yellow-500" />
-                                            <h3 className="text-xl font-bold text-white tracking-wide uppercase">Competencias Destacadas</h3>
-                                        </div>
-                                        {data.importantLeagues.map(league => (
-                                            <LeagueSection
-                                                key={league.id}
-                                                league={league}
-                                                onAnalyzeGame={handleAnalyzeGame}
-                                                onAnalyzeLeague={() => handleAnalyzeLeague(league)}
-                                                onViewReport={(gameId) => handleViewReport(gameId)}
-                                                gameJobStatus={gameJobStatus}
-                                                reportsAvailable={reportsAvailable}
-                                                userRole={isImpersonating ? 'user' : profile?.role}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
+                                {/* Flashscore-style league groups */}
+                                {(() => {
+                                    // Flatten all leagues into a single list
+                                    const allLeagues = [
+                                        ...data.importantLeagues,
+                                        ...data.countryLeagues.flatMap(c => c.leagues)
+                                    ];
 
-                                {/* Paises */}
-                                <div className="space-y-4">
-                                    <h3 className="text-lg font-bold text-slate-400 px-2 uppercase tracking-wide">Internacional</h3>
-                                    {data.countryLeagues.map((country, countryIndex) => (
-                                        <CountrySection
-                                            key={`${country.name}-${countryIndex}`}
-                                            country={country}
-                                            onAnalyzeGame={handleAnalyzeGame}
-                                            onAnalyzeLeague={handleAnalyzeLeague}
-                                            onViewReport={handleViewReport}
-                                            gameJobStatus={gameJobStatus}
-                                            reportsAvailable={reportsAvailable}
-                                            userRole={isImpersonating ? 'user' : profile?.role}
-                                        />
-                                    ))}
-                                </div>
+                                    // Filter live only if toggle is active
+                                    const filteredLeagues = showLiveOnly
+                                        ? allLeagues
+                                            .map(league => ({
+                                                ...league,
+                                                games: league.games.filter(g =>
+                                                    g.fixture.status.elapsed !== null &&
+                                                    g.fixture.status.short !== 'FT' &&
+                                                    g.fixture.status.short !== 'AET' &&
+                                                    g.fixture.status.short !== 'PEN'
+                                                )
+                                            }))
+                                            .filter(league => league.games.length > 0)
+                                        : allLeagues;
+
+                                    if (filteredLeagues.length === 0) {
+                                        return (
+                                            <div className="text-center py-16">
+                                                <SignalIcon className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                                                <p className="text-slate-400 text-sm">
+                                                    {showLiveOnly ? 'No hay partidos en vivo en este momento.' : 'No hay partidos disponibles para esta fecha.'}
+                                                </p>
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div className="space-y-2">
+                                            {filteredLeagues.map(league => (
+                                                <FlashscoreLeagueGroup
+                                                    key={league.id}
+                                                    league={league}
+                                                    gameJobStatus={gameJobStatus}
+                                                    reportsAvailable={reportsAvailable}
+                                                    userRole={isImpersonating ? 'user' : profile?.role}
+                                                    onOpenDetail={handleOpenDetail}
+                                                    onAnalyzeGame={handleAnalyzeGame}
+                                                    onAnalyzeLeague={() => handleAnalyzeLeague(league)}
+                                                    onViewReport={handleViewReport}
+                                                />
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         )}
                     </>
@@ -822,6 +853,23 @@ export const FixturesFeed: React.FC = () => {
 
             <AnalysisInProgressModal job={currentJob} isOpen={isJobModalOpen} />
             <AnalysisReportModal analysis={viewingResult} onClose={handleCloseReport} />
+
+            {/* Match Detail Modal (Flashscore-style) */}
+            {detailGame && (
+                <MatchDetailModal
+                    game={detailGame}
+                    onClose={() => setDetailGame(null)}
+                    hasReport={!!reportsAvailable[detailGame.fixture.id]}
+                    onViewReport={() => {
+                        setDetailGame(null);
+                        handleViewReport(detailGame.fixture.id);
+                    }}
+                    onAnalyze={() => {
+                        handleAnalyzeGame(detailGame);
+                    }}
+                    userRole={isImpersonating ? 'user' : profile?.role}
+                />
+            )}
 
             {/* Modal de Upgrade */}
             <UpgradePlanModal

@@ -36,9 +36,10 @@ interface HighProbPick {
 interface HighProbPicksProps {
     date: string;
     onViewReport?: (jobId: string, fixtureId: number) => void;
+    onPickOverridden?: () => void;
 }
 
-const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => {
+const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport, onPickOverridden }) => {
     const { profile } = useAuth();
     const { plan, isAdmin: isSubAdmin, trackUsage } = useSubscription();
     const { presentationMode } = usePresentationMode();
@@ -268,6 +269,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport }) => 
                                     setSingles(prev => prev.map(p =>
                                         p.id === pick.id ? { ...p, result, actual_score: `Manual: ${result}`, verified_at: new Date().toISOString() } : p
                                     ));
+                                    onPickOverridden?.();
                                 } catch (err: any) {
                                     console.error('[HighProbPicks] Override error:', err);
                                     alert(`Error: ${err.message}`);

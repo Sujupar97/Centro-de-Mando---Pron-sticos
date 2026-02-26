@@ -83,17 +83,33 @@ serve(async (req) => {
     const GEMINI_MODEL = 'gemini-3.1-pro-preview';
 
     try {
-        const { job_id, fixture_id, payload } = await req.json();
-        if (!job_id || !fixture_id || !payload) {
-            throw new Error('job_id, fixture_id, and payload are required');
-        }
-
-        console.log(`[PARLAY-ANALYZER] Starting for fixture: ${fixture_id}, job: ${job_id}`);
-
         const sbUrl = Deno.env.get('SUPABASE_URL')!;
         const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const geminiKey = Deno.env.get('GEMINI_API_KEY')!;
         const supabase = createClient(sbUrl, sbKey);
+
+        let { job_id, fixture_id, payload } = await req.json();
+        if (!job_id || !fixture_id) {
+            throw new Error('job_id and fixture_id are required');
+        }
+
+        // Fallback: leer payload de etl_context en la DB si no vino en el request
+        if (!payload) {
+            console.log(`[PARLAY-ANALYZER] Payload not in request, reading from DB...`);
+            const { data: jobData, error: jobErr } = await supabase
+                .from('analysis_jobs_v2')
+                .select('etl_context, fixture_id')
+                .eq('id', job_id)
+                .single();
+            if (jobErr || !jobData?.etl_context) {
+                throw new Error(`Cannot read etl_context for job ${job_id}: ${jobErr?.message || 'no data'}`);
+            }
+            payload = jobData.etl_context;
+            fixture_id = jobData.fixture_id || fixture_id;
+            console.log(`[PARLAY-ANALYZER] Payload loaded from DB`);
+        }
+
+        console.log(`[PARLAY-ANALYZER] Starting for fixture: ${fixture_id}, job: ${job_id}`);
 
         // Update job status
         await supabase

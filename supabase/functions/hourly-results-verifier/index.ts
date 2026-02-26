@@ -3,7 +3,9 @@
 // CRON: Every hour (0 * * * *) — verifies picks and parlays using SportMonks API
 // Falls back to Gemini for complex markets (corners, cards, handicaps, combined markets)
 // V2: Fixed team abbreviation matching, combined market detection, Double Chance "o Empate",
-//     null→PENDING (not VOID), MAX_GEMINI_CALLS raised to 20
+//     null→PENDING (not VOID), MAX_GEMINI_CALLS raised to 40
+// V3: Catch-up pass for ALL pending picks (any date), sync reports_v2→value_picks_v2,
+//     profitability threshold aligned to 0.83
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -536,7 +538,8 @@ serve(async (req) => {
         let totalPicksVerified = 0;
         let totalParlaysVerified = 0;
         let totalGeminiCalls = 0;
-        const MAX_GEMINI_CALLS = 20;
+        const MAX_GEMINI_CALLS = 40;
+        const processedFixtureIds = new Set<number>();
 
         for (const checkDate of datesToCheck) {
             log(`[Verifier] ═══ Processing date: ${checkDate} ═══`);
@@ -558,6 +561,102 @@ serve(async (req) => {
             const fixtureIds = dailyMatches.map(m => m.api_fixture_id);
             const matchMap = new Map<number, any>();
             dailyMatches.forEach(m => matchMap.set(m.api_fixture_id, m));
+
+            // ───────────────────────────────────────────────────────────
+            // STEP 1.5: SYNC picks from reports_v2 → value_picks_v2
+            // Ensures picks that only exist in reports are available for verification
+            // ───────────────────────────────────────────────────────────
+            try {
+                const { data: reportsForDate } = await supabase
+                    .from('reports_v2')
+                    .select('job_id, fixture_id, report_packet')
+                    .in('fixture_id', fixtureIds);
+
+                if (reportsForDate && reportsForDate.length > 0) {
+                    const { data: existingVPs } = await supabase
+                        .from('value_picks_v2')
+                        .select('fixture_id, market, selection')
+                        .in('fixture_id', fixtureIds);
+
+                    const existingKeys = new Set<string>();
+                    (existingVPs || []).forEach((vp: any) => {
+                        existingKeys.add(`${vp.fixture_id}_${(vp.market || '').toLowerCase()}_${(vp.selection || '').toLowerCase()}`);
+                    });
+
+                    const toInsert: any[] = [];
+                    for (const report of reportsForDate) {
+                        let packet: any;
+                        try {
+                            packet = typeof report.report_packet === 'string'
+                                ? JSON.parse(report.report_packet)
+                                : report.report_packet;
+                        } catch { continue; }
+                        if (!packet) continue;
+
+                        const pronosticos = packet.pronosticos
+                            || packet.predicciones_finales?.detalle
+                            || [];
+                        if (!Array.isArray(pronosticos)) continue;
+
+                        for (const p of pronosticos) {
+                            // Extract probability
+                            const probRaw = p.probabilidad_calculada_porcentaje
+                                || p.probabilidad_estimado_porcentaje
+                                || p.probabilidad_derbix
+                                || p.probabilidad
+                                || p.probability
+                                || p.confidence_score
+                                || 0;
+                            let prob = typeof probRaw === 'string'
+                                ? parseFloat(probRaw.replace('%', ''))
+                                : probRaw;
+                            if (prob > 0 && prob < 1) prob *= 100;
+                            if (prob < 83) continue;
+
+                            // Extract odds
+                            const oddsRaw = p.cuota_actual || p.cuota || p.odds || p.odd || 0;
+                            const odds = typeof oddsRaw === 'string' ? parseFloat(oddsRaw) : oddsRaw;
+                            if (!odds || odds < 1.40) continue;
+
+                            // Extract market & selection
+                            const market = p.mercado || p.market || '';
+                            const selection = p.seleccion || p.selection || '';
+                            if (!market || !selection) continue;
+
+                            const key = `${report.fixture_id}_${market.toLowerCase()}_${selection.toLowerCase()}`;
+                            if (existingKeys.has(key)) continue;
+                            existingKeys.add(key);
+
+                            toInsert.push({
+                                job_id: report.job_id,
+                                fixture_id: report.fixture_id,
+                                market,
+                                selection,
+                                p_model: prob / 100,
+                                odds,
+                                decision: 'BET',
+                                confidence: 8,
+                                engine_version: 'V8-SYNC-VERIFIER',
+                                result: 'PENDING',
+                                created_at: new Date().toISOString(),
+                            });
+                        }
+                    }
+
+                    if (toInsert.length > 0) {
+                        const { error: syncErr } = await supabase
+                            .from('value_picks_v2')
+                            .insert(toInsert);
+                        if (syncErr) {
+                            log(`[Verifier] SYNC: Error inserting ${toInsert.length} picks: ${syncErr.message}`);
+                        } else {
+                            log(`[Verifier] SYNC: Inserted ${toInsert.length} missing picks from reports_v2 for ${checkDate}`);
+                        }
+                    }
+                }
+            } catch (syncError: any) {
+                log(`[Verifier] SYNC: Non-blocking error: ${syncError.message}`);
+            }
 
             // Get pending picks for these fixtures
             const { data: pendingPicks } = await supabase
@@ -592,6 +691,7 @@ serve(async (req) => {
             let runningBankroll = lastBankroll?.bankroll_after || 100;
 
             for (const fixtureId of uniqueFixtureIds) {
+                processedFixtureIds.add(fixtureId);
                 const match = matchMap.get(fixtureId);
                 if (!match) continue;
 
@@ -753,11 +853,11 @@ serve(async (req) => {
 
                     // ───────────────────────────────────────────────────────
                     // STEP 4: Update profitability_tracking
-                    // ONLY for Oportunidades: p_model >= 0.80 AND odds >= 1.40
+                    // ONLY for Oportunidades: p_model >= 0.83 AND odds >= 1.40
                     // ───────────────────────────────────────────────────────
                     try {
                         const pickProb = pick.p_model > 1 ? pick.p_model / 100 : pick.p_model;
-                        const isOportunidad = pickProb >= 0.80 && pick.odds && pick.odds >= 1.40;
+                        const isOportunidad = pickProb >= 0.83 && pick.odds && pick.odds >= 1.40;
 
                         if (isOportunidad) {
                             const pickIdentifier = `${pick.job_id}_${pick.market}_${pick.selection}`;
@@ -895,7 +995,226 @@ serve(async (req) => {
         }
 
         // ───────────────────────────────────────────────────────────
-        // STEP 6: Update verification run log
+        // STEP 6: CATCH-UP PASS — Verify ALL globally PENDING picks
+        // Catches picks from dates beyond the normal 3-day window
+        // ───────────────────────────────────────────────────────────
+        try {
+            log(`[Verifier] ═══ CATCH-UP: Scanning ALL pending picks globally ═══`);
+
+            const { data: globalPending } = await supabase
+                .from('value_picks_v2')
+                .select('id, job_id, fixture_id, market, selection, p_model, odds, confidence')
+                .eq('result', 'PENDING')
+                .limit(500);
+
+            // Filter out fixtures already processed in the main loop
+            const catchupPicks = (globalPending || []).filter(
+                (p: any) => !processedFixtureIds.has(p.fixture_id)
+            );
+            const catchupFixtureIds = [...new Set(catchupPicks.map((p: any) => p.fixture_id))];
+
+            if (catchupFixtureIds.length > 0) {
+                log(`[Verifier] CATCH-UP: ${catchupPicks.length} pending picks across ${catchupFixtureIds.length} unprocessed fixtures`);
+
+                // Limit to 50 fixtures per run to avoid timeouts
+                const fixturesToProcess = catchupFixtureIds.slice(0, 50);
+
+                // Get daily_matches info (no date filter — any date)
+                const { data: catchupMatches } = await supabase
+                    .from('daily_matches')
+                    .select('api_fixture_id, home_team, away_team, league_name, match_status, home_score, away_score, match_date')
+                    .in('api_fixture_id', fixturesToProcess);
+
+                if (catchupMatches && catchupMatches.length > 0) {
+                    const catchupMatchMap = new Map<number, any>();
+                    catchupMatches.forEach((m: any) => catchupMatchMap.set(m.api_fixture_id, m));
+
+                    const finishedStatuses = ['FT', 'AET', 'PEN', 'POSTP', 'POST', 'PST', 'CANC', 'ABD', 'AWD', 'WO'];
+                    const voidStatuses = ['POSTP', 'POST', 'PST', 'CANC', 'ABD', 'AWD', 'WO'];
+
+                    // Get running bankroll for profitability tracking
+                    const { data: latestBankroll } = await supabase
+                        .from('profitability_tracking')
+                        .select('bankroll_after')
+                        .not('bankroll_after', 'is', null)
+                        .neq('result', 'pending')
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+                    let catchupBankroll = latestBankroll?.bankroll_after || 100;
+
+                    for (const fixtureId of fixturesToProcess) {
+                        const match = catchupMatchMap.get(fixtureId);
+                        if (!match) continue;
+
+                        let homeScore = match.home_score;
+                        let awayScore = match.away_score;
+                        let matchStatus = match.match_status;
+                        let fixtureData: any = null;
+
+                        // If match not finished in DB, fetch from SportMonks
+                        if (!finishedStatuses.includes(matchStatus)) {
+                            fixtureData = await getFixtureComplete(fixtureId);
+                            if (!fixtureData) continue;
+
+                            const extracted = extractScores(fixtureData);
+                            matchStatus = extracted.status;
+
+                            if (extracted.homeScore !== null && extracted.awayScore !== null) {
+                                homeScore = extracted.homeScore;
+                                awayScore = extracted.awayScore;
+                                await supabase
+                                    .from('daily_matches')
+                                    .update({ home_score: homeScore, away_score: awayScore, match_status: matchStatus })
+                                    .eq('api_fixture_id', fixtureId)
+                                    .eq('match_date', match.match_date);
+                            }
+                            totalFixturesChecked++;
+                            await new Promise(r => setTimeout(r, 100));
+                        }
+
+                        // VOID picks for postponed/cancelled matches
+                        if (voidStatuses.includes(matchStatus)) {
+                            const voidPicks = catchupPicks.filter((p: any) => p.fixture_id === fixtureId);
+                            for (const pick of voidPicks) {
+                                await supabase.from('value_picks_v2')
+                                    .update({ result: 'VOID', verified_at: new Date().toISOString(), actual_score: matchStatus })
+                                    .eq('id', pick.id);
+                                await supabase.from('pick_results_v2')
+                                    .upsert({ pick_id: pick.id, fixture_id: fixtureId, result: 'VOID', actual_score: matchStatus,
+                                        league_name: match.league_name, home_team: match.home_team, away_team: match.away_team,
+                                        verified_at: new Date().toISOString() }, { onConflict: 'pick_id' });
+                                totalPicksVerified++;
+                                log(`[Verifier] CATCH-UP VOID (${matchStatus}): ${match.home_team} vs ${match.away_team} | ${pick.market}`);
+                            }
+                            continue;
+                        }
+
+                        // Skip if not finished
+                        if (!['FT', 'AET', 'PEN'].includes(matchStatus)) continue;
+                        if (homeScore === null || awayScore === null) continue;
+
+                        const fixturePicks = catchupPicks.filter((p: any) => p.fixture_id === fixtureId);
+                        const actualScore = `${homeScore}-${awayScore}`;
+
+                        // Get stats
+                        let matchStats = {
+                            homeCorners: null as number | null, awayCorners: null as number | null,
+                            homeYellowCards: null as number | null, awayYellowCards: null as number | null,
+                            homeRedCards: null as number | null, awayRedCards: null as number | null,
+                            homeShotsOnTarget: null as number | null, awayShotsOnTarget: null as number | null,
+                        };
+                        if (fixtureData) {
+                            matchStats = extractStats(fixtureData);
+                        } else {
+                            const fullData = await getFixtureComplete(fixtureId);
+                            if (fullData) {
+                                matchStats = extractStats(fullData);
+                                totalFixturesChecked++;
+                                await new Promise(r => setTimeout(r, 100));
+                            }
+                        }
+
+                        for (const pick of fixturePicks) {
+                            let isWon = evaluatePickResult(
+                                pick.market, pick.selection,
+                                homeScore, awayScore,
+                                match.home_team, match.away_team,
+                                matchStats
+                            );
+
+                            let method: 'rule-based' | 'gemini' = 'rule-based';
+
+                            if (isWon === null && totalGeminiCalls < MAX_GEMINI_CALLS) {
+                                isWon = await evaluateWithGemini(
+                                    pick.market, pick.selection,
+                                    match.home_team, match.away_team,
+                                    homeScore, awayScore, matchStats
+                                );
+                                totalGeminiCalls++;
+                                method = 'gemini';
+                            }
+
+                            if (isWon === null) {
+                                log(`[Verifier] CATCH-UP SKIP: ${pick.market} | ${pick.selection}`);
+                                continue;
+                            }
+
+                            const result = isWon ? 'WON' : 'LOST';
+
+                            await supabase.from('value_picks_v2')
+                                .update({ result, verified_at: new Date().toISOString(), actual_score: actualScore })
+                                .eq('id', pick.id);
+
+                            await supabase.from('pick_results_v2')
+                                .upsert({
+                                    pick_id: pick.id, fixture_id: fixtureId, result, actual_score: actualScore,
+                                    league_name: match.league_name, home_team: match.home_team, away_team: match.away_team,
+                                    verified_at: new Date().toISOString()
+                                }, { onConflict: 'pick_id' });
+
+                            // Profitability tracking (same logic as main loop)
+                            try {
+                                const pickProb = pick.p_model > 1 ? pick.p_model / 100 : pick.p_model;
+                                const isOportunidad = pickProb >= 0.83 && pick.odds && pick.odds >= 1.40;
+
+                                if (isOportunidad) {
+                                    const pickIdentifier = `${pick.job_id}_${pick.market}_${pick.selection}`;
+                                    const { data: existingAny } = await supabase
+                                        .from('profitability_tracking')
+                                        .select('id, result, stake_amount, odds')
+                                        .eq('fixture_id', fixtureId)
+                                        .or(`pick_id.eq.${pickIdentifier},pick_id.eq.vp_${pickIdentifier}`)
+                                        .limit(1)
+                                        .maybeSingle();
+
+                                    if (existingAny) {
+                                        if (existingAny.result === 'pending') {
+                                            const profitLoss = isWon
+                                                ? existingAny.stake_amount * ((existingAny.odds || 1) - 1)
+                                                : -existingAny.stake_amount;
+                                            catchupBankroll += profitLoss;
+                                            await supabase.from('profitability_tracking')
+                                                .update({ result: result.toLowerCase(), profit_loss: profitLoss,
+                                                    bankroll_after: catchupBankroll, verified_at: new Date().toISOString() })
+                                                .eq('id', existingAny.id);
+                                        }
+                                    } else {
+                                        const { percentage, tier } = calculateStake('oportunidad');
+                                        const stakeAmount = (catchupBankroll * percentage) / 100;
+                                        const profitLoss = isWon ? stakeAmount * (pick.odds - 1) : -stakeAmount;
+                                        catchupBankroll += profitLoss;
+                                        await supabase.from('profitability_tracking')
+                                            .insert({
+                                                date: match.match_date, pick_id: pickIdentifier, job_id: pick.job_id,
+                                                fixture_id: fixtureId, home_team: match.home_team, away_team: match.away_team,
+                                                market: pick.market, selection: pick.selection, odds: pick.odds,
+                                                probability: pickProb * 100, confidence_tier: tier,
+                                                stake_percentage: percentage, stake_amount: stakeAmount,
+                                                result: result.toLowerCase(), profit_loss: profitLoss,
+                                                bankroll_after: catchupBankroll, pick_type: 'oportunidad',
+                                                verified_at: new Date().toISOString()
+                                            });
+                                    }
+                                }
+                            } catch (profitErr: any) {
+                                log(`[Verifier] CATCH-UP profitability error (non-blocking): ${profitErr.message}`);
+                            }
+
+                            totalPicksVerified++;
+                            log(`[Verifier] CATCH-UP ${result} (${method}): ${match.home_team} vs ${match.away_team} | ${pick.market} → ${pick.selection} | Score: ${actualScore}`);
+                        }
+                    }
+                }
+            } else {
+                log(`[Verifier] CATCH-UP: No additional pending picks found`);
+            }
+        } catch (catchupErr: any) {
+            log(`[Verifier] CATCH-UP error (non-blocking): ${catchupErr.message}`);
+        }
+
+        // ───────────────────────────────────────────────────────────
+        // STEP 7: Update verification run log
         // ───────────────────────────────────────────────────────────
         const finalStatus = totalPicksVerified > 0 || totalParlaysVerified > 0 ? 'success' : 'partial';
 

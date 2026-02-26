@@ -52,12 +52,58 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
     }
 
     // --- LOGIC TO CENTRALIZE PLAYERS ---
-    // 1. Parse grid strings and attach to object
-    const playersWithGrid = currentLineup.startXI.map(item => {
-        const grid = item.player.grid || "1:1";
-        const [r, c] = grid.split(':').map(val => parseInt(val) || 1);
-        return { ...item, gridRow: r, gridCol: c };
-    });
+    // Detect if ALL grids are null → calculate from formation string
+    const allGridsNull = currentLineup.startXI.every(item => !item.player.grid);
+
+    let playersWithGrid: { player: APILineupPlayer; gridRow: number; gridCol: number }[];
+
+    if (allGridsNull && currentLineup.formation) {
+        // Parse formation: "4-4-2" → [4, 4, 2], "4-3-1-2" → [4, 3, 1, 2]
+        const lines = currentLineup.formation.split('-').map(Number).filter(n => !isNaN(n) && n > 0);
+
+        if (lines.length > 0) {
+            // Row 1 = GK (always 1), Row 2..N+1 = field lines
+            const rowDefs = [{ count: 1 }, ...lines.map(c => ({ count: c }))];
+            playersWithGrid = [];
+            let playerIdx = 0;
+
+            for (let rowIdx = 0; rowIdx < rowDefs.length && playerIdx < currentLineup.startXI.length; rowIdx++) {
+                const { count } = rowDefs[rowIdx];
+                for (let col = 1; col <= count && playerIdx < currentLineup.startXI.length; col++) {
+                    playersWithGrid.push({
+                        player: currentLineup.startXI[playerIdx].player,
+                        gridRow: rowIdx + 1,
+                        gridCol: col
+                    });
+                    playerIdx++;
+                }
+            }
+
+            // Remaining players (if formation doesn't sum to 10+1)
+            while (playerIdx < currentLineup.startXI.length) {
+                playersWithGrid.push({
+                    player: currentLineup.startXI[playerIdx].player,
+                    gridRow: rowDefs.length + 1,
+                    gridCol: playerIdx + 1
+                });
+                playerIdx++;
+            }
+        } else {
+            // Fallback: linear distribution
+            playersWithGrid = currentLineup.startXI.map((item, i) => ({
+                player: item.player,
+                gridRow: 1,
+                gridCol: i + 1
+            }));
+        }
+    } else {
+        // Grid data available from API — use it
+        playersWithGrid = currentLineup.startXI.map(item => {
+            const grid = item.player.grid || "1:1";
+            const [r, c] = grid.split(':').map(val => parseInt(val) || 1);
+            return { player: item.player, gridRow: r, gridCol: c };
+        });
+    }
 
     // 2. Group by Row
     const rows: { [key: number]: typeof playersWithGrid } = {};
@@ -67,43 +113,36 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
     });
 
     // 3. Calculate positions
-    const positionedPlayers = [];
+    const positionedPlayers: { player: APILineupPlayer; gridRow: number; gridCol: number; leftPct: number; bottomPct: number }[] = [];
 
-    // Sort rows keys to ensure explicit order if needed, though we map rows later
-    // Row 1 = GK (Bottom), Row 5+ = FW (Top)
+    // Row 1 = GK (Bottom), highest row = FW (Top)
+    const sortedRowKeys = Object.keys(rows).map(Number).sort((a, b) => a - b);
+    const totalRows = sortedRowKeys.length;
 
-    for (const [rowNumStr, rowPlayers] of Object.entries(rows)) {
-        const rowNum = parseInt(rowNumStr);
+    for (const rowNum of sortedRowKeys) {
+        const rowPlayers = rows[rowNum];
 
         // Sort players in this row by column index (Left -> Right)
         rowPlayers.sort((a, b) => a.gridCol - b.gridCol);
 
         const count = rowPlayers.length;
 
+        // Row index (0-based) within sorted rows for vertical spacing
+        const rowIndex = sortedRowKeys.indexOf(rowNum);
+
         rowPlayers.forEach((p, idx) => {
-            // Horizontal Centering Logic:
-            // Distribute evenly across the width (0-100%)
-            // Formula: Center point of the segment. 
-            // Segment size = 100 / count.
-            // Center = index * size + size/2
-
-            // Adjust 'Left' perception: Game often implies 1 is Left, Max is Right.
-            // But if we have 2 players at col 1 and 2, and others empty, API might imply specific zones.
-            // However, user requested "Centralized". So we IGNORE absolute column gap and just DISTRIBUTE present players.
-
+            // Horizontal: distribute evenly across width
             const leftPct = ((idx + 0.5) * (100 / count));
 
-            // Vertical Logic:
-            // Map row 1..5 to 10%..90% approx.
-            // Some formations have 6 rows.
-            // Let's use flexible scaling if max rows > 5?
-            // Standard: Row 1=10%, Row 2=30%, Row 3=50%, Row 4=70%, Row 5=85%
-            const bottomPct = (rowNum * 18) - 5;
+            // Vertical: distribute evenly from 5% (GK) to 90% (FW)
+            const bottomPct = totalRows > 1
+                ? 5 + (rowIndex / (totalRows - 1)) * 85
+                : 50;
 
             positionedPlayers.push({
                 ...p,
                 leftPct,
-                bottomPct: Math.min(Math.max(bottomPct, 5), 95) // Clamp
+                bottomPct
             });
         });
     }

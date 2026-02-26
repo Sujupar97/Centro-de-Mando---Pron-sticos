@@ -49,7 +49,7 @@ function getDateRange(period: PeriodKey): { startDate: string; endDate: string }
     }
 }
 
-const ResultadosPublic: React.FC = () => {
+const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => {
     const [data, setData] = useState<PublicResultsData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -70,7 +70,7 @@ const ResultadosPublic: React.FC = () => {
         }
     };
 
-    useEffect(() => { loadResults(); }, [selectedPeriod]);
+    useEffect(() => { loadResults(); }, [selectedPeriod, refreshTrigger]);
 
     if (loading) {
         return (
@@ -134,7 +134,11 @@ const ResultadosPublic: React.FC = () => {
                     </div>
                     <div>
                         <h3 className="text-2xl font-bold text-white tracking-tight">Resultados</h3>
-                        <p className="text-sm text-slate-400">Pronósticos verificados del sistema</p>
+                        <p className="text-sm text-slate-400">
+                            {s.totalPending > 0
+                                ? `${s.totalVerified} verificados de ${s.totalVerified + s.totalPending} pronósticos`
+                                : 'Pronósticos verificados del sistema'}
+                        </p>
                     </div>
                 </div>
                 <PeriodFilters selectedPeriod={selectedPeriod} onSelect={setSelectedPeriod} onRefresh={loadResults} />
@@ -154,30 +158,35 @@ const ResultadosPublic: React.FC = () => {
                         <span className="text-red-400 font-bold text-base">{s.lost ?? 0} perdidas</span>
                     </div>
                     <span className="block text-xs text-slate-500 mt-1">de {s.totalVerified} verificadas</span>
+                    {s.totalPending > 0 && (
+                        <span className="block text-xs text-amber-400 mt-1">
+                            {s.totalPending} pendiente{s.totalPending > 1 ? 's' : ''} de verificación
+                        </span>
+                    )}
                 </div>
 
-                {/* Ganancia */}
+                {/* Resultado del Periodo */}
                 {br && (
                     <div className="bg-slate-900 border border-white/10 rounded-xl p-5 text-center">
-                        <div className={`text-3xl font-black ${br.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {br.profit >= 0 ? '+' : ''}${br.profit.toFixed(2)}
+                        <div className={`text-3xl font-black ${(br.periodProfit ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {(br.periodProfit ?? 0) >= 0 ? '+' : ''}${(br.periodProfit ?? 0).toFixed(2)}
                         </div>
-                        <span className="block text-xs text-slate-400 uppercase mt-1">Ganancia Total</span>
+                        <span className="block text-xs text-slate-400 uppercase mt-1">Resultado</span>
                         <span className="block text-xs text-slate-500 mt-0.5">
-                            Empezando con ${br.base}
+                            ${(br.periodStaked ?? 0).toFixed(0)} apostado en {s.totalVerified} picks
                         </span>
                     </div>
                 )}
 
-                {/* Rentabilidad */}
+                {/* Rentabilidad del Periodo */}
                 {br && (
                     <div className="bg-slate-900 border border-white/10 rounded-xl p-5 text-center">
-                        <div className={`text-3xl font-black ${br.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {br.roi >= 0 ? '+' : ''}{br.roi.toFixed(1)}%
+                        <div className={`text-3xl font-black ${(br.periodROI ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {(br.periodROI ?? 0) >= 0 ? '+' : ''}{(br.periodROI ?? 0).toFixed(1)}%
                         </div>
                         <span className="block text-xs text-slate-400 uppercase mt-1">Rentabilidad</span>
                         <span className="block text-xs text-slate-500 mt-0.5">
-                            Ganancia sobre lo invertido
+                            Rendimiento del periodo
                         </span>
                     </div>
                 )}
@@ -196,19 +205,18 @@ const ResultadosPublic: React.FC = () => {
                 )}
             </div>
 
-            {/* Detail Banner */}
+            {/* Acumulado Banner */}
             {br && (
                 <div className="bg-gradient-to-r from-slate-900 to-slate-800 border border-white/10 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                        <span className="text-slate-400 text-sm">Acumulado desde el inicio con capital de <span className="text-white font-bold">${br.base}</span></span>
+                    <div className="flex items-center gap-3 text-sm">
+                        <span className="text-slate-500">Acumulado desde inicio:</span>
+                        <span className={`font-bold ${br.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {br.profit >= 0 ? '+' : ''}${br.profit.toFixed(2)} ({br.roi >= 0 ? '+' : ''}{br.roi.toFixed(1)}%)
+                        </span>
                     </div>
                     <div className="flex items-center gap-4 text-sm">
-                        <span className="text-slate-400">Apuesta: <span className="text-white font-bold">4% por pronóstico (${(br.base * 0.04).toFixed(0)})</span></span>
-                        {br.periodProfit !== undefined && br.periodProfit !== br.profit && (
-                            <span className={`font-bold ${br.periodProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                Periodo: {br.periodProfit >= 0 ? '+' : ''}${br.periodProfit.toFixed(2)}
-                            </span>
-                        )}
+                        <span className="text-slate-500">Capital: <span className="text-white font-bold">${br.base}</span></span>
+                        <span className="text-slate-500">Apuesta: <span className="text-white font-bold">${(br.base * 0.04).toFixed(0)}/pick (4%)</span></span>
                     </div>
                 </div>
             )}
@@ -240,14 +248,14 @@ const ResultadosPublic: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="text-right ml-4 flex-shrink-0">
+                                    <span className={`font-bold text-sm block ${pick.profit_loss >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        {pick.profit_loss >= 0 ? '+' : ''}${pick.profit_loss.toFixed(0)}
+                                    </span>
                                     {pick.odds && (
-                                        <span className="text-amber-400 font-bold text-sm block">
+                                        <span className="text-amber-400/70 text-[10px]">
                                             @{pick.odds.toFixed(2)}
                                         </span>
                                     )}
-                                    <span className="text-slate-500 text-[10px]">
-                                        {Math.round(pick.p_model * 100)}% prob
-                                    </span>
                                 </div>
                             </div>
                         ))}

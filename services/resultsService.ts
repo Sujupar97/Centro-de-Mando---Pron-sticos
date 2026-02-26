@@ -53,6 +53,15 @@ export async function getPublicResults(startDate: string, endDate: string): Prom
         throw error;
     }
 
+    // Step 2.5: Count PENDING picks (not yet verified) for transparency
+    const { count: pendingCount } = await supabase
+        .from('value_picks_v2')
+        .select('id', { count: 'exact', head: true })
+        .in('fixture_id', fixtureIdsInRange)
+        .gte('p_model', 0.83)
+        .gte('odds', 1.40)
+        .eq('result', 'PENDING');
+
     const results = picks || [];
     const won = results.filter(p => p.result === 'WON');
     const lost = results.filter(p => p.result === 'LOST');
@@ -90,9 +99,15 @@ export async function getPublicResults(startDate: string, endDate: string): Prom
         }
     }
 
-    // Enrich with team names + match_date
+    // Enrich with team names + match_date + profit/loss per pick
+    const baseBankroll = await fetchBaseBankroll();
+    const stakeAmount = baseBankroll * 0.04;
+
     const recentResults = results.map(p => {
         const match = matchMap.get(p.fixture_id);
+        const profitLoss = p.result === 'WON'
+            ? stakeAmount * ((p.odds || 1) - 1)
+            : -stakeAmount;
         return {
             id: p.id,
             home_team: match?.home_team || 'Equipo A',
@@ -106,20 +121,21 @@ export async function getPublicResults(startDate: string, endDate: string): Prom
             verified_at: p.verified_at,
             league: match?.league_name,
             match_date: match?.match_date,
+            profit_loss: profitLoss,
         };
     });
 
     const totalVerified = won.length + lost.length;
 
     // Bankroll — calculado desde value_picks_v2 (misma fuente de verdad que Analítica)
-    const baseBankroll = await fetchBaseBankroll();
+    // baseBankroll ya fue obtenido arriba para calcular stakeAmount
     const { totalProfit: cumulativeProfit } = await calculateProfitFromPicks(baseBankroll, SYSTEM_START_DATE, new Date().toISOString().split('T')[0]);
-    const { totalProfit: periodProfit } = await calculateProfitFromPicks(baseBankroll, startDate, endDate);
+    const { totalProfit: periodProfit, totalStaked: periodStaked } = await calculateProfitFromPicks(baseBankroll, startDate, endDate);
 
     return {
         winRate: totalVerified > 0 ? (won.length / totalVerified) * 100 : 0,
         totalVerified,
-        totalPending: 0,
+        totalPending: pendingCount || 0,
         won: won.length,
         lost: lost.length,
         last7Days: { wins: last7Wins, losses: last7Losses, total: last7.length },
@@ -131,6 +147,8 @@ export async function getPublicResults(startDate: string, endDate: string): Prom
             profit: cumulativeProfit,
             roi: baseBankroll > 0 ? (cumulativeProfit / baseBankroll) * 100 : 0,
             periodProfit,
+            periodROI: baseBankroll > 0 ? (periodProfit / baseBankroll) * 100 : 0,
+            periodStaked,
         },
     };
 }
@@ -198,6 +216,9 @@ function emptyResults(baseBankroll: number, current: number, profit: number): Pu
             current,
             profit,
             roi: baseBankroll > 0 ? (profit / baseBankroll) * 100 : 0,
+            periodProfit: 0,
+            periodROI: 0,
+            periodStaked: 0,
         },
     };
 }

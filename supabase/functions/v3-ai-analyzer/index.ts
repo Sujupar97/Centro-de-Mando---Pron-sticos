@@ -1364,7 +1364,8 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                     status: 'etl',
                     current_motor: 'PARLAY-ANALYZER',
                     engine_version: ENGINE_VERSION,
-                    analysis_type: 'parlay'
+                    analysis_type: 'parlay',
+                    etl_context: parlayPayload // Guardar payload en DB para que v3-parlay-analyzer lo lea
                 })
                 .select()
                 .single();
@@ -1381,8 +1382,8 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                     },
                     body: JSON.stringify({
                         job_id: parlayJob.id,
-                        fixture_id: finalFixtureId,
-                        payload: parlayPayload
+                        fixture_id: finalFixtureId
+                        // payload omitido — v3-parlay-analyzer lo lee de etl_context en la DB
                     })
                 }).catch(err => console.warn(`[V3-AI-ANALYZER] Parlay fire-and-forget failed:`, err.message));
             } else {
@@ -1391,6 +1392,9 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
         } catch (parlayErr: any) {
             console.warn(`[V3-AI-ANALYZER] Parlay sequential launch failed (non-blocking):`, parlayErr.message);
         }
+
+        // Dar tiempo al Deno runtime para enviar el fire-and-forget del parlay analyzer
+        await new Promise(r => setTimeout(r, 500));
 
         return new Response(JSON.stringify({
             success: true,
