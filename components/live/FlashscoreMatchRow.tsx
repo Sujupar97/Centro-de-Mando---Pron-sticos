@@ -17,7 +17,8 @@ const FlashscoreMatchRow: React.FC<FlashscoreMatchRowProps> = ({
 }) => {
     const isAdmin = isAgencyRole(userRole);
     const scoreAvailable = game.goals.home !== null && game.goals.away !== null;
-    const isLive = game.fixture.status.elapsed !== null && game.fixture.status.short !== 'FT' && game.fixture.status.short !== 'AET' && game.fixture.status.short !== 'PEN';
+    const LIVE_STATUSES = ['LIVE', '1H', 'HT', '2H', 'ET', 'BT', 'PEN_LIVE', 'BREAK', 'INT'];
+    const isLive = LIVE_STATUSES.includes(game.fixture.status.short);
     const isFinished = game.fixture.status.short === 'FT' || game.fixture.status.short === 'AET' || game.fixture.status.short === 'PEN';
     const isProcessing = jobStatus && ['queued', 'ingesting', 'data_ready', 'analyzing'].includes(jobStatus);
 
@@ -36,7 +37,9 @@ const FlashscoreMatchRow: React.FC<FlashscoreMatchRowProps> = ({
                 {isLive ? (
                     <span className="text-xs font-bold text-red-400 flex items-center justify-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                        {game.fixture.status.elapsed}'
+                        {game.fixture.status.elapsed
+                            ? `${game.fixture.status.elapsed}'`
+                            : game.fixture.status.short === 'HT' ? 'DT' : 'EN VIVO'}
                     </span>
                 ) : isFinished ? (
                     <span className="text-[11px] font-bold text-slate-500">FIN</span>

@@ -827,15 +827,13 @@ export const FixturesFeed: React.FC = () => {
                                     ];
 
                                     // Filter live only if toggle is active
+                                    const LIVE_STATUSES = ['LIVE', '1H', 'HT', '2H', 'ET', 'BT', 'PEN_LIVE', 'BREAK', 'INT'];
                                     const filteredLeagues = showLiveOnly
                                         ? allLeagues
                                             .map(league => ({
                                                 ...league,
                                                 games: league.games.filter(g =>
-                                                    g.fixture.status.elapsed !== null &&
-                                                    g.fixture.status.short !== 'FT' &&
-                                                    g.fixture.status.short !== 'AET' &&
-                                                    g.fixture.status.short !== 'PEN'
+                                                    LIVE_STATUSES.includes(g.fixture.status.short)
                                                 )
                                             }))
                                             .filter(league => league.games.length > 0)

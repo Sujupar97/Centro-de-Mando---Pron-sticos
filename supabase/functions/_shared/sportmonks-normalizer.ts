@@ -601,14 +601,35 @@ export function normalizeSportMonksToListGame(smFixture: any): any {
         }
     }
 
+    // Detect live matches and calculate elapsed minutes
+    const LIVE_SHORT_NAMES = ['LIVE', '1H', 'HT', '2H', 'ET', 'BT', 'PEN_LIVE', 'BREAK', 'INT'];
+    const stateShort = smFixture.state?.short_name || 'NS';
+    const isLiveMatch = LIVE_SHORT_NAMES.includes(stateShort);
+
+    let elapsed: number | null = null;
+    if (isLiveMatch) {
+        // Prefer direct data from SportMonks if available
+        elapsed = smFixture.time?.minute
+            ?? smFixture.periods?.current?.minutes
+            ?? null;
+
+        // Fallback: calculate from starting_at
+        if (elapsed === null && smFixture.starting_at) {
+            const startMs = new Date(smFixture.starting_at).getTime();
+            const nowMs = Date.now();
+            const diffMin = Math.floor((nowMs - startMs) / 60000);
+            elapsed = Math.min(Math.max(diffMin, 1), 120);
+        }
+    }
+
     return {
         fixture: {
             id: smFixture.id,
             date: smFixture.starting_at,
             status: {
-                short: smFixture.state?.short_name || 'NS',
+                short: stateShort,
                 long: smFixture.state?.name || '',
-                elapsed: null
+                elapsed: elapsed
             },
             venue: {
                 id: smFixture.venue_id,
@@ -663,23 +684,27 @@ export function normalizeLegacyStatistics(fixture: any, homeTeamId: number, away
     if (!fixture.statistics || fixture.statistics.length === 0) return null;
 
     const translateType = (typeId: number): string => {
-        // Map common SportMonks Type IDs to API-Football keys
+        // SportMonks v3 Official Type IDs (see docs lines 193-210)
         const map: Record<number, string> = {
-            42: 'Shots on Goal', // Total? No, 42 is usually total
-            86: 'Shots on Goal', // On target
-            87: 'Shots off Goal',
+            34: 'Corner Kicks',
+            41: 'Shots off Goal',
+            42: 'Total Shots',
+            43: 'Attacks',
+            44: 'Dangerous Attacks',
             45: 'Ball Possession',
-            83: 'Corner Kicks',
-            58: 'Red Cards',
-            57: 'Yellow Cards',
+            51: 'Offsides',
+            52: 'Goals',
+            55: 'Free Kicks',
             56: 'Fouls',
-            34: 'Goalkeeper Saves',
-            80: 'Total passes', // approx
-            // Add more as needed
+            57: 'Goalkeeper Saves',
+            58: 'Blocked Shots',
+            80: 'Total passes',
+            83: 'Red Cards',
+            84: 'Yellow Cards',
+            86: 'Shots on Goal',
+            87: 'Shots off Goal',
         };
-        // SportMonks v3 uses 'type.name' usually if included, simplified here if we only assume specific ID logic
-        // But better reliance is on the 'type' object if included
-        return map[typeId] || 'Unknown';
+        return map[typeId] || `Stat ${typeId}`;
     };
 
     // Helper to build stat array for a team

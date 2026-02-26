@@ -45,9 +45,13 @@ const STATS_TRANSLATIONS: { [key: string]: string } = {
     "Total passes": "Pases Totales",
     "Passes accurate": "Pases Completados",
     "Passes %": "% Pases",
-    "Passes % ": "% Pases", // Fix for potential API trailing spaces
+    "Passes % ": "% Pases",
     "expected_goals": "Goles Esperados (xG)",
-    "goals_prevented": "Goles Prevenidos"
+    "goals_prevented": "Goles Prevenidos",
+    "Attacks": "Ataques",
+    "Dangerous Attacks": "Ataques Peligrosos",
+    "Goals": "Goles",
+    "Free Kicks": "Tiros Libres",
 };
 
 const translateStat = (type: string) => {
