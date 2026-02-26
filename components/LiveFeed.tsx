@@ -188,6 +188,7 @@ export const FixturesFeed: React.FC = () => {
     const [processingFixtureId, setProcessingFixtureId] = useState<number | null>(null);
     const isProcessingQueue = React.useRef(false); // Ref guard for sequential processing
     const pollErrorCount = React.useRef(0); // Consecutive poll errors before skipping
+    const processingFixtureIdRef = React.useRef<number | null>(null); // Ref backup for closure access
 
     // BATCH PROGRESS TRACKING
     const [batchProgress, setBatchProgress] = useState<{
@@ -417,6 +418,7 @@ export const FixturesFeed: React.FC = () => {
             isProcessingQueue.current = true; // Lock
             const nextGame = analysisQueue[0];
             setProcessingFixtureId(nextGame.fixture.id);
+            processingFixtureIdRef.current = nextGame.fixture.id; // Ref backup for closures
             setBatchProgress(prev => ({ ...prev, currentGame: nextGame }));
 
             try {
@@ -436,6 +438,7 @@ export const FixturesFeed: React.FC = () => {
                 // If failed to start, remove from queue immediately to unblock next
                 setAnalysisQueue(prev => prev.slice(1));
                 setProcessingFixtureId(null);
+                processingFixtureIdRef.current = null;
             } finally {
                 isProcessingQueue.current = false; // Unlock
             }
@@ -453,6 +456,7 @@ export const FixturesFeed: React.FC = () => {
         const advanceBatch = (fixtureId: number, result: 'done' | 'failed') => {
             setActiveBatchJobId(null);
             setProcessingFixtureId(null);
+            processingFixtureIdRef.current = null;
             setAnalysisQueue(prev => {
                 const remaining = prev.slice(1);
                 // Use queue length as source of truth: batch finishes when queue is empty
@@ -475,12 +479,16 @@ export const FixturesFeed: React.FC = () => {
                     pollErrorCount.current = 0;
                     // Mark job as failed in DB to prevent "stuck in-progress" in Oportunidades
                     markJobAsTimedOut(activeBatchJobId).catch(() => {});
-                    if (processingFixtureId) {
-                        setGameJobStatus(prev => ({ ...prev, [processingFixtureId]: 'failed' }));
-                        advanceBatch(processingFixtureId, 'failed');
+                    const fid = processingFixtureId || processingFixtureIdRef.current;
+                    if (fid) {
+                        setGameJobStatus(prev => ({ ...prev, [fid]: 'failed' }));
+                        advanceBatch(fid, 'failed');
                     } else {
+                        console.warn('[Batch] No fixtureId available for timeout cleanup. Force-advancing queue.');
                         setActiveBatchJobId(null);
                         setProcessingFixtureId(null);
+                        processingFixtureIdRef.current = null;
+                        setBatchProgress(bp => ({ ...bp, completed: bp.completed + 1, isActive: false }));
                         setAnalysisQueue(prev => prev.slice(1));
                     }
                     return;
@@ -501,8 +509,9 @@ export const FixturesFeed: React.FC = () => {
                     }
                 } else {
                     console.warn(`[Batch] Job ${activeBatchJobId} not found. Skipping.`);
-                    if (processingFixtureId) advanceBatch(processingFixtureId, 'failed');
-                    else { setActiveBatchJobId(null); setProcessingFixtureId(null); setAnalysisQueue(prev => prev.slice(1)); }
+                    const fid = processingFixtureId || processingFixtureIdRef.current;
+                    if (fid) advanceBatch(fid, 'failed');
+                    else { setActiveBatchJobId(null); setProcessingFixtureId(null); processingFixtureIdRef.current = null; setAnalysisQueue(prev => prev.slice(1)); }
                 }
             } catch (e) {
                 pollErrorCount.current++;
@@ -511,12 +520,16 @@ export const FixturesFeed: React.FC = () => {
                 if (pollErrorCount.current >= 3) {
                     console.warn(`[Batch] ${pollErrorCount.current} consecutive poll errors. Skipping to next job.`);
                     pollErrorCount.current = 0;
-                    if (processingFixtureId) {
-                        setGameJobStatus(prev => ({ ...prev, [processingFixtureId]: 'failed' }));
-                        advanceBatch(processingFixtureId, 'failed');
+                    const fid = processingFixtureId || processingFixtureIdRef.current;
+                    if (fid) {
+                        setGameJobStatus(prev => ({ ...prev, [fid]: 'failed' }));
+                        advanceBatch(fid, 'failed');
                     } else {
+                        console.warn('[Batch] No fixtureId available for error cleanup. Force-advancing queue.');
                         setActiveBatchJobId(null);
                         setProcessingFixtureId(null);
+                        processingFixtureIdRef.current = null;
+                        setBatchProgress(bp => ({ ...bp, completed: bp.completed + 1, isActive: false }));
                         setAnalysisQueue(prev => prev.slice(1));
                     }
                 }
@@ -608,19 +621,30 @@ export const FixturesFeed: React.FC = () => {
 
             console.log(`[Batch] Adding ${addedCount} new games to queue (Length: ${prev.length} -> ${prev.length + addedCount})`);
 
-            // ALWAYS start fresh batch: clear old state, set total = new games only
-            // Previous stuck batches should not accumulate
-            setBatchProgress({
-                total: addedCount,
-                completed: 0,
-                currentGame: null,
-                leagueName: league.name,
-                isActive: true,
-                results: {}
+            // Accumulate into existing batch if active, otherwise start fresh
+            setBatchProgress(prev => {
+                if (!prev.isActive) {
+                    // Fresh batch — no active batch running
+                    return {
+                        total: addedCount,
+                        completed: 0,
+                        currentGame: null,
+                        leagueName: league.name,
+                        isActive: true,
+                        results: {}
+                    };
+                }
+                // Active batch — accumulate new games
+                return {
+                    ...prev,
+                    total: prev.total + addedCount,
+                    leagueName: `${prev.leagueName} + ${league.name}`,
+                    isActive: true
+                };
             });
 
-            // Replace queue entirely (old stuck items discarded)
-            return [...newUniqueGames];
+            // APPEND to existing queue (don't replace)
+            return [...prev, ...newUniqueGames];
         });
     };
 
@@ -784,6 +808,7 @@ export const FixturesFeed: React.FC = () => {
                                         setAnalysisQueue([]);
                                         setActiveBatchJobId(null);
                                         setProcessingFixtureId(null);
+                                        processingFixtureIdRef.current = null;
                                         isProcessingQueue.current = false;
                                         pollErrorCount.current = 0;
                                         setBatchProgress({ total: 0, completed: 0, currentGame: null, leagueName: '', isActive: false, results: {} });

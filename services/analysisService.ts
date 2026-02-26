@@ -279,9 +279,29 @@ export const createAnalysisJob = async (apiFixtureId: number, timezone: string =
             throw new Error("V3 no devolvió job_id válido");
         }
 
-        // V8: ETL responde inmediatamente con job_id, el analyzer corre en background
-        console.log(`[V3] ✅ ETL completado: ${responseData.job_id} (Analyzer ejecutándose en background)`);
+        // V8: ETL responde inmediatamente con job_id
+        console.log(`[V3] ✅ ETL completado: ${responseData.job_id}`);
         console.log(`[V3] Coverage: ${responseData.coverage_pct}% | ${responseData.summary?.home_matches || 'N/A'}`);
+
+        // CRITICAL: Invoke analyzer from the BROWSER (fire-and-forget).
+        // The Deno ETL's fire-and-forget fetch was unreliable — Deno kills background
+        // promises when the Response is returned. The browser won't kill this promise.
+        // The analyzer reads etl_context from DB — only job_id and fixture_id needed.
+        console.log(`[V3] Lanzando analyzer desde el navegador para job ${responseData.job_id}...`);
+        supabase.functions.invoke('v3-ai-analyzer', {
+            body: {
+                job_id: responseData.job_id,
+                fixture_id: apiFixtureId
+            }
+        }).then(({ error: analyzerErr }) => {
+            if (analyzerErr) {
+                console.error(`[V3] Analyzer invocation error:`, analyzerErr);
+            } else {
+                console.log(`[V3] ✅ Analyzer completó exitosamente para job ${responseData.job_id}`);
+            }
+        }).catch(err => {
+            console.error(`[V3] Analyzer call failed:`, err.message);
+        });
 
         return responseData.job_id;
 

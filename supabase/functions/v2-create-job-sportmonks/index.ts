@@ -299,47 +299,16 @@ serve(async (req) => {
             console.log('[v2-create-job-sportmonks] Payload size:', JSON.stringify(normalizedPayload).length, 'chars');
         }
 
-        // Call v3-ai-analyzer using SERVICE ROLE KEY via FETCH
-        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || sbKey;
-
-        const analyzerUrl = `${sbUrl}/functions/v1/v3-ai-analyzer`;
+        // ═══════════════════════════════════════════════════════════════
+        // ANALYZER INVOCATION: Handled by the FRONTEND (browser-side)
+        // The Deno fire-and-forget fetch was unreliable — Deno kills background
+        // promises when the Response is returned. The frontend invokes
+        // v3-ai-analyzer after receiving this ETL response. The analyzer
+        // reads etl_context from DB (saved above in Stage 4).
+        // ═══════════════════════════════════════════════════════════════
         const payloadSize = JSON.stringify(normalizedPayload).length;
-        console.log(`[v2] Calling analyzer at ${analyzerUrl} with payload size: ${payloadSize} chars`);
-
-        // FIRE-AND-FORGET: Launch analyzer WITHOUT waiting for response
-        // The analyzer reads etl_context from the DB (saved above in Stage 4)
-        // Body is intentionally minimal — payload is NOT sent (too large, causes Deno isolate issues)
-        fetch(analyzerUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${serviceRoleKey}`
-            },
-            body: JSON.stringify({
-                job_id: jobId,
-                fixture_id
-                // payload omitted — v3-ai-analyzer reads etl_context from DB
-            })
-        }).then(async (res) => {
-            if (!res.ok) {
-                console.error(`[v2] Analyzer returned ${res.status}`);
-            } else {
-                console.log(`[v2] Analyzer responded OK`);
-            }
-        }).catch(err => {
-            console.error(`[v2] Analyzer call failed:`, err.message);
-        });
-
-        // Give Deno runtime time to send the fire-and-forget request
-        await new Promise(r => setTimeout(r, 1000));
-
-        // ═══════════════════════════════════════════════════════════════
-        // STAGE 5: PARLAY ANALYZER — DISABLED (moved to v3-ai-analyzer)
-        // Parlay analysis now runs SEQUENTIALLY after standard analysis completes
-        // to avoid dual Gemini calls that cause rate limiting and timeouts
-        // ═══════════════════════════════════════════════════════════════
+        console.log(`[v2] ETL complete. Analyzer will be invoked by frontend. Payload: ${payloadSize} chars`);
         const parlayJobId: string | null = null;
-        console.log(`[v2] Parlay analyzer deferred — will run after standard analysis completes`);
 
         const duration = Date.now() - startTime;
         console.log(`[v2-create-job-sportmonks] ETL completed in ${duration}ms. Analyzer running in background.`);
