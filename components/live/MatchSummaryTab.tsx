@@ -36,7 +36,7 @@ const MiniStatBar: React.FC<{ label: string; home: number; away: number; suffix?
         <div className="py-1.5">
             <div className="flex justify-between text-xs mb-1">
                 <span className="text-white font-bold">{home}{suffix}</span>
-                <span className="text-slate-500 uppercase text-[10px] tracking-wider">{label}</span>
+                <span className="text-slate-500 uppercase text-[11px] sm:text-[10px] tracking-wider">{label}</span>
                 <span className="text-white font-bold">{away}{suffix}</span>
             </div>
             <div className="flex h-1 rounded-full bg-slate-700 overflow-hidden">
@@ -110,7 +110,7 @@ const MatchSummaryTab: React.FC<MatchSummaryTabProps> = ({ details }) => {
             {events && events.length > 0 && (
                 <div>
                     <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Eventos</h4>
-                    <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                    <div className="space-y-1.5 max-h-48 sm:max-h-64 overflow-y-auto">
                         {events.map((event, i) => (
                             <div
                                 key={i}

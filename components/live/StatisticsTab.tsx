@@ -15,9 +15,9 @@ const StatRow: React.FC<{ type: string; homeValue: number; awayValue: number }> 
     return (
         <div className="my-3 animate-fade-in">
             <div className="flex justify-between items-center text-sm mb-1 px-1">
-                <span className="font-bold text-lg text-white">{homeValue}</span>
+                <span className="font-bold text-base sm:text-lg text-white">{homeValue}</span>
                 <span className="text-xs text-gray-400 uppercase font-semibold tracking-wider">{type}</span>
-                <span className="font-bold text-lg text-white">{awayValue}</span>
+                <span className="font-bold text-base sm:text-lg text-white">{awayValue}</span>
             </div>
             <div className="flex w-full h-2 rounded-full bg-gray-900 overflow-hidden">
                 <div className={`h-full rounded-l-full transition-all duration-500 ${finalHomeBarClass}`} style={{ width: `${homeWidth}%` }}></div>

@@ -182,7 +182,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport, onPic
                         <ChartBarIcon className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                        <h3 className="text-2xl font-bold text-white tracking-tight">Oportunidades de Valor</h3>
+                        <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Oportunidades de Valor</h3>
                         <p className="text-sm text-slate-400">Picks Individuales (Prob {'\u2265'} 83%)</p>
                     </div>
                 </div>
@@ -193,7 +193,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport, onPic
                         <div className="flex items-center bg-slate-800/50 rounded-lg border border-white/5 p-0.5">
                             <button
                                 onClick={() => setVerificationFilter('all')}
-                                className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                                className={`px-3 py-2 sm:px-2.5 sm:py-1.5 rounded-md text-xs min-h-[44px] sm:min-h-0 font-bold transition-all ${
                                     verificationFilter === 'all' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
                                 }`}
                             >
@@ -201,7 +201,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport, onPic
                             </button>
                             <button
                                 onClick={() => setVerificationFilter('pending')}
-                                className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                                className={`px-3 py-2 sm:px-2.5 sm:py-1.5 rounded-md text-xs min-h-[44px] sm:min-h-0 font-bold transition-all ${
                                     verificationFilter === 'pending' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-slate-400 hover:text-white'
                                 }`}
                             >
@@ -209,7 +209,7 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport, onPic
                             </button>
                             <button
                                 onClick={() => setVerificationFilter('verified')}
-                                className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                                className={`px-3 py-2 sm:px-2.5 sm:py-1.5 rounded-md text-xs min-h-[44px] sm:min-h-0 font-bold transition-all ${
                                     verificationFilter === 'verified' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-400 hover:text-white'
                                 }`}
                             >
@@ -464,8 +464,8 @@ const SinglePickCard: React.FC<{
 
             <div className={`flex items-center gap-3 mb-4 ${isVerified ? 'mt-2' : ''}`}>
                 <div className="flex -space-x-2">
-                    <img src={pick.logo_home || ''} className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 object-contain p-1" />
-                    <img src={pick.logo_away || ''} className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 object-contain p-1" />
+                    <img src={pick.logo_home || ''} className="w-9 h-9 sm:w-8 sm:h-8 rounded-full bg-slate-800 border border-slate-700 object-contain p-1" />
+                    <img src={pick.logo_away || ''} className="w-9 h-9 sm:w-8 sm:h-8 rounded-full bg-slate-800 border border-slate-700 object-contain p-1" />
                 </div>
                 <div className="flex-1">
                     <h4 className="text-white font-bold text-sm leading-tight">{pick.home_team}</h4>
@@ -482,11 +482,11 @@ const SinglePickCard: React.FC<{
 
             <div className="bg-black/40 rounded-lg p-3 border border-white/5 flex justify-between items-center mb-3">
                 <div>
-                    <p className="text-[10px] uppercase text-slate-500">{translateMarket(pick.market)}</p>
+                    <p className="text-[11px] sm:text-[10px] uppercase text-slate-500">{translateMarket(pick.market)}</p>
                     <p className="text-white font-bold text-sm">{pick.selection}</p>
                 </div>
                 <div className="text-right">
-                    <span className={`block text-xl font-black ${pick.odds ? 'text-amber-400' : 'text-slate-500'}`}>
+                    <span className={`block text-lg sm:text-xl font-black ${pick.odds ? 'text-amber-400' : 'text-slate-500'}`}>
                         {pick.odds ? `@${pick.odds.toFixed(2)}` : 'Sin cuota'}
                     </span>
                     <span className="text-[10px] text-slate-500 uppercase">{pick.odds ? 'Cuota' : 'Estimada'}</span>
@@ -498,21 +498,21 @@ const SinglePickCard: React.FC<{
                     <button
                         onClick={(e) => handleOverride(e, 'WON')}
                         disabled={overriding}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-all disabled:opacity-50"
+                        className="flex-1 py-2.5 sm:py-1.5 rounded-lg text-sm sm:text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-all disabled:opacity-50"
                     >
                         {overriding ? '...' : 'GANADA'}
                     </button>
                     <button
                         onClick={(e) => handleOverride(e, 'LOST')}
                         disabled={overriding}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all disabled:opacity-50"
+                        className="flex-1 py-2.5 sm:py-1.5 rounded-lg text-sm sm:text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all disabled:opacity-50"
                     >
                         {overriding ? '...' : 'PERDIDA'}
                     </button>
                     <button
                         onClick={(e) => handleOverride(e, 'VOID')}
                         disabled={overriding}
-                        className="py-1.5 px-3 rounded-lg text-xs font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30 hover:bg-slate-500/30 transition-all disabled:opacity-50"
+                        className="py-2.5 sm:py-1.5 px-3 rounded-lg text-sm sm:text-xs font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30 hover:bg-slate-500/30 transition-all disabled:opacity-50"
                     >
                         {overriding ? '...' : 'NULA'}
                     </button>

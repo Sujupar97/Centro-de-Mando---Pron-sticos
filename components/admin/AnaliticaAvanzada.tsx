@@ -269,17 +269,17 @@ const AnaliticaAvanzada: React.FC = () => {
             <div className="bg-slate-900 border border-white/10 rounded-xl p-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div>
-                        <label className="text-[10px] text-slate-500 uppercase block mb-1">Desde</label>
+                        <label className="text-[11px] sm:text-[10px] text-slate-500 uppercase block mb-1">Desde</label>
                         <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
                             className="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-3 py-2" />
                     </div>
                     <div>
-                        <label className="text-[10px] text-slate-500 uppercase block mb-1">Hasta</label>
+                        <label className="text-[11px] sm:text-[10px] text-slate-500 uppercase block mb-1">Hasta</label>
                         <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
                             className="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-3 py-2" />
                     </div>
                     <div>
-                        <label className="text-[10px] text-slate-500 uppercase block mb-1">Tipo</label>
+                        <label className="text-[11px] sm:text-[10px] text-slate-500 uppercase block mb-1">Tipo</label>
                         <select
                             value={pickType}
                             onChange={e => setPickType(e.target.value as 'oportunidad' | 'parlay')}
@@ -290,7 +290,7 @@ const AnaliticaAvanzada: React.FC = () => {
                         </select>
                     </div>
                     <div>
-                        <label className="text-[10px] text-slate-500 uppercase block mb-1">Capital ($)</label>
+                        <label className="text-[11px] sm:text-[10px] text-slate-500 uppercase block mb-1">Capital ($)</label>
                         <input type="number" value={bankroll} onChange={e => setBankroll(Number(e.target.value))} placeholder="100"
                             className="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg px-3 py-2" />
                     </div>
@@ -334,7 +334,7 @@ const AnaliticaAvanzada: React.FC = () => {
 
                     {/* Bankroll Evolution */}
                     {data && data.bankroll_history.length > 0 && (
-                        <div className="bg-slate-900 border border-white/10 rounded-xl p-5">
+                        <div className="bg-slate-900 border border-white/10 rounded-xl p-3 sm:p-5">
                             <h4 className="text-white font-bold mb-4">Evolución del Capital</h4>
                             <div className="flex items-end gap-1 h-40">
                                 {data.bankroll_history.map((point, idx) => {
@@ -361,7 +361,7 @@ const AnaliticaAvanzada: React.FC = () => {
 
                     {/* Market Breakdown */}
                     {data && Object.keys(data.by_market).length > 0 && (
-                        <div className="bg-slate-900 border border-white/10 rounded-xl p-5">
+                        <div className="bg-slate-900 border border-white/10 rounded-xl p-3 sm:p-5">
                             <h4 className="text-white font-bold mb-4 flex items-center gap-2">
                                 <TrophyIcon className="w-5 h-5 text-amber-400" />
                                 Rendimiento por Mercado
@@ -394,7 +394,7 @@ const AnaliticaAvanzada: React.FC = () => {
 
                     {/* League Breakdown */}
                     {data && Object.keys(data.by_league).length > 0 && (
-                        <div className="bg-slate-900 border border-white/10 rounded-xl p-5">
+                        <div className="bg-slate-900 border border-white/10 rounded-xl p-3 sm:p-5">
                             <h4 className="text-white font-bold mb-4">Rendimiento por Liga</h4>
                             <div className="space-y-3">
                                 {Object.entries(data.by_league)
@@ -439,8 +439,8 @@ const AnaliticaAvanzada: React.FC = () => {
 };
 
 const StatCard: React.FC<{ label: string; value: string; color: string; sub?: string }> = ({ label, value, color, sub }) => (
-    <div className="bg-slate-900 border border-white/10 rounded-xl p-4 text-center">
-        <span className={`text-2xl font-black ${color}`}>{value}</span>
+    <div className="bg-slate-900 border border-white/10 rounded-xl p-3 sm:p-4 text-center">
+        <span className={`text-xl sm:text-2xl font-black ${color}`}>{value}</span>
         <span className="block text-xs text-slate-400 uppercase mt-1">{label}</span>
         {sub && <span className="block text-xs text-slate-500 mt-0.5">{sub}</span>}
     </div>

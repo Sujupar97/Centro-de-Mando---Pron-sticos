@@ -144,7 +144,7 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
         : plan.parlay_percentage;
 
     return (
-        <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-700/50 p-6">
+        <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-700/50 p-3 sm:p-4 md:p-6">
             {/* Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                 <div>
@@ -273,16 +273,16 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                             Parlay #{index + 1}
                                         </h3>
                                     </div>
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
                                         <div className="text-right">
                                             <div className="text-white/80 text-xs">Cuota Combinada</div>
-                                            <div className="text-white font-bold text-2xl">
+                                            <div className="text-white font-bold text-lg sm:text-2xl">
                                                 x{combo.combined_odds?.toFixed(2) || '---'}
                                             </div>
                                         </div>
                                         <div className="text-right border-l border-white/20 pl-4">
                                             <div className="text-white/80 text-xs">Probabilidad</div>
-                                            <div className="text-white font-bold text-2xl">
+                                            <div className="text-white font-bold text-lg sm:text-2xl">
                                                 {formatProbability(combo.combined_probability)}
                                             </div>
                                         </div>
@@ -323,7 +323,7 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                                 </span>
                                             )}
                                             <div>
-                                                <div className="text-emerald-400 font-bold text-lg">
+                                                <div className="text-emerald-400 font-bold text-base sm:text-lg">
                                                     x{pick.odds?.toFixed(2) || '---'}
                                                 </div>
                                                 <div className="text-gray-400 text-xs">

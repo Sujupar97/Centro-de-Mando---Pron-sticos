@@ -339,7 +339,7 @@ const ProbabilityRing: React.FC<{ percentage: number; colorClass: string }> = ({
     const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
     return (
-        <div className="relative flex items-center justify-center w-24 h-24 mb-6">
+        <div className="relative flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 mb-6">
             <svg className="transform -rotate-90 w-full h-full" viewBox="0 0 80 80">
                 <circle cx="40" cy="40" r={radius} fill="transparent" stroke="rgba(255,255,255,0.1)" strokeWidth="6" />
                 <circle
@@ -426,7 +426,7 @@ const VerdictSummary: React.FC<{
     const confidence = data.nivel_confianza || (isBet ? "ALTA" : "BAJA");
 
     return (
-        <div className={`flex flex-col min-h-full ${theme.bg} text-white p-6 md:p-12 animate-fade-in relative overflow-hidden`}>
+        <div className={`flex flex-col min-h-full ${theme.bg} text-white p-4 sm:p-6 md:p-12 animate-fade-in relative overflow-hidden`}>
             {/* Background Glow */}
             <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-full h-1/2 ${theme.glow} pointer-events-none fixed-glow`} />
 
@@ -438,7 +438,7 @@ const VerdictSummary: React.FC<{
             </div>
 
             {/* MAIN DECISION CARD */}
-            <div className={`flex-grow flex flex-col justify-center items-center text-center relative z-10 max-w-3xl mx-auto w-full border-t-2 ${theme.border} bg-black/40 rounded-3xl p-8 md:p-10 mb-8 backdrop-blur-md shadow-2xl`}>
+            <div className={`flex-grow flex flex-col justify-center items-center text-center relative z-10 max-w-3xl mx-auto w-full border-t-2 ${theme.border} bg-black/40 rounded-3xl p-4 sm:p-6 md:p-8 lg:p-10 mb-8 backdrop-blur-md shadow-2xl`}>
 
                 <div className="flex flex-row items-center gap-8 mb-6">
                     {/* Icon / Indicator or Progress Ring */}
@@ -464,7 +464,7 @@ const VerdictSummary: React.FC<{
 
 
                 {/* Main Action Title */}
-                <h1 className={`text-3xl md:text-5xl font-black uppercase mb-4 tracking-tight ${theme.accent} drop-shadow-lg`}>
+                <h1 className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black uppercase mb-4 tracking-tight ${theme.accent} drop-shadow-lg`}>
                     {data.titulo_accion || (isBet ? "OPORTUNIDAD CLARA" : "NO APOSTAR")}
                 </h1>
 
@@ -472,7 +472,7 @@ const VerdictSummary: React.FC<{
                 {isBet && data.seleccion_clave && (
                     <div className="mb-6 bg-emerald-500/10 px-8 py-5 rounded-xl border border-emerald-500/30 w-full max-w-xl shadow-[0_0_15px_rgba(16,185,129,0.1)]">
                         <span className="block text-emerald-500/70 text-[10px] font-bold uppercase mb-2 tracking-widest">Apuesta Recomendada</span>
-                        <span className="text-2xl md:text-4xl font-black text-white block leading-none">{data.seleccion_clave}</span>
+                        <span className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black text-white block leading-none">{data.seleccion_clave}</span>
                     </div>
                 )}
 
@@ -842,7 +842,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                 ) : (
                     <div className="flex flex-col h-full">
                         {/* Persistent Toolbar Header */}
-                        <div className="flex items-center justify-between px-6 py-4 bg-slate-800 border-b border-white/5 z-20 shadow-md">
+                        <div className="flex items-center justify-between px-3 py-3 sm:px-4 md:px-6 md:py-4 bg-slate-800 border-b border-white/5 z-20 shadow-md">
                             <div className="flex items-center gap-3">
                                 <div className="bg-brand/10 p-2 rounded-lg">
                                     <ChartBarIcon className="w-5 h-5 text-brand" />
@@ -987,17 +987,17 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                             <ChartBarIcon className="w-5 h-5 text-blue-400" />
                                             Scores Duales (50/50)
                                         </h3>
-                                        <div className="grid grid-cols-3 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                             <div className="bg-black/30 p-4 rounded-lg text-center border border-blue-500/20">
-                                                <span className="text-3xl font-black text-blue-400">{(data as any).scores_duales.score_estadistico}</span>
+                                                <span className="text-2xl sm:text-3xl font-black text-blue-400">{(data as any).scores_duales.score_estadistico}</span>
                                                 <span className="block text-xs text-gray-400 uppercase mt-1">Stats Score</span>
                                             </div>
                                             <div className="bg-black/30 p-4 rounded-lg text-center border border-purple-500/20">
-                                                <span className="text-3xl font-black text-purple-400">{(data as any).scores_duales.score_inteligencia_partido}</span>
+                                                <span className="text-2xl sm:text-3xl font-black text-purple-400">{(data as any).scores_duales.score_inteligencia_partido}</span>
                                                 <span className="block text-xs text-gray-400 uppercase mt-1">Context Score</span>
                                             </div>
                                             <div className="bg-black/30 p-4 rounded-lg text-center border border-emerald-500/20">
-                                                <span className="text-3xl font-black text-emerald-400">{(data as any).scores_duales.confianza_final_calculada}%</span>
+                                                <span className="text-2xl sm:text-3xl font-black text-emerald-400">{(data as any).scores_duales.confianza_final_calculada}%</span>
                                                 <span className="block text-xs text-gray-400 uppercase mt-1">Confianza Final</span>
                                             </div>
                                         </div>

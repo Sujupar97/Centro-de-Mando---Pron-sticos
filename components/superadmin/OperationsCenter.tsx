@@ -71,13 +71,13 @@ export const OperationsCenter: React.FC = () => {
 
     return (
         <div className="space-y-8 animate-fade-in">
-            <div className="glass p-6 rounded-xl border border-white/5 shadow-2xl bg-gradient-to-br from-slate-900 to-slate-800">
+            <div className="glass p-4 sm:p-6 rounded-xl border border-white/5 shadow-2xl bg-gradient-to-br from-slate-900 to-slate-800">
                 <h2 className="text-xl font-display font-bold text-white mb-6 flex items-center gap-3">
                     <ComputerDesktopIcon className="w-6 h-6 text-blue-400" />
                     Control de Automatización del Sistema
                 </h2>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                     {/* Switch 1: Auto Analysis */}
                     <div className={`p-4 rounded-xl border transition-all ${settings.auto_analysis_enabled ? 'bg-blue-900/20 border-blue-500/30' : 'bg-slate-800/50 border-slate-700'}`}>
                         <div className="flex justify-between items-start mb-2">
@@ -141,7 +141,7 @@ export const OperationsCenter: React.FC = () => {
             </div>
 
             {/* Modo Presentación */}
-            <div className="glass p-6 rounded-xl border border-white/5 shadow-2xl bg-gradient-to-br from-slate-900 to-slate-800">
+            <div className="glass p-4 sm:p-6 rounded-xl border border-white/5 shadow-2xl bg-gradient-to-br from-slate-900 to-slate-800">
                 <div className={`p-4 rounded-xl border transition-all ${settings.presentation_mode ? 'bg-purple-900/20 border-purple-500/30' : 'bg-slate-800/50 border-slate-700'}`}>
                     <div className="flex justify-between items-start mb-2">
                         <div className="p-2 rounded-lg bg-purple-500/10">
@@ -166,7 +166,7 @@ export const OperationsCenter: React.FC = () => {
             </div>
 
             {/* Bankroll Configuration */}
-            <div className="glass p-6 rounded-xl border border-white/5 shadow-2xl bg-gradient-to-br from-slate-900 to-slate-800">
+            <div className="glass p-4 sm:p-6 rounded-xl border border-white/5 shadow-2xl bg-gradient-to-br from-slate-900 to-slate-800">
                 <h2 className="text-xl font-display font-bold text-white mb-4 flex items-center gap-3">
                     <ChartBarIcon className="w-6 h-6 text-emerald-400" />
                     Bankroll de Referencia

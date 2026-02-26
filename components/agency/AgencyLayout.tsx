@@ -20,6 +20,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
     const [activeView, setActiveView] = useState('dashboard');
     const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
     const { t, language, setLanguage } = useLanguage();
 
     const handleViewChange = (view: string) => {
@@ -38,15 +39,31 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
 
     return (
         <div className="flex h-screen bg-slate-950 overflow-hidden font-sans">
-            <AgencySidebar activeView={activeView} onViewChange={handleViewChange} />
+            {/* Desktop sidebar */}
+            <div className="hidden md:block">
+                <AgencySidebar activeView={activeView} onViewChange={handleViewChange} />
+            </div>
+
+            {/* Mobile sidebar overlay */}
+            {sidebarOpen && (
+                <div className="fixed inset-0 z-40 md:hidden">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
+                    <div className="fixed left-0 top-0 h-full w-64 z-50 bg-slate-900 border-r border-white/5 animate-slide-in-left">
+                        <AgencySidebar activeView={activeView} onViewChange={(v) => { handleViewChange(v); setSidebarOpen(false); }} />
+                    </div>
+                </div>
+            )}
 
             <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-950 relative">
-                <div className="h-16 border-b border-white/5 flex items-center justify-between px-8 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-30">
-                    <div className="text-slate-400 text-sm">
-                        {t('header.admin')} <span className="mx-2">/</span>
+                <div className="h-16 border-b border-white/5 flex items-center justify-between px-4 md:px-8 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-30">
+                    <div className="flex items-center gap-3 text-slate-400 text-sm">
+                        <button className="md:hidden p-2 -ml-2 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors" onClick={() => setSidebarOpen(true)}>
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
+                        </button>
+                        <span>{t('header.admin')} <span className="mx-2">/</span>
                         <span className="text-white capitalize">
                             {selectedOrgId ? t('detail.title') : viewLabels[activeView] || activeView}
-                        </span>
+                        </span></span>
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -76,7 +93,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-8 relative">
+                <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 relative">
                     <div className="max-w-7xl mx-auto animate-fade-in">
                         {activeView === 'dashboard' && (
                             <OperationsCenter />

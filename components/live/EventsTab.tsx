@@ -31,8 +31,8 @@ export const EventsTab: React.FC<{ events: APIEvent[] | null }> = ({ events }) =
                     <div className="flex items-center justify-center w-8 h-8 bg-gray-800 rounded-full flex-shrink-0">
                         <EventIcon event={event} />
                     </div>
-                    <div className="flex-grow">
-                        <p className="font-semibold text-white">{event.player.name}</p>
+                    <div className="flex-grow min-w-0">
+                        <p className="font-semibold text-white truncate">{event.player.name}</p>
                         <p className="text-xs text-gray-400">{event.detail} ({event.team.name})</p>
                     </div>
                 </div>

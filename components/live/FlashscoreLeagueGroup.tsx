@@ -37,7 +37,7 @@ const FlashscoreLeagueGroup: React.FC<FlashscoreLeagueGroupProps> = ({
                         <span className="text-sm font-bold text-white truncate">{league.name}</span>
                         <span className="text-[11px] text-slate-500">{league.country}</span>
                     </div>
-                    <span className="text-[10px] text-slate-500 bg-slate-700/50 px-1.5 py-0.5 rounded font-mono shrink-0">
+                    <span className="text-[11px] sm:text-[10px] text-slate-500 bg-slate-700/50 px-1.5 py-0.5 rounded font-mono shrink-0">
                         {league.games.length}
                     </span>
                 </div>
@@ -46,7 +46,7 @@ const FlashscoreLeagueGroup: React.FC<FlashscoreLeagueGroupProps> = ({
                     {isAdmin && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onAnalyzeLeague(); }}
-                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-500 rounded transition-all"
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] sm:px-2 sm:py-1 sm:text-[10px] min-h-[36px] sm:min-h-0 font-bold text-white bg-blue-600 hover:bg-blue-500 rounded transition-all"
                             title="Analizar Liga Completa"
                         >
                             <SparklesIcon className="w-3 h-3" />
@@ -55,7 +55,7 @@ const FlashscoreLeagueGroup: React.FC<FlashscoreLeagueGroupProps> = ({
                     )}
                     <button
                         onClick={() => setIsExpanded(!isExpanded)}
-                        className="p-1 text-slate-500 hover:text-white transition-colors"
+                        className="p-2 sm:p-1 text-slate-500 hover:text-white transition-colors"
                     >
                         {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
                     </button>

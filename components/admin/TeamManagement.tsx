@@ -197,10 +197,10 @@ export const TeamManagement: React.FC = () => {
     return (
         <div className="space-y-8 animate-fade-in">
             {/* Header */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-white font-display">Equipo y Configuración</h2>
-                    <p className="text-slate-400">Gestiona los miembros y datos de {currentOrg.name}</p>
+                    <h2 className="text-xl sm:text-2xl font-bold text-white font-display">Equipo y Configuración</h2>
+                    <p className="text-slate-400 text-sm">Gestiona los miembros y datos de {currentOrg.name}</p>
                 </div>
                 <div className="flex gap-2">
                     <button
@@ -225,10 +225,10 @@ export const TeamManagement: React.FC = () => {
             {/* MEMBER DETAIL MODAL (GoHighLevel Style) */}
             {selectedMember && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-slate-900 border border-white/10 rounded-xl w-full max-w-4xl h-[600px] flex overflow-hidden shadow-2xl">
+                    <div className="bg-slate-900 border border-white/10 rounded-xl w-full max-w-4xl h-[80vh] sm:h-[600px] flex flex-col sm:flex-row overflow-hidden shadow-2xl">
 
                         {/* Sidebar */}
-                        <div className="w-64 border-r border-white/5 bg-slate-900/50 p-6 flex flex-col gap-6">
+                        <div className="w-full sm:w-48 md:w-64 border-b sm:border-b-0 sm:border-r border-white/5 bg-slate-900/50 p-4 sm:p-6 flex flex-row sm:flex-col gap-4 sm:gap-6 overflow-x-auto sm:overflow-visible">
                             <div className="text-center">
                                 <div className="w-20 h-20 mx-auto rounded-full bg-slate-800 border-2 border-slate-700 overflow-hidden flex items-center justify-center mb-3">
                                     {selectedMember.profile?.avatar_url ? (
@@ -270,7 +270,7 @@ export const TeamManagement: React.FC = () => {
                             </div>
 
                             {/* Body */}
-                            <div className="flex-1 p-8 overflow-y-auto">
+                            <div className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto">
                                 {activeTab === 'info' && (
                                     <div className="space-y-6 max-w-lg">
                                         <div className="grid grid-cols-2 gap-4">

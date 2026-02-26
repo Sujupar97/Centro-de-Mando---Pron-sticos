@@ -119,7 +119,7 @@ const ProfitabilityDashboard: React.FC = () => {
 
             {/* Bankroll Evolution */}
             {current?.bankroll_history && current.bankroll_history.length > 0 && (
-                <div className="bg-slate-900 border border-white/10 rounded-xl p-5">
+                <div className="bg-slate-900 border border-white/10 rounded-xl p-3 sm:p-5">
                     <h4 className="text-white font-bold mb-4">Bankroll Evolution</h4>
                     <div className="flex items-end gap-1 h-40">
                         {current.bankroll_history.map((point, idx) => {
@@ -146,7 +146,7 @@ const ProfitabilityDashboard: React.FC = () => {
 
             {/* Market Breakdown */}
             {current?.by_market && Object.keys(current.by_market).length > 0 && (
-                <div className="bg-slate-900 border border-white/10 rounded-xl p-5">
+                <div className="bg-slate-900 border border-white/10 rounded-xl p-3 sm:p-5">
                     <h4 className="text-white font-bold mb-4 flex items-center gap-2">
                         <TrophyIcon className="w-5 h-5 text-amber-400" />
                         Rendimiento por Mercado
@@ -196,8 +196,8 @@ const ProfitabilityDashboard: React.FC = () => {
 };
 
 const StatCard: React.FC<{ label: string; value: string; color: string; sub?: string }> = ({ label, value, color, sub }) => (
-    <div className="bg-slate-900 border border-white/10 rounded-xl p-4 text-center">
-        <span className={`text-2xl font-black ${color}`}>{value}</span>
+    <div className="bg-slate-900 border border-white/10 rounded-xl p-3 sm:p-4 text-center">
+        <span className={`text-xl sm:text-2xl font-black ${color}`}>{value}</span>
         <span className="block text-xs text-slate-400 uppercase mt-1">{label}</span>
         {sub && <span className="block text-xs text-slate-500 mt-0.5">{sub}</span>}
     </div>

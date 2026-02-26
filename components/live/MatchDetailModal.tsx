@@ -209,7 +209,7 @@ const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                         </div>
                     );
                 }
-                return <InlineReport data={reportData.dashboardData} />;
+                return <InlineReport data={reportData.dashboardData} analysisRun={reportData.analysisRun} />;
             default:
                 return null;
         }
@@ -255,10 +255,10 @@ const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                     </div>
 
                     {/* Match info */}
-                    <div className="flex items-center justify-center gap-6 mb-3">
+                    <div className="flex items-center justify-center gap-3 sm:gap-6 mb-3">
                         {/* Home */}
                         <div className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
-                            <img src={game.teams.home.logo} alt="" className="w-12 h-12 object-contain" />
+                            <img src={game.teams.home.logo} alt="" className="w-10 h-10 sm:w-12 sm:h-12 object-contain" />
                             <span className="text-white font-bold text-sm text-center leading-tight truncate w-full">{game.teams.home.name}</span>
                             {homeForm.length > 0 && (
                                 <div className="flex gap-0.5">
@@ -285,11 +285,11 @@ const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             )}
 
                             {scoreAvailable ? (
-                                <span className={`text-4xl font-black tracking-widest ${isLive ? 'text-red-400' : 'text-white'}`}>
+                                <span className={`text-3xl sm:text-4xl font-black tracking-widest ${isLive ? 'text-red-400' : 'text-white'}`}>
                                     {game.goals.home} - {game.goals.away}
                                 </span>
                             ) : (
-                                <span className="text-3xl font-black text-slate-600">VS</span>
+                                <span className="text-2xl sm:text-3xl font-black text-slate-600">VS</span>
                             )}
 
                             {game.fixture.venue?.name && (
@@ -299,7 +299,7 @@ const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
 
                         {/* Away */}
                         <div className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
-                            <img src={game.teams.away.logo} alt="" className="w-12 h-12 object-contain" />
+                            <img src={game.teams.away.logo} alt="" className="w-10 h-10 sm:w-12 sm:h-12 object-contain" />
                             <span className="text-white font-bold text-sm text-center leading-tight truncate w-full">{game.teams.away.name}</span>
                             {awayForm.length > 0 && (
                                 <div className="flex gap-0.5">
@@ -315,7 +315,7 @@ const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 ${
+                                className={`flex items-center gap-1.5 px-3 py-3 sm:py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 ${
                                     activeTab === tab.id
                                         ? 'border-brand text-brand'
                                         : 'border-transparent text-slate-500 hover:text-white'

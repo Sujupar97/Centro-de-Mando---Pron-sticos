@@ -147,7 +147,7 @@ export const SignUpFlow: React.FC = () => {
             <div className="w-full max-w-6xl">
                 {/* Progress Bar */}
                 <div className="mb-8">
-                    <div className="flex items-center justify-center gap-4 mb-4">
+                    <div className="flex items-center justify-center gap-2 sm:gap-4 mb-4">
                         <div className={`flex items-center gap-2 ${step >= 1 ? 'text-brand' : 'text-slate-600'}`}>
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 1 ? 'border-brand bg-brand/20' : 'border-slate-600'
                                 }`}>
@@ -156,7 +156,7 @@ export const SignUpFlow: React.FC = () => {
                             <span className="text-sm font-medium hidden sm:inline">Tus Datos</span>
                         </div>
 
-                        <div className={`h-0.5 w-16 ${step >= 2 ? 'bg-brand' : 'bg-slate-700'}`}></div>
+                        <div className={`h-0.5 w-8 sm:w-16 ${step >= 2 ? 'bg-brand' : 'bg-slate-700'}`}></div>
 
                         <div className={`flex items-center gap-2 ${step >= 2 ? 'text-brand' : 'text-slate-600'}`}>
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 2 ? 'border-brand bg-brand/20' : 'border-slate-600'
@@ -169,7 +169,7 @@ export const SignUpFlow: React.FC = () => {
                 </div>
 
                 {/* Content */}
-                <div className="bg-slate-900 rounded-3xl border border-white/10 p-8 md:p-12">
+                <div className="bg-slate-900 rounded-3xl border border-white/10 p-4 sm:p-6 md:p-8 lg:p-12">
                     {step === 1 ? (
                         /* STEP 1: User Data */
                         <div className="max-w-md mx-auto">
@@ -178,7 +178,7 @@ export const SignUpFlow: React.FC = () => {
                                     <SparklesIcon className="w-4 h-4 text-brand" />
                                     <span className="text-xs font-bold uppercase tracking-wider text-brand">Únete Ahora</span>
                                 </div>
-                                <h1 className="text-4xl font-black text-white mb-2">Crea tu Cuenta</h1>
+                                <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-white mb-2">Crea tu Cuenta</h1>
                                 <p className="text-slate-400">Accede a oportunidades de alto valor en segundos</p>
                             </div>
 

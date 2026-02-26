@@ -689,12 +689,12 @@ export const FixturesFeed: React.FC = () => {
     };
 
     return (
-        <div className="space-y-8 pb-20">
+        <div className="space-y-8 pb-24">
             <div className="flex flex-col space-y-6">
                 {/* Header & Date Picker */}
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
                     <div>
-                        <h2 className="text-3xl font-display font-bold text-white tracking-tight">Jornadas Deportivas</h2>
+                        <h2 className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight">Jornadas Deportivas</h2>
                         <p className="text-slate-400 mt-1">Explora los encuentros y potencia tus decisiones con IA.</p>
                     </div>
 
@@ -717,21 +717,21 @@ export const FixturesFeed: React.FC = () => {
                                 className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'top-picks' ? 'bg-gradient-to-r from-brand to-emerald-600 text-white shadow-lg shadow-brand/20' : 'text-slate-400 hover:text-white'
                                     }`}
                             >
-                                <TrophyIcon className="w-5 h-5 mr-2" /> Oportunidades
+                                <TrophyIcon className="w-5 h-5 sm:mr-2" /> <span className="hidden sm:inline">Oportunidades</span>
                             </button>
                             <button
                                 onClick={() => setViewMode('parlays')}
                                 className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'parlays' ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20' : 'text-slate-400 hover:text-white'
                                     }`}
                             >
-                                <SparklesIcon className="w-5 h-5 mr-2" /> Smart Parlays
+                                <SparklesIcon className="w-5 h-5 sm:mr-2" /> <span className="hidden sm:inline">Parlays</span>
                             </button>
                             <button
                                 onClick={() => setViewMode('fixtures')}
                                 className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'fixtures' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'
                                     }`}
                             >
-                                <ListBulletIcon className="w-5 h-5 mr-2" /> Partidos
+                                <ListBulletIcon className="w-5 h-5 sm:mr-2" /> <span className="hidden sm:inline">Partidos</span>
                             </button>
                             {viewMode === 'fixtures' && (
                                 <button
@@ -748,7 +748,7 @@ export const FixturesFeed: React.FC = () => {
                                     className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'profitability' ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-400 hover:text-white'
                                         }`}
                                 >
-                                    <ChartBarIcon className="w-5 h-5 mr-2" /> Resultados
+                                    <ChartBarIcon className="w-5 h-5 sm:mr-2" /> <span className="hidden sm:inline">Resultados</span>
                                 </button>
                             )}
                         </div>
@@ -756,7 +756,7 @@ export const FixturesFeed: React.FC = () => {
                 </div>
 
                 {viewMode === 'top-picks' ? (
-                    <div className="glass rounded-2xl p-6 min-h-[500px] animate-fade-in border border-white/5">
+                    <div className="glass rounded-2xl p-3 sm:p-4 md:p-6 min-h-[500px] animate-fade-in border border-white/5">
                         <HighProbPicks
                             date={selectedDate}
                             onViewReport={handleViewReport}
@@ -768,7 +768,7 @@ export const FixturesFeed: React.FC = () => {
                         <SmartParlays date={selectedDate} />
                     </div>
                 ) : viewMode === 'profitability' ? (
-                    <div className="glass rounded-2xl p-6 min-h-[500px] animate-fade-in border border-white/5">
+                    <div className="glass rounded-2xl p-3 sm:p-4 md:p-6 min-h-[500px] animate-fade-in border border-white/5">
                         <ResultadosPublic refreshTrigger={resultsRefreshKey} />
                     </div>
                 ) : (

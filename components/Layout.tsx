@@ -120,7 +120,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
         )}
 
         {/* Mobile Header */}
-        <header className="md:hidden h-16 glass flex items-center justify-between px-6 sticky top-0 z-30 backdrop-blur-xl border-b border-white/5 shadow-lg">
+        <header className="md:hidden h-16 glass flex items-center justify-between px-4 sm:px-6 sticky top-0 z-30 backdrop-blur-xl border-b border-white/5 shadow-lg">
           <img src="/derbix-logo.png" alt="Derbix" className="h-10 object-contain" />
           <button onClick={signOut} className="text-slate-400 hover:text-white">
             <ArrowLeftOnRectangleIcon className="w-6 h-6" />
@@ -128,7 +128,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
         </header>
 
         {/* Scrollable Content */}
-        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-8 scroll-smooth relative z-10 overscroll-behavior-contain">
+        <main className="flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-6 md:px-8 md:py-8 scroll-smooth relative z-10 overscroll-behavior-contain">
           <div className="max-w-[1800px] mx-auto animate-fade-in pb-24 md:pb-8">
             {children}
           </div>
@@ -142,12 +142,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
               <button
                 key={item.id}
                 onClick={() => setCurrentPage(item.id as Page)}
-                className={`flex flex-col items-center justify-center w-12 h-full transition-all duration-300 ease-out active:scale-95 ${isActive ? 'text-brand -translate-y-2' : 'text-slate-500 active:text-slate-200'}`}
+                className={`flex flex-col items-center justify-center flex-1 max-w-[72px] h-full transition-all duration-300 ease-out active:scale-95 ${isActive ? 'text-brand -translate-y-2' : 'text-slate-500 active:text-slate-200'}`}
               >
                 <div className={`p-2 rounded-full transition-all duration-300 ease-out ${isActive ? 'bg-brand/10 shadow-[0_0_10px_rgba(16,185,129,0.2)] scale-110' : 'active:bg-white/5'}`}>
                   {item.icon}
                 </div>
-                {isActive && <span className="text-[10px] font-bold mt-1">{item.label}</span>}
+                {isActive && <span className="text-[11px] font-bold mt-1">{item.label}</span>}
               </button>
             );
           })}

@@ -34,7 +34,7 @@ export const LineupsTab: React.FC<{ lineups: APILineup[] | null }> = ({ lineups 
                             <span className="px-3 py-1 text-sm font-semibold rounded-full bg-green-accent/20 text-green-accent">{lineup.formation || 'N/A'}</span>
                         </div>
                         
-                        <div className="max-h-60 overflow-y-auto pr-2">
+                        <div className="max-h-48 sm:max-h-60 overflow-y-auto pr-2">
                             <h5 className="font-semibold text-sm text-gray-300 mb-2 sticky top-0 bg-gray-800">Titulares</h5>
                             <ul className="space-y-1.5 text-sm">
                                 {lineup.startXI.map(p => (

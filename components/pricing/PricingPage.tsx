@@ -83,7 +83,7 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isCurrentPlan, isPopula
     return (
         <div className={`
       relative flex flex-col bg-slate-900 rounded-2xl border-2 transition-all duration-300
-      ${isPopular ? 'border-brand shadow-xl shadow-brand/20 scale-105' : 'border-white/10 hover:border-white/20'}
+      ${isPopular ? 'border-brand shadow-xl shadow-brand/20 lg:scale-105' : 'border-white/10 hover:border-white/20'}
       ${isCurrentPlan ? 'ring-2 ring-brand ring-offset-2 ring-offset-slate-950' : ''}
     `}>
             {isPopular && (
@@ -101,7 +101,7 @@ const PricingCard: React.FC<PricingCardProps> = ({ plan, isCurrentPlan, isPopula
 
                 <div className="mt-4">
                     <div className="flex items-baseline gap-1">
-                        <span className="text-4xl font-black text-white">
+                        <span className="text-3xl sm:text-4xl font-black text-white">
                             {plan.price_cents === 0 ? 'Gratis' : priceDisplay.monthly.replace('/mes', '')}
                         </span>
                         {plan.price_cents > 0 && (
@@ -275,7 +275,7 @@ export const PricingPage: React.FC = () => {
     return (
         <div className="min-h-full bg-gradient-to-b from-slate-950 to-slate-900 py-12 px-4">
             <div className="text-center max-w-3xl mx-auto mb-8">
-                <h1 className="text-4xl md:text-5xl font-black text-white mb-4">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white mb-4">
                     Elige tu Plan
                 </h1>
                 <p className="text-xl text-gray-400">
@@ -313,7 +313,7 @@ export const PricingPage: React.FC = () => {
                 </div>
             )}
 
-            <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-4">
+            <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-4">
                 {plans.map((plan) => (
                     <PricingCard
                         key={plan.id}

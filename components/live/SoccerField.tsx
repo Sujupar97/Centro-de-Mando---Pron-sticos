@@ -12,11 +12,11 @@ interface SoccerFieldProps {
 const PlayerMarker: React.FC<{ player: APILineupPlayer; color: string; leftPct: number; bottomPct: number }> = ({ player, color, leftPct, bottomPct }) => {
     return (
         <div
-            className="absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2 w-16 transition-all duration-300 hover:scale-110 hover:z-10 group cursor-pointer"
+            className="absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2 w-12 sm:w-16 transition-all duration-300 hover:scale-110 hover:z-10 group cursor-pointer"
             style={{ bottom: `${bottomPct}%`, left: `${leftPct}%` }}
         >
             <div
-                className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold shadow-md ${color} relative z-10 bg-opacity-90 backdrop-blur-sm`}
+                className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 border-white flex items-center justify-center text-[10px] sm:text-xs font-bold shadow-md ${color} relative z-10 bg-opacity-90 backdrop-blur-sm`}
                 title={player.name}
             >
                 {player.number}
@@ -30,7 +30,7 @@ const PlayerMarker: React.FC<{ player: APILineupPlayer; color: string; leftPct: 
             </div>
 
             {/* Simple Name (Always visible) */}
-            <span className="mt-1 text-[9px] font-bold text-white bg-black/40 px-1.5 rounded truncate w-full text-center max-w-[60px] shadow-sm">
+            <span className="mt-1 text-[10px] sm:text-[9px] font-bold text-white bg-black/40 px-1.5 rounded truncate w-full text-center max-w-[48px] sm:max-w-[60px] shadow-sm">
                 {player.name.split(' ').pop()}
             </span>
         </div>
@@ -55,6 +55,16 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
     // Detect if ALL grids are null → calculate from formation string
     const allGridsNull = currentLineup.startXI.every(item => !item.player.grid);
 
+    // Sort players by position (G→D→M→F) when no grid data from API
+    const POS_PRIORITY: Record<string, number> = { G: 0, D: 1, M: 2, F: 3 };
+    const sortedXI = allGridsNull
+        ? [...currentLineup.startXI].sort((a, b) => {
+            const posA = POS_PRIORITY[a.player.pos] ?? 2;
+            const posB = POS_PRIORITY[b.player.pos] ?? 2;
+            return posA - posB;
+        })
+        : currentLineup.startXI;
+
     let playersWithGrid: { player: APILineupPlayer; gridRow: number; gridCol: number }[];
 
     if (allGridsNull && currentLineup.formation) {
@@ -67,11 +77,11 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
             playersWithGrid = [];
             let playerIdx = 0;
 
-            for (let rowIdx = 0; rowIdx < rowDefs.length && playerIdx < currentLineup.startXI.length; rowIdx++) {
+            for (let rowIdx = 0; rowIdx < rowDefs.length && playerIdx < sortedXI.length; rowIdx++) {
                 const { count } = rowDefs[rowIdx];
-                for (let col = 1; col <= count && playerIdx < currentLineup.startXI.length; col++) {
+                for (let col = 1; col <= count && playerIdx < sortedXI.length; col++) {
                     playersWithGrid.push({
-                        player: currentLineup.startXI[playerIdx].player,
+                        player: sortedXI[playerIdx].player,
                         gridRow: rowIdx + 1,
                         gridCol: col
                     });
@@ -80,9 +90,9 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
             }
 
             // Remaining players (if formation doesn't sum to 10+1)
-            while (playerIdx < currentLineup.startXI.length) {
+            while (playerIdx < sortedXI.length) {
                 playersWithGrid.push({
-                    player: currentLineup.startXI[playerIdx].player,
+                    player: sortedXI[playerIdx].player,
                     gridRow: rowDefs.length + 1,
                     gridCol: playerIdx + 1
                 });
@@ -90,7 +100,7 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
             }
         } else {
             // Fallback: linear distribution
-            playersWithGrid = currentLineup.startXI.map((item, i) => ({
+            playersWithGrid = sortedXI.map((item, i) => ({
                 player: item.player,
                 gridRow: 1,
                 gridCol: i + 1
@@ -134,9 +144,9 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
             // Horizontal: distribute evenly across width
             const leftPct = ((idx + 0.5) * (100 / count));
 
-            // Vertical: distribute evenly from 5% (GK) to 90% (FW)
+            // Vertical: distribute evenly from 8% (GK) to 86% (FW)
             const bottomPct = totalRows > 1
-                ? 5 + (rowIndex / (totalRows - 1)) * 85
+                ? 8 + (rowIndex / (totalRows - 1)) * 78
                 : 50;
 
             positionedPlayers.push({
@@ -155,13 +165,13 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
                     onClick={() => setViewTeam('home')}
                     className={`px-4 py-2 text-sm font-bold rounded-md transition-colors ${viewTeam === 'home' ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'}`}
                 >
-                    Local: {homeLineup?.team.name}
+                    <span className="truncate max-w-[120px] sm:max-w-none">Local: {homeLineup?.team.name}</span>
                 </button>
                 <button
                     onClick={() => setViewTeam('away')}
                     className={`px-4 py-2 text-sm font-bold rounded-md transition-colors ${viewTeam === 'away' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'}`}
                 >
-                    Visitante: {awayLineup?.team.name}
+                    <span className="truncate max-w-[120px] sm:max-w-none">Visitante: {awayLineup?.team.name}</span>
                 </button>
             </div>
 
@@ -172,7 +182,7 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
             )}
 
             {/* Cancha */}
-            <div className="relative w-full aspect-[2/3] md:aspect-[3/4] max-w-md mx-auto bg-green-700 rounded-lg border-4 border-white/20 shadow-inner overflow-hidden">
+            <div className="relative w-full aspect-[2/3] md:aspect-[3/4] max-w-sm sm:max-w-md mx-auto bg-green-700 rounded-lg border-4 border-white/20 shadow-inner overflow-hidden">
                 {/* Dibujo de la cancha (CSS puro) */}
                 <div className="absolute inset-0 flex flex-col">
                     {/* Área Portero */}

@@ -29,10 +29,10 @@ const FlashscoreMatchRow: React.FC<FlashscoreMatchRowProps> = ({
     return (
         <div
             onClick={() => onOpenDetail(game)}
-            className="flex items-center h-12 px-3 hover:bg-white/5 cursor-pointer transition-colors border-b border-white/[0.03] last:border-b-0 group"
+            className="flex items-center h-14 sm:h-12 px-2 sm:px-3 hover:bg-white/5 cursor-pointer transition-colors border-b border-white/[0.03] last:border-b-0 group"
         >
             {/* Time / Status */}
-            <div className="w-14 shrink-0 text-center">
+            <div className="w-12 sm:w-14 shrink-0 text-center">
                 {isLive ? (
                     <span className="text-xs font-bold text-red-400 flex items-center justify-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
@@ -78,7 +78,7 @@ const FlashscoreMatchRow: React.FC<FlashscoreMatchRowProps> = ({
             </div>
 
             {/* Indicators */}
-            <div className="w-20 shrink-0 flex items-center justify-end gap-1.5">
+            <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end gap-1.5">
                 {isProcessing && (
                     <div className="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
                 )}
@@ -90,10 +90,10 @@ const FlashscoreMatchRow: React.FC<FlashscoreMatchRowProps> = ({
                 {isAdmin && !hasReport && !isProcessing && (
                     <button
                         onClick={handleAnalyzeClick}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded text-blue-400 hover:bg-blue-500/10 transition-all"
+                        className="sm:opacity-0 sm:group-hover:opacity-100 p-2 sm:p-1 rounded text-blue-400 hover:bg-blue-500/10 transition-all"
                         title="Analizar"
                     >
-                        <SparklesIcon className="w-3.5 h-3.5" />
+                        <SparklesIcon className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                     </button>
                 )}
             </div>

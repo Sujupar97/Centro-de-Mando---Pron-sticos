@@ -62,10 +62,10 @@ const PickCard: React.FC<{ pick: ValuePick; isLowProb?: boolean }> = ({ pick, is
                             <span className="text-blue-300 font-black text-sm">@{pick.odds.toFixed(2)}</span>
                         </div>
                     )}
-                    <div className={`w-12 h-12 rounded-lg flex flex-col items-center justify-center ${
+                    <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex flex-col items-center justify-center ${
                         isHighProb ? 'bg-brand/10 border border-brand/30' : 'bg-slate-700/50'
                     }`}>
-                        <span className={`text-lg font-black ${isHighProb ? 'text-brand' : 'text-white'}`}>{prob}%</span>
+                        <span className={`text-base sm:text-lg font-black ${isHighProb ? 'text-brand' : 'text-white'}`}>{prob}%</span>
                     </div>
                 </div>
             </div>
@@ -176,6 +176,23 @@ const MatchPredictionsTab: React.FC<MatchPredictionsTabProps> = ({
 
     return (
         <div className="space-y-4">
+            {/* Disclaimer: NO hay picks validados (todos < 83%) */}
+            {highProbPicks.length === 0 && lowProbPicks.length > 0 && (
+                <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4">
+                    <div className="flex items-start gap-3">
+                        <ExclamationTriangleIcon className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" />
+                        <div>
+                            <h4 className="text-amber-300 font-bold text-sm mb-1">Sin pronósticos validados</h4>
+                            <p className="text-amber-200/70 text-xs leading-relaxed">
+                                Este partido no tiene pronósticos que cumplan nuestro umbral de confianza (83%).
+                                Los siguientes son análisis complementarios y no representan una oportunidad validada por nuestro sistema.
+                                Apuestas bajo su responsabilidad.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* High probability picks */}
             {highProbPicks.length > 0 && (
                 <div className="space-y-3">
@@ -185,6 +202,11 @@ const MatchPredictionsTab: React.FC<MatchPredictionsTabProps> = ({
                     </h4>
                     {highProbPicks.map(pick => <PickCard key={pick.id} pick={pick} />)}
                 </div>
+            )}
+
+            {/* Separador visual entre TOP y COMPLEMENTARIOS */}
+            {highProbPicks.length > 0 && lowProbPicks.length > 0 && (
+                <div className="py-1"><div className="border-t border-amber-500/20" /></div>
             )}
 
             {/* Low probability disclaimer + picks */}
@@ -200,9 +222,9 @@ const MatchPredictionsTab: React.FC<MatchPredictionsTabProps> = ({
                         </div>
                     )}
                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        {highProbPicks.length > 0 ? 'Complementarios' : 'Pronósticos Disponibles'}
+                        {highProbPicks.length > 0 ? 'Complementarios' : 'Análisis Complementarios'}
                     </h4>
-                    {lowProbPicks.map(pick => <PickCard key={pick.id} pick={pick} isLowProb={highProbPicks.length > 0} />)}
+                    {lowProbPicks.map(pick => <PickCard key={pick.id} pick={pick} isLowProb />)}
                 </div>
             )}
 
