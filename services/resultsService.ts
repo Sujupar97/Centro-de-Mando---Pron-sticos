@@ -2,16 +2,19 @@
 // Frontend service for fetching verification results and analytics data
 
 import { supabase } from './supabaseService';
-import type { PublicResultsData, AdvancedAnalyticsData, AdvancedAnalyticsFilters, PickResult } from '../types';
+import type { PublicResultsData, ParlayResultData, AdvancedAnalyticsData, AdvancedAnalyticsFilters, PickResult } from '../types';
 
 // Fecha de inicio del sistema de verificación
 const SYSTEM_START_DATE = '2026-02-17';
+// Fecha de inicio del sistema de parlays
+const PARLAY_START_DATE = '2026-02-25';
 
 /**
  * Get public results data for the Resultados tab (accessible to all users)
  * Filters by match_date from daily_matches — NOT by verified_at timestamp
+ * @param filter - 'all' shows picks + parlays, 'picks' only picks, 'parlays' only parlays
  */
-export async function getPublicResults(startDate: string, endDate: string): Promise<PublicResultsData> {
+export async function getPublicResults(startDate: string, endDate: string, filter: 'all' | 'picks' | 'parlays' = 'all'): Promise<PublicResultsData> {
     // Step 1: Get fixture IDs for matches in the requested date range
     const { data: dateMatches, error: matchError } = await supabase
         .from('daily_matches')
@@ -132,6 +135,18 @@ export async function getPublicResults(startDate: string, endDate: string): Prom
     const { totalProfit: cumulativeProfit } = await calculateProfitFromPicks(baseBankroll, SYSTEM_START_DATE, new Date().toISOString().split('T')[0]);
     const { totalProfit: periodProfit, totalStaked: periodStaked } = await calculateProfitFromPicks(baseBankroll, startDate, endDate);
 
+    // Fetch parlay results if filter includes parlays
+    let parlaysData: PublicResultsData['parlays'] = undefined;
+    if (filter === 'all' || filter === 'parlays') {
+        parlaysData = await getParlayResults(startDate, endDate, baseBankroll);
+    }
+
+    // Combined bankroll includes parlay profit when showing 'all'
+    const parlaysCumulativeProfit = filter !== 'picks'
+        ? (await getParlayProfit(baseBankroll, PARLAY_START_DATE, new Date().toISOString().split('T')[0]))
+        : 0;
+    const combinedCumulativeProfit = cumulativeProfit + parlaysCumulativeProfit;
+
     return {
         winRate: totalVerified > 0 ? (won.length / totalVerified) * 100 : 0,
         totalVerified,
@@ -143,13 +158,14 @@ export async function getPublicResults(startDate: string, endDate: string): Prom
         recentResults,
         bankroll: {
             base: baseBankroll,
-            current: baseBankroll + cumulativeProfit,
-            profit: cumulativeProfit,
-            roi: baseBankroll > 0 ? (cumulativeProfit / baseBankroll) * 100 : 0,
-            periodProfit,
-            periodROI: baseBankroll > 0 ? (periodProfit / baseBankroll) * 100 : 0,
-            periodStaked,
+            current: baseBankroll + combinedCumulativeProfit,
+            profit: combinedCumulativeProfit,
+            roi: baseBankroll > 0 ? (combinedCumulativeProfit / baseBankroll) * 100 : 0,
+            periodProfit: periodProfit + (parlaysData?.periodProfit ?? 0),
+            periodROI: baseBankroll > 0 ? ((periodProfit + (parlaysData?.periodProfit ?? 0)) / baseBankroll) * 100 : 0,
+            periodStaked: periodStaked + (parlaysData?.periodStaked ?? 0),
         },
+        parlays: parlaysData,
     };
 }
 
@@ -160,6 +176,110 @@ async function fetchBaseBankroll(): Promise<number> {
         .eq('key', 'display_bankroll')
         .maybeSingle();
     return data?.value || 100;
+}
+
+/**
+ * Get parlay results for the Resultados tab
+ * Queries parlay_combos_v2 directly (source of truth for parlays)
+ */
+async function getParlayResults(startDate: string, endDate: string, baseBankroll: number): Promise<{
+    totalVerified: number;
+    totalPending: number;
+    won: number;
+    lost: number;
+    winRate: number;
+    periodProfit: number;
+    periodStaked: number;
+    recentResults: ParlayResultData[];
+}> {
+    // Get verified parlays in date range
+    const { data: verifiedParlays } = await supabase
+        .from('parlay_combos_v2')
+        .select('id, date, picks, combined_odds, combined_probability, risk_tier, status, verified_at')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .in('status', ['won', 'lost'])
+        .order('verified_at', { ascending: false });
+
+    // Count pending
+    const { count: pendingCount } = await supabase
+        .from('parlay_combos_v2')
+        .select('id', { count: 'exact', head: true })
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .eq('status', 'pending');
+
+    const parlays = verifiedParlays || [];
+    const wonParlays = parlays.filter(p => p.status === 'won');
+    const lostParlays = parlays.filter(p => p.status === 'lost');
+
+    // Financial calc: 1% per parlay
+    const stakeAmount = baseBankroll * 0.01;
+    let periodProfit = 0;
+    let periodStaked = 0;
+
+    const recentResults: ParlayResultData[] = parlays.map(p => {
+        periodStaked += stakeAmount;
+        const profitLoss = p.status === 'won'
+            ? stakeAmount * ((p.combined_odds || 1) - 1)
+            : -stakeAmount;
+        periodProfit += profitLoss;
+
+        return {
+            id: p.id,
+            date: p.date,
+            picks: (p.picks as any[] || []).map((leg: any) => ({
+                fixture_id: leg.fixture_id || 0,
+                market: leg.market || '',
+                selection: leg.selection || '',
+                odds: leg.odds || 0,
+                home_team: leg.home_team || '',
+                away_team: leg.away_team || '',
+                result: (leg.result || 'PENDING') as PickResult,
+            })),
+            combined_odds: p.combined_odds || 0,
+            risk_tier: p.risk_tier || 'balanced',
+            status: (p.status || 'PENDING').toUpperCase() as PickResult,
+            profit_loss: profitLoss,
+            verified_at: p.verified_at,
+        };
+    });
+
+    const totalVerified = wonParlays.length + lostParlays.length;
+
+    return {
+        totalVerified,
+        totalPending: pendingCount || 0,
+        won: wonParlays.length,
+        lost: lostParlays.length,
+        winRate: totalVerified > 0 ? (wonParlays.length / totalVerified) * 100 : 0,
+        periodProfit,
+        periodStaked,
+        recentResults,
+    };
+}
+
+/**
+ * Calculate cumulative parlay profit for bankroll tracking
+ */
+async function getParlayProfit(baseBankroll: number, startDate: string, endDate: string): Promise<number> {
+    const { data: parlays } = await supabase
+        .from('parlay_combos_v2')
+        .select('combined_odds, status')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .in('status', ['won', 'lost']);
+
+    const stakeAmount = baseBankroll * 0.01;
+    let totalProfit = 0;
+
+    for (const p of (parlays || [])) {
+        totalProfit += p.status === 'won'
+            ? stakeAmount * ((p.combined_odds || 1) - 1)
+            : -stakeAmount;
+    }
+
+    return totalProfit;
 }
 
 /**

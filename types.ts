@@ -591,6 +591,35 @@ export interface PublicResultsData {
         periodROI?: number;
         periodStaked?: number;
     };
+    parlays?: {
+        totalVerified: number;
+        totalPending: number;
+        won: number;
+        lost: number;
+        winRate: number;
+        periodProfit: number;
+        periodStaked: number;
+        recentResults: ParlayResultData[];
+    };
+}
+
+export interface ParlayResultData {
+    id: string;
+    date: string;
+    picks: Array<{
+        fixture_id: number;
+        market: string;
+        selection: string;
+        odds: number;
+        home_team: string;
+        away_team: string;
+        result: PickResult;
+    }>;
+    combined_odds: number;
+    risk_tier: string;
+    status: PickResult;
+    profit_loss: number;
+    verified_at: string | null;
 }
 
 export interface AdvancedAnalyticsFilters {

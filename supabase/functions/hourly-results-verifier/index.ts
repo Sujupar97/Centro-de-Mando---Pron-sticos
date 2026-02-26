@@ -542,6 +542,7 @@ serve(async (req) => {
         let totalGeminiCalls = 0;
         const MAX_GEMINI_CALLS = 40;
         const processedFixtureIds = new Set<number>();
+        const processedParlayIds = new Set<string>();
 
         for (const checkDate of datesToCheck) {
             log(`[Verifier] ═══ Processing date: ${checkDate} ═══`);
@@ -1038,64 +1039,212 @@ serve(async (req) => {
             }
 
             // ───────────────────────────────────────────────────────────
-            // STEP 5: Verify pending parlays
+            // STEP 5: Verify pending parlays — DIRECT evaluation
+            // Evaluates each leg against actual match scores (same as picks)
+            // instead of looking up value_picks_v2 (which has different markets)
             // ───────────────────────────────────────────────────────────
             const { data: pendingParlays } = await supabase
                 .from('parlay_combos_v2')
-                .select('id, picks, status')
+                .select('id, picks, status, combined_odds, combined_probability, date')
                 .eq('date', checkDate)
                 .eq('status', 'pending');
 
             if (pendingParlays && pendingParlays.length > 0) {
+                log(`[Verifier] ${pendingParlays.length} pending parlays for ${checkDate}`);
+
+                // Collect unique fixture IDs from all parlay legs
+                const parlayFixtureIds = new Set<number>();
+                for (const p of pendingParlays) {
+                    for (const leg of (p.picks as any[] || [])) {
+                        if (leg.fixture_id) parlayFixtureIds.add(leg.fixture_id);
+                    }
+                }
+
+                // Refresh match data from daily_matches (may have been updated in Steps 2-3)
+                const { data: parlayMatches } = await supabase
+                    .from('daily_matches')
+                    .select('api_fixture_id, home_team, away_team, league_name, match_status, home_score, away_score')
+                    .in('api_fixture_id', [...parlayFixtureIds]);
+
+                const parlayMatchMap = new Map<number, any>();
+                (parlayMatches || []).forEach((m: any) => parlayMatchMap.set(m.api_fixture_id, m));
+
+                // Cache SportMonks fixture data per fixture (for stats: corners, cards)
+                const fixtureStatsCache = new Map<number, ReturnType<typeof extractStats>>();
+                const voidStatuses = ['POSTP', 'POST', 'PST', 'CANC', 'ABD', 'AWD', 'WO'];
+                const emptyStats = {
+                    homeCorners: null as number | null, awayCorners: null as number | null,
+                    homeYellowCards: null as number | null, awayYellowCards: null as number | null,
+                    homeRedCards: null as number | null, awayRedCards: null as number | null,
+                    homeShotsOnTarget: null as number | null, awayShotsOnTarget: null as number | null,
+                };
+
                 for (const parlay of pendingParlays) {
                     const picks = parlay.picks as any[];
                     if (!picks || !Array.isArray(picks)) continue;
 
+                    processedParlayIds.add(parlay.id);
                     let won = 0, lost = 0, pending = 0, voided = 0;
                     const updatedPicks = [];
 
                     for (const leg of picks) {
-                        // Check if this pick has been verified in value_picks_v2
-                        const { data: vpResult } = await supabase
-                            .from('value_picks_v2')
-                            .select('result')
-                            .eq('fixture_id', leg.fixture_id)
-                            .eq('market', leg.market)
-                            .eq('selection', leg.selection)
-                            .neq('result', 'PENDING')
-                            .limit(1)
-                            .maybeSingle();
-
-                        if (vpResult) {
-                            const legResult = vpResult.result;
-                            updatedPicks.push({ ...leg, result: legResult });
-                            if (legResult === 'WON') won++;
-                            else if (legResult === 'LOST') lost++;
-                            else if (legResult === 'VOID' || legResult === 'PUSH') voided++;
+                        // If leg already has a final result from a previous partial run, keep it
+                        if (leg.result && leg.result !== 'PENDING') {
+                            updatedPicks.push(leg);
+                            if (leg.result === 'WON') won++;
+                            else if (leg.result === 'LOST') lost++;
+                            else if (leg.result === 'VOID' || leg.result === 'PUSH') voided++;
                             else pending++;
-                        } else {
+                            continue;
+                        }
+
+                        const match = parlayMatchMap.get(leg.fixture_id);
+                        if (!match) {
                             updatedPicks.push({ ...leg, result: 'PENDING' });
                             pending++;
+                            continue;
                         }
+
+                        // Check if match is postponed/cancelled → VOID
+                        if (voidStatuses.includes(match.match_status || '')) {
+                            updatedPicks.push({ ...leg, result: 'VOID' });
+                            voided++;
+                            continue;
+                        }
+
+                        // Check if match is finished
+                        if (!['FT', 'AET', 'PEN'].includes(match.match_status || '')) {
+                            updatedPicks.push({ ...leg, result: 'PENDING' });
+                            pending++;
+                            continue;
+                        }
+
+                        const homeScore = match.home_score;
+                        const awayScore = match.away_score;
+                        if (homeScore === null || awayScore === null) {
+                            updatedPicks.push({ ...leg, result: 'PENDING' });
+                            pending++;
+                            continue;
+                        }
+
+                        // Get match stats (corners, cards) — cached per fixture
+                        if (!fixtureStatsCache.has(leg.fixture_id)) {
+                            const fixtureData = await getFixtureComplete(leg.fixture_id);
+                            if (fixtureData) {
+                                fixtureStatsCache.set(leg.fixture_id, extractStats(fixtureData));
+                                totalFixturesChecked++;
+                                await new Promise(r => setTimeout(r, 100));
+                            } else {
+                                fixtureStatsCache.set(leg.fixture_id, emptyStats);
+                            }
+                        }
+                        const legStats = fixtureStatsCache.get(leg.fixture_id) || emptyStats;
+
+                        // Rule-based evaluation (same function used for normal picks)
+                        let isWon = evaluatePickResult(
+                            leg.market, leg.selection,
+                            homeScore, awayScore,
+                            match.home_team, match.away_team,
+                            legStats
+                        );
+
+                        // Gemini fallback for complex markets
+                        if (isWon === null && totalGeminiCalls < MAX_GEMINI_CALLS) {
+                            log(`[Verifier] Parlay leg Gemini fallback: ${leg.market} | ${leg.selection}`);
+                            isWon = await evaluateWithGemini(
+                                leg.market, leg.selection,
+                                match.home_team, match.away_team,
+                                homeScore, awayScore,
+                                legStats
+                            );
+                            totalGeminiCalls++;
+                        }
+
+                        if (isWon === null) {
+                            updatedPicks.push({ ...leg, result: 'PENDING' });
+                            pending++;
+                            continue;
+                        }
+
+                        const legResult = isWon ? 'WON' : 'LOST';
+                        updatedPicks.push({ ...leg, result: legResult, actual_score: `${homeScore}-${awayScore}` });
+                        if (isWon) won++;
+                        else lost++;
+
+                        log(`[Verifier] Parlay leg ${legResult}: ${match.home_team} vs ${match.away_team} | ${leg.market} → ${leg.selection} | Score: ${homeScore}-${awayScore}`);
                     }
 
+                    // Determine parlay status
                     let parlayStatus = 'pending';
                     if (lost > 0) parlayStatus = 'lost';
                     else if (pending === 0 && won + voided === picks.length) parlayStatus = 'won';
-                    else if (pending === 0) parlayStatus = 'partial';
 
-                    if (parlayStatus !== 'pending') {
+                    // Update parlay if any leg changed or parlay resolved
+                    if (parlayStatus !== 'pending' || updatedPicks.some((p: any) => p.result !== 'PENDING')) {
+                        const updatePayload: any = {
+                            picks: updatedPicks,
+                            updated_at: new Date().toISOString()
+                        };
+
+                        if (parlayStatus !== 'pending') {
+                            updatePayload.status = parlayStatus;
+                            updatePayload.verified_at = new Date().toISOString();
+                        }
+
                         await supabase
                             .from('parlay_combos_v2')
-                            .update({
-                                status: parlayStatus,
-                                picks: updatedPicks,
-                                updated_at: new Date().toISOString()
-                            })
+                            .update(updatePayload)
                             .eq('id', parlay.id);
 
-                        totalParlaysVerified++;
-                        log(`[Verifier] Parlay ${parlay.id.substring(0, 8)}: ${parlayStatus.toUpperCase()} (${won}W/${lost}L/${pending}P/${voided}V)`);
+                        if (parlayStatus !== 'pending') {
+                            totalParlaysVerified++;
+                            log(`[Verifier] Parlay ${parlay.id.substring(0, 8)}: ${parlayStatus.toUpperCase()} (${won}W/${lost}L/${pending}P/${voided}V) | Odds: ${parlay.combined_odds}`);
+
+                            // Profitability tracking for resolved parlays (1% bankroll staking)
+                            try {
+                                const { data: existingProfit } = await supabase
+                                    .from('profitability_tracking')
+                                    .select('id')
+                                    .eq('pick_id', parlay.id)
+                                    .maybeSingle();
+
+                                if (!existingProfit) {
+                                    const { percentage, tier } = calculateStake('parlay');
+                                    const stakeAmount = (runningBankroll * percentage) / 100;
+                                    const profitLoss = parlayStatus === 'won'
+                                        ? stakeAmount * ((parlay.combined_odds || 1) - 1)
+                                        : -stakeAmount;
+                                    runningBankroll += profitLoss;
+
+                                    const firstLeg = picks[0] || {};
+                                    const selectionSummary = picks.map((l: any) => l.selection || '').join(' & ');
+
+                                    await supabase.from('profitability_tracking').insert({
+                                        date: checkDate,
+                                        pick_id: parlay.id,
+                                        pick_type: 'parlay',
+                                        fixture_id: firstLeg.fixture_id || 0,
+                                        home_team: firstLeg.home_team || '',
+                                        away_team: firstLeg.away_team || '',
+                                        market: 'parlay_combo',
+                                        selection: selectionSummary,
+                                        odds: parlay.combined_odds || 0,
+                                        probability: Math.round((parlay.combined_probability || 0) * 100),
+                                        confidence_tier: tier,
+                                        stake_percentage: percentage,
+                                        stake_amount: stakeAmount,
+                                        result: parlayStatus,
+                                        profit_loss: profitLoss,
+                                        bankroll_after: runningBankroll,
+                                        verified_at: new Date().toISOString()
+                                    });
+
+                                    log(`[Verifier] Parlay profit tracked: ${parlayStatus} → ${profitLoss >= 0 ? '+' : ''}${profitLoss.toFixed(2)} (bankroll: ${runningBankroll.toFixed(2)})`);
+                                }
+                            } catch (profitErr: any) {
+                                log(`[Verifier] Parlay profitability error (non-blocking): ${profitErr.message}`);
+                            }
+                        }
                     }
                 }
             }
@@ -1318,6 +1467,222 @@ serve(async (req) => {
             }
         } catch (catchupErr: any) {
             log(`[Verifier] CATCH-UP error (non-blocking): ${catchupErr.message}`);
+        }
+
+        // ───────────────────────────────────────────────────────────
+        // STEP 6.5: CATCH-UP for pending parlays (any date)
+        // Catches parlays from dates beyond the normal 3-day window
+        // ───────────────────────────────────────────────────────────
+        try {
+            log(`[Verifier] ═══ CATCH-UP PARLAYS: Scanning ALL pending parlays globally ═══`);
+
+            const { data: globalPendingParlays } = await supabase
+                .from('parlay_combos_v2')
+                .select('id, picks, status, combined_odds, combined_probability, date')
+                .eq('status', 'pending')
+                .limit(100);
+
+            // Filter out parlays already processed in Step 5
+            const catchupParlays = (globalPendingParlays || []).filter(
+                (p: any) => !processedParlayIds.has(p.id)
+            );
+
+            if (catchupParlays.length > 0) {
+                log(`[Verifier] CATCH-UP PARLAYS: ${catchupParlays.length} pending parlays to check`);
+
+                // Collect unique fixture IDs from all catch-up parlay legs
+                const catchupParlayFixtureIds = new Set<number>();
+                for (const p of catchupParlays) {
+                    for (const leg of (p.picks as any[] || [])) {
+                        if (leg.fixture_id) catchupParlayFixtureIds.add(leg.fixture_id);
+                    }
+                }
+
+                // Fetch match data for all relevant fixtures
+                const { data: catchupParlayMatches } = await supabase
+                    .from('daily_matches')
+                    .select('api_fixture_id, home_team, away_team, league_name, match_status, home_score, away_score, match_date')
+                    .in('api_fixture_id', [...catchupParlayFixtureIds]);
+
+                const catchupParlayMatchMap = new Map<number, any>();
+                (catchupParlayMatches || []).forEach((m: any) => catchupParlayMatchMap.set(m.api_fixture_id, m));
+
+                const catchupFixtureStatsCache = new Map<number, ReturnType<typeof extractStats>>();
+                const voidStatuses = ['POSTP', 'POST', 'PST', 'CANC', 'ABD', 'AWD', 'WO'];
+                const emptyStats = {
+                    homeCorners: null as number | null, awayCorners: null as number | null,
+                    homeYellowCards: null as number | null, awayYellowCards: null as number | null,
+                    homeRedCards: null as number | null, awayRedCards: null as number | null,
+                    homeShotsOnTarget: null as number | null, awayShotsOnTarget: null as number | null,
+                };
+
+                // Get bankroll for catch-up profitability
+                const { data: lastCatchupParlayBankroll } = await supabase
+                    .from('profitability_tracking')
+                    .select('bankroll_after')
+                    .not('bankroll_after', 'is', null)
+                    .neq('result', 'pending')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                let catchupParlayBankroll = lastCatchupParlayBankroll?.bankroll_after || 100;
+
+                for (const parlay of catchupParlays) {
+                    const picks = parlay.picks as any[];
+                    if (!picks || !Array.isArray(picks)) continue;
+
+                    let won = 0, lost = 0, pending = 0, voided = 0;
+                    const updatedPicks = [];
+
+                    for (const leg of picks) {
+                        if (leg.result && leg.result !== 'PENDING') {
+                            updatedPicks.push(leg);
+                            if (leg.result === 'WON') won++;
+                            else if (leg.result === 'LOST') lost++;
+                            else if (leg.result === 'VOID' || leg.result === 'PUSH') voided++;
+                            else pending++;
+                            continue;
+                        }
+
+                        const match = catchupParlayMatchMap.get(leg.fixture_id);
+                        if (!match) {
+                            updatedPicks.push({ ...leg, result: 'PENDING' });
+                            pending++;
+                            continue;
+                        }
+
+                        if (voidStatuses.includes(match.match_status || '')) {
+                            updatedPicks.push({ ...leg, result: 'VOID' });
+                            voided++;
+                            continue;
+                        }
+
+                        if (!['FT', 'AET', 'PEN'].includes(match.match_status || '')) {
+                            updatedPicks.push({ ...leg, result: 'PENDING' });
+                            pending++;
+                            continue;
+                        }
+
+                        const homeScore = match.home_score;
+                        const awayScore = match.away_score;
+                        if (homeScore === null || awayScore === null) {
+                            updatedPicks.push({ ...leg, result: 'PENDING' });
+                            pending++;
+                            continue;
+                        }
+
+                        if (!catchupFixtureStatsCache.has(leg.fixture_id)) {
+                            const fixtureData = await getFixtureComplete(leg.fixture_id);
+                            if (fixtureData) {
+                                catchupFixtureStatsCache.set(leg.fixture_id, extractStats(fixtureData));
+                                totalFixturesChecked++;
+                                await new Promise(r => setTimeout(r, 100));
+                            } else {
+                                catchupFixtureStatsCache.set(leg.fixture_id, emptyStats);
+                            }
+                        }
+                        const legStats = catchupFixtureStatsCache.get(leg.fixture_id) || emptyStats;
+
+                        let isWon = evaluatePickResult(
+                            leg.market, leg.selection,
+                            homeScore, awayScore,
+                            match.home_team, match.away_team,
+                            legStats
+                        );
+
+                        if (isWon === null && totalGeminiCalls < MAX_GEMINI_CALLS) {
+                            isWon = await evaluateWithGemini(
+                                leg.market, leg.selection,
+                                match.home_team, match.away_team,
+                                homeScore, awayScore,
+                                legStats
+                            );
+                            totalGeminiCalls++;
+                        }
+
+                        if (isWon === null) {
+                            updatedPicks.push({ ...leg, result: 'PENDING' });
+                            pending++;
+                            continue;
+                        }
+
+                        const legResult = isWon ? 'WON' : 'LOST';
+                        updatedPicks.push({ ...leg, result: legResult, actual_score: `${homeScore}-${awayScore}` });
+                        if (isWon) won++;
+                        else lost++;
+                    }
+
+                    let parlayStatus = 'pending';
+                    if (lost > 0) parlayStatus = 'lost';
+                    else if (pending === 0 && won + voided === picks.length) parlayStatus = 'won';
+
+                    if (parlayStatus !== 'pending' || updatedPicks.some((p: any) => p.result !== 'PENDING')) {
+                        const updatePayload: any = {
+                            picks: updatedPicks,
+                            updated_at: new Date().toISOString()
+                        };
+                        if (parlayStatus !== 'pending') {
+                            updatePayload.status = parlayStatus;
+                            updatePayload.verified_at = new Date().toISOString();
+                        }
+
+                        await supabase.from('parlay_combos_v2')
+                            .update(updatePayload)
+                            .eq('id', parlay.id);
+
+                        if (parlayStatus !== 'pending') {
+                            totalParlaysVerified++;
+                            log(`[Verifier] CATCH-UP Parlay ${parlay.id.substring(0, 8)}: ${parlayStatus.toUpperCase()} | Odds: ${parlay.combined_odds}`);
+
+                            try {
+                                const { data: existingProfit } = await supabase
+                                    .from('profitability_tracking')
+                                    .select('id')
+                                    .eq('pick_id', parlay.id)
+                                    .maybeSingle();
+
+                                if (!existingProfit) {
+                                    const { percentage, tier } = calculateStake('parlay');
+                                    const stakeAmount = (catchupParlayBankroll * percentage) / 100;
+                                    const profitLoss = parlayStatus === 'won'
+                                        ? stakeAmount * ((parlay.combined_odds || 1) - 1)
+                                        : -stakeAmount;
+                                    catchupParlayBankroll += profitLoss;
+
+                                    const firstLeg = picks[0] || {};
+                                    const selectionSummary = picks.map((l: any) => l.selection || '').join(' & ');
+
+                                    await supabase.from('profitability_tracking').insert({
+                                        date: parlay.date,
+                                        pick_id: parlay.id,
+                                        pick_type: 'parlay',
+                                        fixture_id: firstLeg.fixture_id || 0,
+                                        home_team: firstLeg.home_team || '',
+                                        away_team: firstLeg.away_team || '',
+                                        market: 'parlay_combo',
+                                        selection: selectionSummary,
+                                        odds: parlay.combined_odds || 0,
+                                        probability: Math.round((parlay.combined_probability || 0) * 100),
+                                        confidence_tier: tier,
+                                        stake_percentage: percentage,
+                                        stake_amount: stakeAmount,
+                                        result: parlayStatus,
+                                        profit_loss: profitLoss,
+                                        bankroll_after: catchupParlayBankroll,
+                                        verified_at: new Date().toISOString()
+                                    });
+                                }
+                            } catch (profitErr: any) {
+                                log(`[Verifier] CATCH-UP Parlay profitability error: ${profitErr.message}`);
+                            }
+                        }
+                    }
+                }
+            } else {
+                log(`[Verifier] CATCH-UP PARLAYS: No additional pending parlays found`);
+            }
+        } catch (catchupParlayErr: any) {
+            log(`[Verifier] CATCH-UP PARLAYS error (non-blocking): ${catchupParlayErr.message}`);
         }
 
         // ───────────────────────────────────────────────────────────
