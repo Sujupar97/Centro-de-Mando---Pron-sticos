@@ -860,6 +860,43 @@ function getCanonicalMarketId(marketId: number, label: string): string {
 }
 
 /**
+ * Normalize SportMonks standings to API-Football format
+ */
+export function normalizeLegacyStandings(standings: any[]): any[][] | null {
+    if (!standings || standings.length === 0) return null;
+
+    const normalized = standings.map((s: any) => ({
+        rank: s.position,
+        team: {
+            id: s.participant_id,
+            name: s.participant?.name || 'Unknown',
+            logo: s.participant?.image_path || ''
+        },
+        points: s.points,
+        goalsDiff: s.details?.find((d: any) => d.type_id === 179)?.value || 0,
+        group: s.group_name || 'League',
+        form: s.form || '',
+        status: '',
+        description: s.result || '',
+        all: {
+            played: s.details?.find((d: any) => d.type_id === 129)?.value || 0,
+            win: s.details?.find((d: any) => d.type_id === 130)?.value || 0,
+            draw: s.details?.find((d: any) => d.type_id === 131)?.value || 0,
+            lose: s.details?.find((d: any) => d.type_id === 132)?.value || 0,
+            goals: {
+                for: s.details?.find((d: any) => d.type_id === 133)?.value || 0,
+                against: s.details?.find((d: any) => d.type_id === 134)?.value || 0
+            }
+        },
+        home: { played: 0, win: 0, draw: 0, lose: 0, goals: { for: 0, against: 0 } },
+        away: { played: 0, win: 0, draw: 0, lose: 0, goals: { for: 0, against: 0 } },
+        update: new Date().toISOString()
+    }));
+
+    return [normalized];
+}
+
+/**
  * Organize Odds for AI Processing
  * Groups flat market list into structured categories to prevent hallucinations
  */
