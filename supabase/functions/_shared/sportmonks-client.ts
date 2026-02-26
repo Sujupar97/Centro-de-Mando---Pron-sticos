@@ -171,7 +171,7 @@ export async function getFixtureComplete(fixtureId: number): Promise<any | null>
         [
             'participants',
             'lineups',
-            'statistics',
+            'statistics.type',
             'events',
             'scores',
             'venue',

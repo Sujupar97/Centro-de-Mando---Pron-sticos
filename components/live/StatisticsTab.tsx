@@ -52,6 +52,17 @@ const STATS_TRANSLATIONS: { [key: string]: string } = {
     "Dangerous Attacks": "Ataques Peligrosos",
     "Goals": "Goles",
     "Free Kicks": "Tiros Libres",
+    "Hit Woodwork": "Tiros al Poste",
+    "Throw-ins": "Saques de Banda",
+    "Interceptions": "Intercepciones",
+    "Tackles": "Entradas",
+    "Key Passes": "Pases Clave",
+    "Clearances": "Despejes",
+    "Aerial Duels Won": "Duelos Aéreos Ganados",
+    "Aerial Duels Lost": "Duelos Aéreos Perdidos",
+    "Dribble Attempts": "Intentos de Regate",
+    "Successful Dribbles": "Regates Exitosos",
+    "Accurate Crosses": "Centros Precisos",
 };
 
 const translateStat = (type: string) => {

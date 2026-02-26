@@ -684,7 +684,7 @@ export function normalizeLegacyStatistics(fixture: any, homeTeamId: number, away
     if (!fixture.statistics || fixture.statistics.length === 0) return null;
 
     const translateType = (typeId: number): string => {
-        // SportMonks v3 Official Type IDs (see docs lines 193-210)
+        // SportMonks v3 Official Type IDs — comprehensive mapping
         const map: Record<number, string> = {
             34: 'Corner Kicks',
             41: 'Shots off Goal',
@@ -698,11 +698,25 @@ export function normalizeLegacyStatistics(fixture: any, homeTeamId: number, away
             56: 'Fouls',
             57: 'Goalkeeper Saves',
             58: 'Blocked Shots',
+            64: 'Hit Woodwork',
+            65: 'Throw-ins',
             80: 'Total passes',
+            82: 'Passes accurate',
             83: 'Red Cards',
             84: 'Yellow Cards',
             86: 'Shots on Goal',
             87: 'Shots off Goal',
+            98: 'Interceptions',
+            99: 'Tackles',
+            106: 'Passes %',
+            107: 'Key Passes',
+            117: 'Clearances',
+            119: 'Aerial Duels Won',
+            120: 'Aerial Duels Lost',
+            321: 'Dribble Attempts',
+            322: 'Successful Dribbles',
+            580: 'expected_goals',
+            1605: 'Accurate Crosses',
         };
         return map[typeId] || `Stat ${typeId}`;
     };
