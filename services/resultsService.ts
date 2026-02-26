@@ -520,6 +520,102 @@ export async function manualOverridePick(
 }
 
 /**
+ * Manual override: Admin sets a parlay as WON, LOST or VOID
+ * Updates parlay_combos_v2 status + picks JSONB with leg results,
+ * and inserts/updates profitability_tracking with pick_type='parlay'.
+ */
+export async function manualOverrideParlay(
+    parlayId: string,
+    newStatus: 'WON' | 'LOST' | 'VOID'
+): Promise<void> {
+    const now = new Date().toISOString();
+    const statusLower = newStatus.toLowerCase() as 'won' | 'lost' | 'void';
+
+    // Step 1: Get the parlay
+    const { data: parlay, error: fetchErr } = await supabase
+        .from('parlay_combos_v2')
+        .select('id, date, picks, combined_odds, risk_tier')
+        .eq('id', parlayId)
+        .single();
+
+    if (fetchErr || !parlay) throw new Error(`Parlay no encontrado: ${fetchErr?.message || parlayId}`);
+
+    // Step 2: Update picks JSONB — set all legs to the overall result
+    const legResult = newStatus === 'VOID' ? 'VOID' : newStatus;
+    const updatedPicks = ((parlay.picks as any[]) || []).map((leg: any) => ({
+        ...leg,
+        result: legResult,
+    }));
+
+    // Step 3: Update parlay_combos_v2
+    await supabase
+        .from('parlay_combos_v2')
+        .update({
+            status: statusLower,
+            picks: updatedPicks,
+            verified_at: now,
+            updated_at: now,
+        })
+        .eq('id', parlayId);
+
+    // Step 4: Update profitability_tracking (skip for VOID)
+    if (newStatus === 'VOID') return;
+
+    const baseBankroll = await fetchBaseBankroll();
+    const stakePercent = 1;
+    const stakeAmount = baseBankroll * (stakePercent / 100);
+    const profitLoss = newStatus === 'WON'
+        ? stakeAmount * ((parlay.combined_odds || 1) - 1)
+        : -stakeAmount;
+
+    const legs = parlay.picks as any[] || [];
+    const firstLeg = legs[0] || {};
+    const selectionSummary = legs.map((l: any) => l.selection || '?').join(' & ');
+
+    // Check if profitability entry already exists
+    const { data: existing } = await supabase
+        .from('profitability_tracking')
+        .select('id')
+        .eq('pick_id', parlayId)
+        .eq('pick_type', 'parlay')
+        .maybeSingle();
+
+    if (existing) {
+        await supabase
+            .from('profitability_tracking')
+            .update({
+                result: statusLower,
+                profit_loss: profitLoss,
+                stake_amount: stakeAmount,
+                odds: parlay.combined_odds,
+                verified_at: now,
+            })
+            .eq('id', existing.id);
+    } else {
+        await supabase
+            .from('profitability_tracking')
+            .insert({
+                pick_id: parlayId,
+                fixture_id: firstLeg.fixture_id || 0,
+                market: 'parlay_combo',
+                selection: selectionSummary,
+                odds: parlay.combined_odds,
+                probability: 0,
+                result: statusLower,
+                stake_percentage: stakePercent,
+                stake_amount: stakeAmount,
+                profit_loss: profitLoss,
+                date: parlay.date,
+                pick_type: 'parlay',
+                home_team: firstLeg.home_team || '',
+                away_team: firstLeg.away_team || '',
+                league_name: firstLeg.league || '',
+                verified_at: now,
+            });
+    }
+}
+
+/**
  * Recalculate results: Reset picks to PENDING, clear profitability_tracking,
  * then invoke hourly-results-verifier to re-process with corrected logic.
  */

@@ -12,6 +12,7 @@ import {
     getRiskColor,
     getRiskLabel
 } from '../../services/smartParlayService';
+import { manualOverrideParlay } from '../../services/resultsService';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { isHistoricalDate, canViewParlays, getAllowedParlayCount } from '../../utils/planAccessUtils';
 import { usePresentationMode } from '../../hooks/usePresentationMode';
@@ -335,8 +336,8 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                 ))}
                             </div>
 
-                            {/* Footer with EV indicator */}
-                            <div className="px-4 pb-4">
+                            {/* Footer with EV indicator + Admin Override */}
+                            <div className="px-4 pb-4 space-y-2">
                                 <div className="flex items-center justify-between p-3 bg-gray-900/80 rounded-lg border border-gray-700/50">
                                     <span className="text-gray-400 text-sm">
                                         {combo.pick_count} selecciones de diferentes partidos
@@ -345,6 +346,13 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                         EV: {(combo.combined_odds * combo.combined_probability).toFixed(2)}
                                     </span>
                                 </div>
+                                {/* Admin override buttons */}
+                                {isAdmin && (
+                                    <ParlayOverrideButtons
+                                        parlayId={combo.id}
+                                        onOverrideComplete={loadParlays}
+                                    />
+                                )}
                             </div>
                         </div>
                     ))}
@@ -366,6 +374,54 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                 </div>
             )}
 
+        </div>
+    );
+};
+
+// --- Admin Override Buttons for Parlays ---
+const ParlayOverrideButtons: React.FC<{
+    parlayId: string;
+    onOverrideComplete: () => void;
+}> = ({ parlayId, onOverrideComplete }) => {
+    const [overriding, setOverriding] = useState(false);
+
+    const handleOverride = async (result: 'WON' | 'LOST' | 'VOID') => {
+        if (overriding) return;
+        setOverriding(true);
+        try {
+            await manualOverrideParlay(parlayId, result);
+            onOverrideComplete();
+        } catch (e: any) {
+            console.error('[Parlays] Override error:', e);
+        } finally {
+            setOverriding(false);
+        }
+    };
+
+    return (
+        <div className="flex items-center gap-2">
+            <span className="text-gray-500 text-xs mr-1">Admin:</span>
+            <button
+                onClick={() => handleOverride('WON')}
+                disabled={overriding}
+                className="flex-1 py-2 sm:py-1.5 rounded-lg text-sm sm:text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-all disabled:opacity-50"
+            >
+                {overriding ? '...' : 'GANADO'}
+            </button>
+            <button
+                onClick={() => handleOverride('LOST')}
+                disabled={overriding}
+                className="flex-1 py-2 sm:py-1.5 rounded-lg text-sm sm:text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all disabled:opacity-50"
+            >
+                {overriding ? '...' : 'PERDIDO'}
+            </button>
+            <button
+                onClick={() => handleOverride('VOID')}
+                disabled={overriding}
+                className="py-2 sm:py-1.5 px-3 rounded-lg text-sm sm:text-xs font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30 hover:bg-slate-500/30 transition-all disabled:opacity-50"
+            >
+                {overriding ? '...' : 'NULO'}
+            </button>
         </div>
     );
 };
