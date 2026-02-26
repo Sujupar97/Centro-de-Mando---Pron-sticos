@@ -306,7 +306,7 @@ const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigge
 
             {/* Parlay Results */}
             {showParlays && (
-                <ParlayResultsSection parlays={pl} />
+                <ParlayResultsSection parlays={pl} baseBankroll={br?.base || 100} />
             )}
         </div>
     );
@@ -332,7 +332,7 @@ const ResultFilterButtons: React.FC<{ selected: ResultFilter; onSelect: (f: Resu
     </div>
 );
 
-const ParlayResultsSection: React.FC<{ parlays?: PublicResultsData['parlays'] }> = ({ parlays }) => {
+const ParlayResultsSection: React.FC<{ parlays?: PublicResultsData['parlays']; baseBankroll?: number }> = ({ parlays, baseBankroll = 100 }) => {
     if (!parlays || parlays.recentResults.length === 0) {
         if (parlays && parlays.totalPending > 0) {
             return (
@@ -354,23 +354,86 @@ const ParlayResultsSection: React.FC<{ parlays?: PublicResultsData['parlays'] }>
         );
     }
 
+    // Calculate financial summary
+    const stakePerParlay = baseBankroll * 0.01;
+    const wonParlays = parlays.recentResults.filter(p => p.status === 'WON');
+    const lostParlays = parlays.recentResults.filter(p => p.status === 'LOST');
+    const totalGains = wonParlays.reduce((sum, p) => sum + (stakePerParlay * ((p.combined_odds || 1) - 1)), 0);
+    const totalLosses = lostParlays.length * stakePerParlay;
+    const netResult = totalGains - totalLosses;
+    const netPct = baseBankroll > 0 ? (netResult / baseBankroll) * 100 : 0;
+    const gainsPct = baseBankroll > 0 ? (totalGains / baseBankroll) * 100 : 0;
+    const lossesPct = baseBankroll > 0 ? (totalLosses / baseBankroll) * 100 : 0;
+    const parlayROI = parlays.periodStaked > 0 ? (parlays.periodProfit / parlays.periodStaked) * 100 : 0;
+
     return (
-        <div className="bg-slate-900 border border-white/10 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                <h4 className="text-white font-bold">Resultados — Smart Parlays</h4>
-                <div className="flex items-center gap-2 text-xs">
-                    <span className="text-emerald-400 font-bold">{parlays.won}W</span>
-                    <span className="text-slate-600">/</span>
-                    <span className="text-red-400 font-bold">{parlays.lost}L</span>
+        <div className="space-y-4">
+            {/* Financial Summary Card */}
+            <div className="bg-slate-900 border border-white/10 rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                    <h4 className="text-white font-bold">Rendimiento Parlays</h4>
+                    <span className="text-xs text-slate-500">1% del bankroll por parlay</span>
+                </div>
+                <div className="p-4 space-y-3">
+                    {/* Net Result - Hero Number */}
+                    <div className="text-center py-2">
+                        <div className={`text-3xl font-black ${netResult >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {netResult >= 0 ? '+' : ''}{netPct.toFixed(1)}%
+                        </div>
+                        <span className="text-xs text-slate-400">
+                            {netResult >= 0 ? '+' : ''}${netResult.toFixed(2)} resultado neto
+                        </span>
+                    </div>
+
+                    {/* Gains vs Losses Breakdown */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-center">
+                            <div className="text-emerald-400 font-bold text-lg">
+                                {parlays.won} ganado{parlays.won !== 1 ? 's' : ''}
+                            </div>
+                            <span className="text-emerald-300/70 text-xs block">
+                                +${totalGains.toFixed(2)} (+{gainsPct.toFixed(1)}%)
+                            </span>
+                        </div>
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-center">
+                            <div className="text-red-400 font-bold text-lg">
+                                {parlays.lost} perdido{parlays.lost !== 1 ? 's' : ''}
+                            </div>
+                            <span className="text-red-300/70 text-xs block">
+                                -${totalLosses.toFixed(2)} (-{lossesPct.toFixed(1)}%)
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Detail Row */}
+                    <div className="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-white/5">
+                        <span>Apostado: ${parlays.periodStaked.toFixed(2)} ({parlays.totalVerified} parlay{parlays.totalVerified !== 1 ? 's' : ''})</span>
+                        <span>ROI: <span className={parlayROI >= 0 ? 'text-emerald-400' : 'text-red-400'}>{parlayROI >= 0 ? '+' : ''}{parlayROI.toFixed(0)}%</span></span>
+                    </div>
+
                     {parlays.totalPending > 0 && (
-                        <span className="text-amber-400">({parlays.totalPending} pend.)</span>
+                        <div className="text-center text-xs text-amber-400 pt-1">
+                            {parlays.totalPending} parlay{parlays.totalPending > 1 ? 's' : ''} pendiente{parlays.totalPending > 1 ? 's' : ''} de verificación
+                        </div>
                     )}
                 </div>
             </div>
-            <div className="divide-y divide-white/5">
-                {parlays.recentResults.map((parlay) => (
-                    <ParlayCard key={parlay.id} parlay={parlay} />
-                ))}
+
+            {/* Individual Parlay Cards */}
+            <div className="bg-slate-900 border border-white/10 rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                    <h4 className="text-white font-bold">Detalle por Parlay</h4>
+                    <div className="flex items-center gap-2 text-xs">
+                        <span className="text-emerald-400 font-bold">{parlays.won}W</span>
+                        <span className="text-slate-600">/</span>
+                        <span className="text-red-400 font-bold">{parlays.lost}L</span>
+                    </div>
+                </div>
+                <div className="divide-y divide-white/5">
+                    {parlays.recentResults.map((parlay) => (
+                        <ParlayCard key={parlay.id} parlay={parlay} />
+                    ))}
+                </div>
             </div>
         </div>
     );

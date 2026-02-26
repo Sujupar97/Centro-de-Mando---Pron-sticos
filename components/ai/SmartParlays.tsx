@@ -249,7 +249,13 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                     {visibleParlays.map((combo, index) => (
                         <div
                             key={combo.id}
-                            className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden"
+                            className={`rounded-xl overflow-hidden ${
+                                !presentationMode && combo.status === 'won'
+                                    ? 'bg-gray-800/50 border-2 border-emerald-500/40 shadow-lg shadow-emerald-500/10'
+                                    : !presentationMode && combo.status === 'lost'
+                                    ? 'bg-gray-800/30 border border-red-500/30 opacity-70'
+                                    : 'bg-gray-800/50 border border-gray-700/50'
+                            }`}
                         >
                             {/* Combo Header */}
                             <div className={`bg-gradient-to-r ${getRiskColor(combo.risk_tier)} p-4 relative`}>
@@ -320,6 +326,12 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                                     <div className="text-emerald-400 text-sm mt-1 font-bold">
                                                         {translateMarket(pick.market)}: <span className="text-white">{pick.selection}</span>
                                                     </div>
+                                                    {/* Show actual score when verified */}
+                                                    {!presentationMode && (pick as any).actual_score && (
+                                                        <div className="text-slate-400 text-xs mt-0.5">
+                                                            Resultado: <span className="text-white font-medium">{(pick as any).actual_score}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <div className="text-right ml-4 flex-shrink-0 flex items-center gap-2">
                                                     {/* Result badge */}
@@ -357,16 +369,38 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                 })}
                             </div>
 
-                            {/* Footer with EV indicator */}
+                            {/* Footer with EV indicator or P/L when verified */}
                             <div className="px-4 pb-4">
-                                <div className="flex items-center justify-between p-3 bg-gray-900/80 rounded-lg border border-gray-700/50">
-                                    <span className="text-gray-400 text-sm">
-                                        {combo.pick_count} selecciones de diferentes partidos
-                                    </span>
-                                    <span className="text-emerald-400 font-medium text-sm">
-                                        EV: {(combo.combined_odds * combo.combined_probability).toFixed(2)}
-                                    </span>
-                                </div>
+                                {!presentationMode && combo.status && combo.status !== 'pending' ? (
+                                    <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                                        combo.status === 'won'
+                                            ? 'bg-emerald-500/10 border-emerald-500/30'
+                                            : 'bg-red-500/10 border-red-500/30'
+                                    }`}>
+                                        <span className={`font-bold text-sm ${
+                                            combo.status === 'won' ? 'text-emerald-400' : 'text-red-400'
+                                        }`}>
+                                            {combo.status === 'won' ? 'GANADO' : 'PERDIDO'}
+                                        </span>
+                                        <span className={`font-bold text-sm ${
+                                            combo.status === 'won' ? 'text-emerald-400' : 'text-red-400'
+                                        }`}>
+                                            {combo.status === 'won'
+                                                ? `+${((combo.combined_odds || 1) - 1).toFixed(1)}% del bankroll`
+                                                : '-1% del bankroll'
+                                            }
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-between p-3 bg-gray-900/80 rounded-lg border border-gray-700/50">
+                                        <span className="text-gray-400 text-sm">
+                                            {combo.pick_count} selecciones de diferentes partidos
+                                        </span>
+                                        <span className="text-emerald-400 font-medium text-sm">
+                                            EV: {(combo.combined_odds * combo.combined_probability).toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}
