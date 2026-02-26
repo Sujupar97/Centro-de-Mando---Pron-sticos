@@ -27,6 +27,7 @@ interface PlanState {
     billing_period: string;
     renews_at: string | null;
     ls_subscription_id: string | null;
+    paddle_subscription_id: string | null;
     customer_portal_url: string | null;
     parlay_percentage: number;
 }
@@ -72,6 +73,7 @@ const defaultPlan: PlanState = {
     billing_period: 'monthly',
     renews_at: null,
     ls_subscription_id: null,
+    paddle_subscription_id: null,
     customer_portal_url: null,
     parlay_percentage: 0,
 };
@@ -133,6 +135,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
                     billing_period: summary.plan.billing_period ?? 'monthly',
                     renews_at: summary.plan.renews_at ?? null,
                     ls_subscription_id: summary.plan.ls_subscription_id ?? null,
+                    paddle_subscription_id: (summary.subscription as any)?.paddle_subscription_id ?? null,
                     customer_portal_url: summary.plan.customer_portal_url ?? null,
                     parlay_percentage: summary.plan.parlay_percentage ?? 0,
                 },

@@ -1,10 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { getActivePlans, formatPrice, SubscriptionPlan, assignPlanToUser } from '../../services/subscriptionService';
 import { openCheckoutOverlay, getVariantId, getPlanPrice } from '../../services/lemonSqueezyService';
+import { openCheckout, getPriceId, initializePaddle, getCustomerPortalUrl as getPaddlePortalUrl } from '../../services/paddleService';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useOrganization } from '../../contexts/OrganizationContext';
 import { CheckCircleIcon, XCircleIcon, SparklesIcon, ArrowRightIcon } from '../icons/Icons';
+
+/**
+ * Detecta qué pasarela usar para un plan:
+ * - Si tiene paddle_price_id → Paddle (preferido para nuevos usuarios)
+ * - Si tiene ls_variant_id → Lemon Squeezy (fallback para legacy)
+ */
+function getPaymentProvider(plan: SubscriptionPlan, billingPeriod: 'monthly' | 'annual'): 'paddle' | 'lemon_squeezy' | null {
+    const paddlePriceId = getPriceId(plan, billingPeriod);
+    if (paddlePriceId) return 'paddle';
+
+    const lsVariantId = getVariantId(plan, billingPeriod);
+    if (lsVariantId) return 'lemon_squeezy';
+
+    return null;
+}
 
 interface PricingCardProps {
     plan: SubscriptionPlan;
@@ -184,6 +200,13 @@ export const PricingPage: React.FC = () => {
         loadPlans();
     }, []);
 
+    // Inicializar Paddle al montar (pre-carga el script)
+    useEffect(() => {
+        initializePaddle(refreshSubscription).catch(() => {
+            // Paddle no disponible — no es error, se usará LS como fallback
+        });
+    }, [refreshSubscription]);
+
     const handleSelectPlan = async (plan: SubscriptionPlan) => {
         if (!user || !currentOrg) {
             setMessage({ type: 'error', text: 'Debes iniciar sesión para seleccionar un plan.' });
@@ -203,23 +226,35 @@ export const PricingPage: React.FC = () => {
                     setMessage({ type: 'error', text: result.error || 'Error al asignar plan' });
                 }
             } else {
-                const variantId = getVariantId(plan, billingPeriod);
-                if (!variantId) {
+                const provider = getPaymentProvider(plan, billingPeriod);
+
+                if (provider === 'paddle') {
+                    // Paddle: checkout overlay directo desde frontend
+                    const priceId = getPriceId(plan, billingPeriod)!;
+                    await openCheckout({
+                        priceId,
+                        userId: user.id,
+                        userEmail: profile?.email || user.email || '',
+                        userName: profile?.full_name || 'Usuario',
+                        orgId: currentOrg.id,
+                        billingPeriod,
+                    });
+                    setMessage({ type: 'success', text: 'Checkout abierto. Completa el pago para activar tu plan.' });
+                } else if (provider === 'lemon_squeezy') {
+                    // Lemon Squeezy: fallback para planes sin Paddle configurado
+                    const variantId = getVariantId(plan, billingPeriod)!;
+                    await openCheckoutOverlay({
+                        variantId,
+                        userId: user.id,
+                        userEmail: profile?.email || user.email || '',
+                        userName: profile?.full_name || 'Usuario',
+                        orgId: currentOrg.id,
+                        billingPeriod,
+                    });
+                    setMessage({ type: 'success', text: 'Checkout abierto. Completa el pago para activar tu plan.' });
+                } else {
                     setMessage({ type: 'error', text: 'Plan no disponible para este período. Contacta soporte.' });
-                    setProcessing(null);
-                    return;
                 }
-
-                await openCheckoutOverlay({
-                    variantId,
-                    userId: user.id,
-                    userEmail: profile?.email || user.email || '',
-                    userName: profile?.full_name || 'Usuario',
-                    orgId: currentOrg.id,
-                    billingPeriod,
-                });
-
-                setMessage({ type: 'success', text: 'Checkout abierto. Completa el pago para activar tu plan.' });
             }
         } catch (error: any) {
             console.error('Error selecting plan:', error);
@@ -292,23 +327,8 @@ export const PricingPage: React.FC = () => {
                 ))}
             </div>
 
-            {/* Gestionar suscripcion para usuarios con plan activo */}
-            {currentPlan?.ls_subscription_id && currentPlan?.customer_portal_url && (
-                <div className="max-w-md mx-auto mt-10 text-center">
-                    <a
-                        href={currentPlan.customer_portal_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-colors border border-white/10"
-                    >
-                        Gestionar Suscripción
-                        <ArrowRightIcon className="w-4 h-4" />
-                    </a>
-                    <p className="text-xs text-gray-500 mt-2">
-                        Cancelar, pausar o cambiar método de pago
-                    </p>
-                </div>
-            )}
+            {/* Gestionar suscripcion — soporta Paddle y LS */}
+            <ManageSubscriptionSection currentPlan={currentPlan} user={user} currentOrg={currentOrg} />
 
             <div className="max-w-3xl mx-auto mt-16 text-center">
                 <p className="text-gray-500 text-sm">
@@ -316,6 +336,71 @@ export const PricingPage: React.FC = () => {
                     Todos los planes incluyen acceso al historial completo de resultados anteriores.
                 </p>
             </div>
+        </div>
+    );
+};
+
+/**
+ * Sección de gestión de suscripción.
+ * Soporta dual-provider: Paddle (genera URL al vuelo) y LS (URL estática).
+ */
+const ManageSubscriptionSection: React.FC<{
+    currentPlan: any;
+    user: any;
+    currentOrg: any;
+}> = ({ currentPlan, user, currentOrg }) => {
+    const [loadingPortal, setLoadingPortal] = useState(false);
+
+    const hasPaddleSub = !!currentPlan?.paddle_subscription_id;
+    const hasLSSub = !!currentPlan?.ls_subscription_id && !!currentPlan?.customer_portal_url;
+    const hasAnySub = hasPaddleSub || hasLSSub;
+
+    if (!hasAnySub) return null;
+
+    const handleManageSubscription = async () => {
+        if (hasPaddleSub && user && currentOrg) {
+            // Paddle: generar URL temporal via Edge Function
+            setLoadingPortal(true);
+            try {
+                const url = await getPaddlePortalUrl(user.id, currentOrg.id);
+                if (url) {
+                    window.open(url, '_blank');
+                } else {
+                    alert('No se pudo obtener el portal. Intenta de nuevo.');
+                }
+            } catch {
+                alert('Error al abrir el portal.');
+            } finally {
+                setLoadingPortal(false);
+            }
+        } else if (hasLSSub) {
+            // LS: abrir URL estática directamente
+            window.open(currentPlan.customer_portal_url, '_blank');
+        }
+    };
+
+    return (
+        <div className="max-w-md mx-auto mt-10 text-center">
+            <button
+                onClick={handleManageSubscription}
+                disabled={loadingPortal}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-colors border border-white/10 disabled:opacity-50"
+            >
+                {loadingPortal ? (
+                    <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Cargando...
+                    </>
+                ) : (
+                    <>
+                        Gestionar Suscripción
+                        <ArrowRightIcon className="w-4 h-4" />
+                    </>
+                )}
+            </button>
+            <p className="text-xs text-gray-500 mt-2">
+                Cancelar, pausar o cambiar método de pago
+            </p>
         </div>
     );
 };
