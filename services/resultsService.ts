@@ -2,7 +2,9 @@
 // Frontend service for fetching verification results and analytics data
 
 import { supabase } from './supabaseService';
-import type { PublicResultsData, ParlayResultData, AdvancedAnalyticsData, AdvancedAnalyticsFilters, PickResult } from '../types';
+import type { PublicResultsData, ParlayResultData, AdvancedAnalyticsData, AdvancedAnalyticsFilters, PickResult, PlanPerformanceSummary, PerPlanComparisonData } from '../types';
+import type { PlanTier } from '../utils/planAccessUtils';
+import { PLAN_TIERS, PLAN_DISPLAY_NAMES, PLAN_PREDICTIONS_PERCENTAGES, getAllowedPickCount } from '../utils/planAccessUtils';
 
 // Fecha de inicio del sistema de verificación
 const SYSTEM_START_DATE = '2026-02-17';
@@ -10,12 +12,18 @@ const SYSTEM_START_DATE = '2026-02-17';
 const PARLAY_START_DATE = '2026-02-25';
 
 /**
- * Get public results data for the Resultados tab (accessible to all users)
- * Filters by match_date from daily_matches — NOT by verified_at timestamp
- * @param filter - 'all' shows picks + parlays, 'picks' only picks, 'parlays' only parlays
+ * Get fixture IDs for a date range using DUAL source:
+ * 1. daily_matches by match_date (primary)
+ * 2. analysis_jobs_v2 by created_at (catches next-day matches analyzed early)
+ *
+ * This mirrors the logic in v2-generate-parlays Step 1.5 to ensure
+ * Resultados shows the SAME picks as Oportunidades.
  */
-export async function getPublicResults(startDate: string, endDate: string, filter: 'all' | 'picks' | 'parlays' = 'all'): Promise<PublicResultsData> {
-    // Step 1: Get fixture IDs for matches in the requested date range
+async function getFixtureIdsForDateRange(startDate: string, endDate: string): Promise<{
+    fixtureIds: number[];
+    matchMap: Map<number, any>;
+}> {
+    // 1. Daily matches by match_date
     const { data: dateMatches, error: matchError } = await supabase
         .from('daily_matches')
         .select('api_fixture_id, home_team, away_team, league_name, match_date')
@@ -28,11 +36,57 @@ export async function getPublicResults(startDate: string, endDate: string, filte
     }
 
     const matchMap = new Map<number, any>();
-    const fixtureIdsInRange: number[] = [];
+    const fixtureIds: number[] = [];
     (dateMatches || []).forEach(m => {
         matchMap.set(m.api_fixture_id, m);
-        fixtureIdsInRange.push(m.api_fixture_id);
+        fixtureIds.push(m.api_fixture_id);
     });
+
+    // 2. Analysis jobs completed in the date range (catches next-day matches analyzed early)
+    const { data: doneJobs } = await supabase
+        .from('analysis_jobs_v2')
+        .select('fixture_id')
+        .eq('status', 'done')
+        .or('analysis_type.eq.standard,analysis_type.is.null')
+        .gte('created_at', `${startDate}T00:00:00`)
+        .lte('created_at', `${endDate}T23:59:59+05:00`);
+
+    if (doneJobs && doneJobs.length > 0) {
+        const extraIds = doneJobs
+            .map(j => j.fixture_id)
+            .filter(id => !fixtureIds.includes(id));
+
+        if (extraIds.length > 0) {
+            // Get match info for these extra fixture IDs
+            const { data: extraMatches } = await supabase
+                .from('daily_matches')
+                .select('api_fixture_id, home_team, away_team, league_name, match_date')
+                .in('api_fixture_id', extraIds);
+
+            (extraMatches || []).forEach(m => {
+                if (!matchMap.has(m.api_fixture_id)) {
+                    matchMap.set(m.api_fixture_id, m);
+                    fixtureIds.push(m.api_fixture_id);
+                }
+            });
+
+            // IDs without daily_matches entry are still included
+            const stillMissing = extraIds.filter(id => !matchMap.has(id));
+            fixtureIds.push(...stillMissing);
+        }
+    }
+
+    return { fixtureIds, matchMap };
+}
+
+/**
+ * Get public results data for the Resultados tab (accessible to all users)
+ * Uses dual date source (daily_matches + analysis_jobs_v2) to match Oportunidades
+ * @param filter - 'all' shows picks + parlays, 'picks' only picks, 'parlays' only parlays
+ */
+export async function getPublicResults(startDate: string, endDate: string, filter: 'all' | 'picks' | 'parlays' = 'all'): Promise<PublicResultsData> {
+    // Step 1: Get fixture IDs using dual source (daily_matches + analysis_jobs_v2)
+    const { fixtureIds: fixtureIdsInRange, matchMap } = await getFixtureIdsForDateRange(startDate, endDate);
 
     if (fixtureIdsInRange.length === 0) {
         // No matches in date range — still show cumulative bankroll
@@ -41,13 +95,12 @@ export async function getPublicResults(startDate: string, endDate: string, filte
         return emptyResults(baseBankroll, baseBankroll + totalProfit, totalProfit);
     }
 
-    // Step 2: Get verified picks for those fixtures — ONLY Oportunidades
+    // Step 2: Get verified picks for those fixtures — ALL Oportunidades (p_model >= 0.83, any odds)
     const { data: picks, error } = await supabase
         .from('value_picks_v2')
         .select('id, fixture_id, market, selection, p_model, odds, result, verified_at, actual_score')
         .in('result', ['WON', 'LOST'])
         .gte('p_model', 0.83)
-        .gte('odds', 1.40)
         .in('fixture_id', fixtureIdsInRange)
         .order('verified_at', { ascending: false });
 
@@ -62,7 +115,6 @@ export async function getPublicResults(startDate: string, endDate: string, filte
         .select('id', { count: 'exact', head: true })
         .in('fixture_id', fixtureIdsInRange)
         .gte('p_model', 0.83)
-        .gte('odds', 1.40)
         .eq('result', 'PENDING');
 
     const results = picks || [];
@@ -75,13 +127,7 @@ export async function getPublicResults(startDate: string, endDate: string, filte
     const sevenDaysStr = sevenDaysAgo.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
 
-    const { data: last7Matches } = await supabase
-        .from('daily_matches')
-        .select('api_fixture_id')
-        .gte('match_date', sevenDaysStr)
-        .lte('match_date', todayStr);
-
-    const last7FixtureIds = (last7Matches || []).map(m => m.api_fixture_id);
+    const { fixtureIds: last7FixtureIds } = await getFixtureIdsForDateRange(sevenDaysStr, todayStr);
     const last7 = last7FixtureIds.length > 0
         ? results.filter(p => last7FixtureIds.includes(p.fixture_id))
         : [];
@@ -286,25 +332,19 @@ async function getParlayProfit(baseBankroll: number, startDate: string, endDate:
  * Calculate profit directly from value_picks_v2 using flat staking (4%).
  * This is the single source of truth for financial calculations,
  * used by BOTH Resultados and Analítica Avanzada.
+ * Uses dual date source (daily_matches + analysis_jobs_v2) to match Oportunidades.
  */
 async function calculateProfitFromPicks(baseBankroll: number, startDate: string, endDate: string) {
-    // Get fixture IDs for the date range
-    const { data: matches } = await supabase
-        .from('daily_matches')
-        .select('api_fixture_id')
-        .gte('match_date', startDate)
-        .lte('match_date', endDate);
-
-    const fixtureIds = (matches || []).map(m => m.api_fixture_id);
+    // Get fixture IDs using dual source
+    const { fixtureIds } = await getFixtureIdsForDateRange(startDate, endDate);
     if (fixtureIds.length === 0) return { totalProfit: 0, totalStaked: 0 };
 
-    // Get verified Oportunidades
+    // Get verified Oportunidades (all picks >= 83%, any odds)
     const { data: picks } = await supabase
         .from('value_picks_v2')
         .select('result, odds')
         .in('fixture_id', fixtureIds)
         .gte('p_model', 0.83)
-        .gte('odds', 1.40)
         .in('result', ['WON', 'LOST']);
 
     const stakeAmount = baseBankroll * 0.04;
@@ -996,5 +1036,358 @@ async function getAdvancedAnalyticsForParlays(filters: AdvancedAnalyticsFilters)
             actual_score: null, verified_at: e.verified_at || e.created_at,
             profit_loss: e.profit_loss || 0,
         })),
+    };
+}
+
+// ═══════════════════════════════════════════════════════
+// PER-PLAN PERFORMANCE TRACKING
+// ═══════════════════════════════════════════════════════
+
+interface PickWithMatchDate {
+    id: string;
+    fixture_id: number;
+    market: string;
+    selection: string;
+    p_model: number;
+    odds: number | null;
+    result: string;
+    verified_at: string | null;
+    actual_score: string | null;
+    match_date: string;
+    home_team: string;
+    away_team: string;
+    league_name?: string;
+}
+
+/**
+ * Fetch all verified Oportunidades picks enriched with match_date for a date range.
+ * This is the shared data source for both getResultsByPlan and getPerPlanComparison.
+ */
+async function fetchPicksWithMatchDate(startDate: string, endDate: string): Promise<{
+    picks: PickWithMatchDate[];
+    matchMap: Map<number, { home_team: string; away_team: string; league_name: string; match_date: string }>;
+    baseBankroll: number;
+}> {
+    const { data: dateMatches } = await supabase
+        .from('daily_matches')
+        .select('api_fixture_id, home_team, away_team, league_name, match_date')
+        .gte('match_date', startDate)
+        .lte('match_date', endDate);
+
+    const matchMap = new Map<number, any>();
+    const fixtureIds: number[] = [];
+    (dateMatches || []).forEach(m => {
+        matchMap.set(m.api_fixture_id, m);
+        fixtureIds.push(m.api_fixture_id);
+    });
+
+    if (fixtureIds.length === 0) {
+        const baseBankroll = await fetchBaseBankroll();
+        return { picks: [], matchMap, baseBankroll };
+    }
+
+    // Get ALL verified + pending picks (we need pending count too)
+    const { data: allPicks } = await supabase
+        .from('value_picks_v2')
+        .select('id, fixture_id, market, selection, p_model, odds, result, verified_at, actual_score, created_at')
+        .in('fixture_id', fixtureIds)
+        .gte('p_model', 0.83)
+        .gte('odds', 1.40);
+
+    const baseBankroll = await fetchBaseBankroll();
+
+    const picks: PickWithMatchDate[] = (allPicks || []).map(p => {
+        const match = matchMap.get(p.fixture_id);
+        return {
+            id: p.id,
+            fixture_id: p.fixture_id,
+            market: p.market,
+            selection: p.selection,
+            p_model: p.p_model,
+            odds: p.odds,
+            result: p.result,
+            verified_at: p.verified_at,
+            actual_score: p.actual_score,
+            match_date: match?.match_date || '',
+            home_team: match?.home_team || 'Equipo A',
+            away_team: match?.away_team || 'Equipo B',
+            league_name: match?.league_name,
+        };
+    });
+
+    return { picks, matchMap, baseBankroll };
+}
+
+/**
+ * Group picks by match_date, sort each day's picks by p_model DESC (with created_at tiebreaker),
+ * then filter to only the picks visible for the given plan.
+ */
+function filterPicksByPlan(picks: PickWithMatchDate[], planName: PlanTier): PickWithMatchDate[] {
+    // Group by match_date
+    const byDate = new Map<string, PickWithMatchDate[]>();
+    for (const pick of picks) {
+        const date = pick.match_date;
+        if (!byDate.has(date)) byDate.set(date, []);
+        byDate.get(date)!.push(pick);
+    }
+
+    const filtered: PickWithMatchDate[] = [];
+    const percentage = PLAN_PREDICTIONS_PERCENTAGES[planName];
+
+    for (const [, dayPicks] of byDate) {
+        // Sort by p_model DESC (highest probability first) — consistent with v2-generate-parlays
+        dayPicks.sort((a, b) => b.p_model - a.p_model);
+
+        const allowedCount = getAllowedPickCount(dayPicks.length, percentage, false);
+        filtered.push(...dayPicks.slice(0, allowedCount));
+    }
+
+    return filtered;
+}
+
+/**
+ * Calculate performance metrics for a subset of picks.
+ */
+function calculatePlanMetrics(
+    picks: PickWithMatchDate[],
+    baseBankroll: number,
+    planName: PlanTier,
+): Omit<PlanPerformanceSummary, 'exclusivePicks' | 'exclusiveWon' | 'exclusiveLost' | 'exclusiveWinRate' | 'exclusiveROI'> {
+    const verified = picks.filter(p => p.result === 'WON' || p.result === 'LOST');
+    const pending = picks.filter(p => p.result === 'PENDING');
+    const won = verified.filter(p => p.result === 'WON');
+    const lost = verified.filter(p => p.result === 'LOST');
+
+    const stakeAmount = baseBankroll * 0.04;
+    let totalStaked = 0;
+    let totalProfit = 0;
+
+    for (const pick of verified) {
+        totalStaked += stakeAmount;
+        totalProfit += pick.result === 'WON'
+            ? stakeAmount * ((pick.odds || 1) - 1)
+            : -stakeAmount;
+    }
+
+    // Average odds
+    const oddsSum = verified.reduce((sum, p) => sum + (p.odds || 0), 0);
+    const avgOdds = verified.length > 0 ? oddsSum / verified.length : 0;
+
+    // Current streak (most recent first by verified_at)
+    const sorted = [...verified].sort((a, b) =>
+        (b.verified_at || '').localeCompare(a.verified_at || '')
+    );
+    let streakType: 'win' | 'loss' = 'win';
+    let streakCount = 0;
+    for (const pick of sorted) {
+        if (streakCount === 0) {
+            streakType = pick.result === 'WON' ? 'win' : 'loss';
+            streakCount = 1;
+        } else if ((pick.result === 'WON' && streakType === 'win') || (pick.result === 'LOST' && streakType === 'loss')) {
+            streakCount++;
+        } else {
+            break;
+        }
+    }
+
+    return {
+        planName,
+        displayName: PLAN_DISPLAY_NAMES[planName],
+        predictionsPercentage: PLAN_PREDICTIONS_PERCENTAGES[planName],
+        picksCount: verified.length,
+        won: won.length,
+        lost: lost.length,
+        pending: pending.length,
+        winRate: verified.length > 0 ? (won.length / verified.length) * 100 : 0,
+        totalStaked,
+        totalProfit,
+        roi: baseBankroll > 0 ? (totalProfit / baseBankroll) * 100 : 0,
+        avgOdds: Math.round(avgOdds * 100) / 100,
+        currentStreak: { type: streakType, count: streakCount },
+    };
+}
+
+/**
+ * Get results filtered by a specific plan tier.
+ * Returns the same PublicResultsData format but only for picks visible to that plan.
+ */
+export async function getResultsByPlan(
+    startDate: string,
+    endDate: string,
+    planName: PlanTier,
+    filter: 'all' | 'picks' | 'parlays' = 'all'
+): Promise<PublicResultsData> {
+    const { picks: allPicks, baseBankroll } = await fetchPicksWithMatchDate(startDate, endDate);
+
+    if (allPicks.length === 0) {
+        const { totalProfit } = await calculateProfitFromPicks(baseBankroll, SYSTEM_START_DATE, new Date().toISOString().split('T')[0]);
+        return emptyResults(baseBankroll, baseBankroll + totalProfit, totalProfit);
+    }
+
+    // Filter picks for this plan
+    const planPicks = filterPicksByPlan(allPicks, planName);
+    const verified = planPicks.filter(p => p.result === 'WON' || p.result === 'LOST');
+    const pending = planPicks.filter(p => p.result === 'PENDING');
+    const won = verified.filter(p => p.result === 'WON');
+    const lost = verified.filter(p => p.result === 'LOST');
+
+    const stakeAmount = baseBankroll * 0.04;
+
+    // Enrich with profit/loss
+    const recentResults = verified
+        .sort((a, b) => (b.verified_at || '').localeCompare(a.verified_at || ''))
+        .map(p => ({
+            id: p.id,
+            home_team: p.home_team,
+            away_team: p.away_team,
+            market: p.market,
+            selection: p.selection,
+            result: p.result as PickResult,
+            odds: p.odds,
+            p_model: p.p_model,
+            actual_score: p.actual_score,
+            verified_at: p.verified_at || '',
+            league: p.league_name,
+            match_date: p.match_date,
+            profit_loss: p.result === 'WON'
+                ? stakeAmount * ((p.odds || 1) - 1)
+                : -stakeAmount,
+        }));
+
+    // Period profit for this plan's picks
+    let periodProfit = 0;
+    let periodStaked = 0;
+    for (const pick of verified) {
+        periodStaked += stakeAmount;
+        periodProfit += pick.result === 'WON'
+            ? stakeAmount * ((pick.odds || 1) - 1)
+            : -stakeAmount;
+    }
+
+    // Cumulative profit for this plan (from system start)
+    const { picks: allTimePicks } = await fetchPicksWithMatchDate(SYSTEM_START_DATE, new Date().toISOString().split('T')[0]);
+    const allTimePlanPicks = filterPicksByPlan(allTimePicks, planName)
+        .filter(p => p.result === 'WON' || p.result === 'LOST');
+    let cumulativeProfit = 0;
+    for (const pick of allTimePlanPicks) {
+        cumulativeProfit += pick.result === 'WON'
+            ? stakeAmount * ((pick.odds || 1) - 1)
+            : -stakeAmount;
+    }
+
+    // Last 7 days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysStr = sevenDaysAgo.toISOString().split('T')[0];
+    const last7 = verified.filter(p => p.match_date >= sevenDaysStr);
+    const last7Wins = last7.filter(p => p.result === 'WON').length;
+    const last7Losses = last7.filter(p => p.result === 'LOST').length;
+
+    // Current streak
+    let streakType: 'win' | 'loss' = 'win';
+    let streakCount = 0;
+    for (const pick of recentResults) {
+        if (streakCount === 0) {
+            streakType = pick.result === 'WON' ? 'win' : 'loss';
+            streakCount = 1;
+        } else if ((pick.result === 'WON' && streakType === 'win') || (pick.result === 'LOST' && streakType === 'loss')) {
+            streakCount++;
+        } else {
+            break;
+        }
+    }
+
+    // Parlays (included as-is, no plan filtering for now — plan filtering for parlays is Phase 6)
+    let parlaysData: PublicResultsData['parlays'] = undefined;
+    if (filter === 'all' || filter === 'parlays') {
+        parlaysData = await getParlayResults(startDate, endDate, baseBankroll);
+    }
+    const parlaysCumulativeProfit = filter !== 'picks'
+        ? (await getParlayProfit(baseBankroll, PARLAY_START_DATE, new Date().toISOString().split('T')[0]))
+        : 0;
+    const combinedCumulativeProfit = cumulativeProfit + parlaysCumulativeProfit;
+
+    return {
+        winRate: verified.length > 0 ? (won.length / verified.length) * 100 : 0,
+        totalVerified: verified.length,
+        totalPending: pending.length,
+        won: won.length,
+        lost: lost.length,
+        last7Days: { wins: last7Wins, losses: last7Losses, total: last7.length },
+        currentStreak: { type: streakType, count: streakCount },
+        recentResults,
+        bankroll: {
+            base: baseBankroll,
+            current: baseBankroll + combinedCumulativeProfit,
+            profit: combinedCumulativeProfit,
+            roi: baseBankroll > 0 ? (combinedCumulativeProfit / baseBankroll) * 100 : 0,
+            periodProfit: periodProfit + (parlaysData?.periodProfit ?? 0),
+            periodROI: baseBankroll > 0 ? ((periodProfit + (parlaysData?.periodProfit ?? 0)) / baseBankroll) * 100 : 0,
+            periodStaked: periodStaked + (parlaysData?.periodStaked ?? 0),
+        },
+        parlays: parlaysData,
+    };
+}
+
+/**
+ * Get performance comparison across all plan tiers (admin only).
+ * Single data fetch, then slice per plan in memory.
+ */
+export async function getPerPlanComparison(startDate: string, endDate: string): Promise<PerPlanComparisonData> {
+    const { picks: allPicks, baseBankroll } = await fetchPicksWithMatchDate(startDate, endDate);
+
+    const plans: Record<string, PlanPerformanceSummary> = {};
+
+    for (const tier of PLAN_TIERS) {
+        const planPicks = filterPicksByPlan(allPicks, tier);
+        const metrics = calculatePlanMetrics(planPicks, baseBankroll, tier);
+
+        // Calculate exclusive metrics (picks ONLY available at this tier and above)
+        const tierIndex = PLAN_TIERS.indexOf(tier);
+        let exclusivePicks: PickWithMatchDate[];
+
+        if (tierIndex === 0) {
+            // Free: its exclusive picks = same as its inclusive picks (just the #1 pick per day)
+            exclusivePicks = planPicks;
+        } else {
+            // Get picks from previous tier to compute the delta
+            const prevTier = PLAN_TIERS[tierIndex - 1];
+            const prevPlanPicks = filterPicksByPlan(allPicks, prevTier);
+            const prevIds = new Set(prevPlanPicks.map(p => p.id));
+            exclusivePicks = planPicks.filter(p => !prevIds.has(p.id));
+        }
+
+        const exclusiveVerified = exclusivePicks.filter(p => p.result === 'WON' || p.result === 'LOST');
+        const exclusiveWon = exclusiveVerified.filter(p => p.result === 'WON');
+        const exclusiveLost = exclusiveVerified.filter(p => p.result === 'LOST');
+
+        const stakeAmount = baseBankroll * 0.04;
+        let exclusiveProfit = 0;
+        let exclusiveStaked = 0;
+        for (const pick of exclusiveVerified) {
+            exclusiveStaked += stakeAmount;
+            exclusiveProfit += pick.result === 'WON'
+                ? stakeAmount * ((pick.odds || 1) - 1)
+                : -stakeAmount;
+        }
+
+        plans[tier] = {
+            ...metrics,
+            exclusivePicks: exclusiveVerified.length,
+            exclusiveWon: exclusiveWon.length,
+            exclusiveLost: exclusiveLost.length,
+            exclusiveWinRate: exclusiveVerified.length > 0
+                ? (exclusiveWon.length / exclusiveVerified.length) * 100
+                : 0,
+            exclusiveROI: exclusiveStaked > 0
+                ? (exclusiveProfit / exclusiveStaked) * 100
+                : 0,
+        };
+    }
+
+    return {
+        dateRange: { start: startDate, end: endDate },
+        plans: plans as Record<PlanTier, PlanPerformanceSummary>,
+        baseBankroll,
     };
 }
