@@ -520,8 +520,10 @@ serve(async (req) => {
         const today = new Date().toISOString().split('T')[0];
         const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
         const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0];
-        const datesToCheck = reqBody?.date
-            ? (Array.isArray(reqBody.date) ? reqBody.date : [reqBody.date])
+        // Accept both "date" and "dates" parameter names
+        const rawDates = reqBody?.date || reqBody?.dates;
+        const datesToCheck = rawDates
+            ? (Array.isArray(rawDates) ? rawDates : [rawDates])
             : [today, yesterday, twoDaysAgo];
 
         log(`[Verifier] Starting verification for dates: ${datesToCheck.join(', ')}`);
@@ -550,7 +552,7 @@ serve(async (req) => {
             // Get fixture_ids from daily_matches for this date
             const { data: dailyMatches } = await supabase
                 .from('daily_matches')
-                .select('api_fixture_id, home_team, away_team, league_name, match_status, home_score, away_score')
+                .select('api_fixture_id, home_team, away_team, league_name, match_status, home_score, away_score, match_date')
                 .eq('match_date', checkDate);
 
             if (!dailyMatches || dailyMatches.length === 0) {
@@ -561,6 +563,14 @@ serve(async (req) => {
             const fixtureIds = dailyMatches.map(m => m.api_fixture_id);
             const matchMap = new Map<number, any>();
             dailyMatches.forEach(m => matchMap.set(m.api_fixture_id, m));
+            log(`[Verifier] Found ${dailyMatches.length} matches for ${checkDate}, fixture IDs: ${fixtureIds.slice(0, 10).join(', ')}${fixtureIds.length > 10 ? '...' : ''}`);
+
+            // Count existing picks BEFORE sync for diagnostics
+            const { count: preCount } = await supabase
+                .from('value_picks_v2')
+                .select('id', { count: 'exact', head: true })
+                .in('fixture_id', fixtureIds);
+            log(`[Verifier] PRE-SYNC: ${preCount || 0} picks in value_picks_v2 for ${checkDate}`);
 
             // ───────────────────────────────────────────────────────────
             // STEP 1.5: SYNC picks from reports_v2 → value_picks_v2
@@ -606,15 +616,16 @@ serve(async (req) => {
                                 || p.probabilidad
                                 || p.probability
                                 || p.confidence_score
+                                || p.confianza
                                 || 0;
                             let prob = typeof probRaw === 'string'
-                                ? parseFloat(probRaw.replace('%', ''))
+                                ? parseFloat(probRaw.replace('%', '').replace('+', ''))
                                 : probRaw;
                             if (prob > 0 && prob < 1) prob *= 100;
                             if (prob < 83) continue;
 
                             // Extract odds
-                            const oddsRaw = p.cuota_actual || p.cuota || p.odds || p.odd || 0;
+                            const oddsRaw = p.cuota_actual || p.cuota || p.odds || p.odd || p.price || 0;
                             const odds = typeof oddsRaw === 'string' ? parseFloat(oddsRaw) : oddsRaw;
                             if (!odds || odds < 1.40) continue;
 
@@ -655,8 +666,104 @@ serve(async (req) => {
                     }
                 }
             } catch (syncError: any) {
-                log(`[Verifier] SYNC: Non-blocking error: ${syncError.message}`);
+                log(`[Verifier] SYNC reports_v2: Non-blocking error: ${syncError.message}`);
             }
+
+            // STEP 1.6: SYNC from analisis table (SOURCE C from v2-generate-parlays)
+            // Covers cases where reports_v2 was cleaned up but analisis still has the data
+            try {
+                const { data: analisisRows } = await supabase
+                    .from('analisis')
+                    .select('partido_id, resultado_analisis')
+                    .in('partido_id', fixtureIds);
+
+                if (analisisRows && analisisRows.length > 0) {
+                    // Re-fetch existing keys (may have been updated by STEP 1.5)
+                    const { data: existingVPsC } = await supabase
+                        .from('value_picks_v2')
+                        .select('fixture_id, market, selection')
+                        .in('fixture_id', fixtureIds);
+
+                    const existingKeysC = new Set<string>();
+                    (existingVPsC || []).forEach((vp: any) => {
+                        existingKeysC.add(`${vp.fixture_id}_${(vp.market || '').toLowerCase()}_${(vp.selection || '').toLowerCase()}`);
+                    });
+
+                    const toInsertC: any[] = [];
+                    for (const row of analisisRows) {
+                        const result = row.resultado_analisis;
+                        if (!result) continue;
+
+                        const dashboard = result.dashboardData || result;
+                        const preds = dashboard?.predicciones_finales?.detalle
+                            || dashboard?.pronosticos
+                            || [];
+                        if (!Array.isArray(preds)) continue;
+
+                        for (const p of preds) {
+                            const probRaw = p.probabilidad_estimado_porcentaje
+                                || p.probabilidad_calculada_porcentaje
+                                || p.probabilidad_derbix
+                                || p.probabilidad
+                                || p.probability
+                                || p.confidence_score
+                                || p.confianza
+                                || 0;
+                            let prob = typeof probRaw === 'string'
+                                ? parseFloat(probRaw.replace('%', '').replace('+', ''))
+                                : probRaw;
+                            if (prob > 0 && prob < 1) prob *= 100;
+                            if (prob < 83) continue;
+
+                            const oddsRaw = p.cuota_actual || p.cuota || p.odds || p.odd || p.price || 0;
+                            const odds = typeof oddsRaw === 'string' ? parseFloat(oddsRaw) : oddsRaw;
+                            if (!odds || odds < 1.40) continue;
+
+                            const market = p.mercado || p.market || '';
+                            const selection = p.seleccion || p.selection || '';
+                            if (!market || !selection) continue;
+
+                            const key = `${row.partido_id}_${market.toLowerCase()}_${selection.toLowerCase()}`;
+                            if (existingKeysC.has(key)) continue;
+                            existingKeysC.add(key);
+
+                            toInsertC.push({
+                                job_id: null,
+                                fixture_id: row.partido_id,
+                                market,
+                                selection,
+                                p_model: prob / 100,
+                                odds,
+                                decision: 'BET',
+                                confidence: 8,
+                                engine_version: 'V8-SYNC-ANALISIS',
+                                result: 'PENDING',
+                                created_at: new Date().toISOString(),
+                            });
+                        }
+                    }
+
+                    if (toInsertC.length > 0) {
+                        const { error: syncErrC } = await supabase
+                            .from('value_picks_v2')
+                            .insert(toInsertC);
+                        if (syncErrC) {
+                            log(`[Verifier] SYNC analisis: Error inserting ${toInsertC.length} picks: ${syncErrC.message}`);
+                        } else {
+                            log(`[Verifier] SYNC analisis: Inserted ${toInsertC.length} missing picks for ${checkDate}`);
+                        }
+                    }
+                }
+            } catch (syncErrorC: any) {
+                log(`[Verifier] SYNC analisis: Non-blocking error: ${syncErrorC.message}`);
+            }
+
+            // Count picks AFTER sync for diagnostics
+            const { count: postCount } = await supabase
+                .from('value_picks_v2')
+                .select('id', { count: 'exact', head: true })
+                .in('fixture_id', fixtureIds);
+            log(`[Verifier] POST-SYNC: ${postCount || 0} picks in value_picks_v2 for ${checkDate} (was ${preCount || 0})`);
 
             // Get pending picks for these fixtures
             const { data: pendingPicks } = await supabase
@@ -666,7 +773,7 @@ serve(async (req) => {
                 .eq('result', 'PENDING');
 
             if (!pendingPicks || pendingPicks.length === 0) {
-                log(`[Verifier] No pending picks for ${checkDate} (${dailyMatches.length} matches)`);
+                log(`[Verifier] No pending picks for ${checkDate} (${dailyMatches.length} matches, ${postCount || 0} total picks but none PENDING)`);
                 continue;
             }
 
