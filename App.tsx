@@ -12,6 +12,9 @@ import { AdminPage } from './components/Admin';
 import { PricingPage } from './components/pricing/PricingPage';
 import { PublicPricingPage } from './components/pricing/PublicPricingPage';
 import { SignUpFlow } from './components/auth/SignUpFlow';
+import { TermsOfService } from './components/legal/TermsOfService';
+import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
+import { RefundPolicy } from './components/legal/RefundPolicy';
 import { isAgencyRole } from './utils/roles';
 
 export type Page = 'live' | 'admin' | 'pricing';
@@ -99,6 +102,9 @@ const AppContent: React.FC = () => {
     <Routes>
       <Route path="/" element={<LandingRoute />} />
       <Route path="/pricing" element={<PublicPricingPage />} />
+      <Route path="/terms" element={<TermsOfService />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/refund" element={<RefundPolicy />} />
       <Route path="/signup" element={<SignUpFlow />} />
       <Route path="/login" element={<LoginRoute />} />
       <Route

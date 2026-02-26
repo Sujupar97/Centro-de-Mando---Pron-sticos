@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { ChartBarIcon } from '../icons/Icons';
 
 export const LandingFooter: React.FC = () => {
@@ -19,17 +20,17 @@ export const LandingFooter: React.FC = () => {
 
           {/* Links */}
           <div className="flex flex-wrap justify-center gap-8">
-            <a href="#" className="text-sm text-slate-500 hover:text-white transition-colors">
-              Términos de Servicio
-            </a>
-            <a href="#" className="text-sm text-slate-500 hover:text-white transition-colors">
-              Privacidad
-            </a>
-            <a href="#" className="text-sm text-slate-500 hover:text-white transition-colors">
-              Responsabilidad en Juego
-            </a>
-            <a href="#" className="text-sm text-slate-500 hover:text-white transition-colors">
-              Soporte
+            <Link to="/terms" className="text-sm text-slate-500 hover:text-white transition-colors">
+              Terms of Service
+            </Link>
+            <Link to="/privacy" className="text-sm text-slate-500 hover:text-white transition-colors">
+              Privacy Policy
+            </Link>
+            <Link to="/refund" className="text-sm text-slate-500 hover:text-white transition-colors">
+              Refund Policy
+            </Link>
+            <a href="mailto:support@derbix.com" className="text-sm text-slate-500 hover:text-white transition-colors">
+              Support
             </a>
           </div>
 
