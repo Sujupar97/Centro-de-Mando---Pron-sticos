@@ -12,7 +12,7 @@ import {
     getRiskColor,
     getRiskLabel
 } from '../../services/smartParlayService';
-import { manualOverrideParlay } from '../../services/resultsService';
+import { manualOverrideParlayLeg } from '../../services/resultsService';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { isHistoricalDate, canViewParlays, getAllowedParlayCount } from '../../utils/planAccessUtils';
 import { usePresentationMode } from '../../hooks/usePresentationMode';
@@ -291,53 +291,74 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                 </div>
                             </div>
 
-                            {/* Picks detail */}
+                            {/* Picks detail — each leg with result + admin override */}
                             <div className="p-4 space-y-3">
-                                {combo.picks.map((pick, pickIndex) => (
-                                    <div
-                                        key={pickIndex}
-                                        className={`flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border ${
-                                            !presentationMode && (pick as any).result === 'WON' ? 'border-emerald-500/30' :
-                                            !presentationMode && (pick as any).result === 'LOST' ? 'border-red-500/30 opacity-60' :
-                                            'border-gray-700/30'
-                                        }`}
-                                    >
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-gray-400 text-xs mb-1 truncate">
-                                                {pick.league}
+                                {combo.picks.map((pick, pickIndex) => {
+                                    const legResult = (pick as any).result as string | undefined;
+                                    const isLegWon = !presentationMode && legResult === 'WON';
+                                    const isLegLost = !presentationMode && legResult === 'LOST';
+                                    const isLegVoid = !presentationMode && legResult === 'VOID';
+                                    const isLegResolved = isLegWon || isLegLost || isLegVoid;
+
+                                    return (
+                                        <div
+                                            key={pickIndex}
+                                            className={`p-3 bg-gray-900/50 rounded-lg border ${
+                                                isLegWon ? 'border-emerald-500/30' :
+                                                isLegLost ? 'border-red-500/30 opacity-70' :
+                                                'border-gray-700/30'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-gray-400 text-xs mb-1 truncate">
+                                                        {pick.league}
+                                                    </div>
+                                                    <div className="text-white font-medium text-sm">
+                                                        {pick.home_team} vs {pick.away_team}
+                                                    </div>
+                                                    <div className="text-emerald-400 text-sm mt-1 font-bold">
+                                                        {translateMarket(pick.market)}: <span className="text-white">{pick.selection}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right ml-4 flex-shrink-0 flex items-center gap-2">
+                                                    {/* Result badge */}
+                                                    {!presentationMode && isLegResolved && (
+                                                        <span className={`text-xs font-black px-2 py-1 rounded ${
+                                                            isLegWon ? 'bg-emerald-500/20 text-emerald-400' :
+                                                            isLegLost ? 'bg-red-500/20 text-red-400' :
+                                                            'bg-slate-500/20 text-slate-400'
+                                                        }`}>
+                                                            {isLegWon ? 'GANADA' : isLegLost ? 'PERDIDA' : 'NULA'}
+                                                        </span>
+                                                    )}
+                                                    <div>
+                                                        <div className="text-emerald-400 font-bold text-base sm:text-lg">
+                                                            x{pick.odds?.toFixed(2) || '---'}
+                                                        </div>
+                                                        <div className="text-gray-400 text-xs">
+                                                            {formatProbability(pick.p_model)} prob
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="text-white font-medium text-sm">
-                                                {pick.home_team} vs {pick.away_team}
-                                            </div>
-                                            <div className="text-emerald-400 text-sm mt-1 font-bold">
-                                                {translateMarket(pick.market)}: <span className="text-white">{pick.selection}</span>
-                                            </div>
-                                        </div>
-                                        <div className="text-right ml-4 flex-shrink-0 flex items-center gap-2">
-                                            {!presentationMode && (pick as any).result && (pick as any).result !== 'PENDING' && (
-                                                <span className={`text-xs font-black px-1.5 py-0.5 rounded ${
-                                                    (pick as any).result === 'WON' ? 'bg-emerald-500/20 text-emerald-400' :
-                                                    (pick as any).result === 'LOST' ? 'bg-red-500/20 text-red-400' :
-                                                    'bg-slate-500/20 text-slate-400'
-                                                }`}>
-                                                    {(pick as any).result === 'WON' ? '✓' : (pick as any).result === 'LOST' ? '✗' : '—'}
-                                                </span>
+
+                                            {/* Admin per-leg override buttons */}
+                                            {isAdmin && (
+                                                <LegOverrideButtons
+                                                    parlayId={combo.id}
+                                                    legIndex={pickIndex}
+                                                    currentResult={legResult}
+                                                    onOverrideComplete={loadParlays}
+                                                />
                                             )}
-                                            <div>
-                                                <div className="text-emerald-400 font-bold text-base sm:text-lg">
-                                                    x{pick.odds?.toFixed(2) || '---'}
-                                                </div>
-                                                <div className="text-gray-400 text-xs">
-                                                    {formatProbability(pick.p_model)} prob
-                                                </div>
-                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
 
-                            {/* Footer with EV indicator + Admin Override */}
-                            <div className="px-4 pb-4 space-y-2">
+                            {/* Footer with EV indicator */}
+                            <div className="px-4 pb-4">
                                 <div className="flex items-center justify-between p-3 bg-gray-900/80 rounded-lg border border-gray-700/50">
                                     <span className="text-gray-400 text-sm">
                                         {combo.pick_count} selecciones de diferentes partidos
@@ -346,13 +367,6 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                         EV: {(combo.combined_odds * combo.combined_probability).toFixed(2)}
                                     </span>
                                 </div>
-                                {/* Admin override buttons */}
-                                {isAdmin && (
-                                    <ParlayOverrideButtons
-                                        parlayId={combo.id}
-                                        onOverrideComplete={loadParlays}
-                                    />
-                                )}
                             </div>
                         </div>
                     ))}
@@ -378,49 +392,63 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
     );
 };
 
-// --- Admin Override Buttons for Parlays ---
-const ParlayOverrideButtons: React.FC<{
+// --- Admin Per-Leg Override Buttons ---
+const LegOverrideButtons: React.FC<{
     parlayId: string;
+    legIndex: number;
+    currentResult?: string;
     onOverrideComplete: () => void;
-}> = ({ parlayId, onOverrideComplete }) => {
+}> = ({ parlayId, legIndex, currentResult, onOverrideComplete }) => {
     const [overriding, setOverriding] = useState(false);
 
-    const handleOverride = async (result: 'WON' | 'LOST' | 'VOID') => {
+    const handleLegOverride = async (result: 'WON' | 'LOST' | 'VOID') => {
         if (overriding) return;
         setOverriding(true);
         try {
-            await manualOverrideParlay(parlayId, result);
+            await manualOverrideParlayLeg(parlayId, legIndex, result);
             onOverrideComplete();
         } catch (e: any) {
-            console.error('[Parlays] Override error:', e);
+            console.error('[Parlays] Leg override error:', e);
         } finally {
             setOverriding(false);
         }
     };
 
     return (
-        <div className="flex items-center gap-2">
-            <span className="text-gray-500 text-xs mr-1">Admin:</span>
+        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-700/30">
+            <span className="text-gray-500 text-[10px] uppercase tracking-wide mr-1">Resultado:</span>
             <button
-                onClick={() => handleOverride('WON')}
+                onClick={() => handleLegOverride('WON')}
                 disabled={overriding}
-                className="flex-1 py-2 sm:py-1.5 rounded-lg text-sm sm:text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-all disabled:opacity-50"
+                className={`flex-1 py-1.5 rounded text-xs font-bold border transition-all disabled:opacity-50 ${
+                    currentResult === 'WON'
+                        ? 'bg-emerald-500/30 text-emerald-300 border-emerald-500/50'
+                        : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
+                }`}
             >
-                {overriding ? '...' : 'GANADO'}
+                {overriding ? '...' : 'GANADA'}
             </button>
             <button
-                onClick={() => handleOverride('LOST')}
+                onClick={() => handleLegOverride('LOST')}
                 disabled={overriding}
-                className="flex-1 py-2 sm:py-1.5 rounded-lg text-sm sm:text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all disabled:opacity-50"
+                className={`flex-1 py-1.5 rounded text-xs font-bold border transition-all disabled:opacity-50 ${
+                    currentResult === 'LOST'
+                        ? 'bg-red-500/30 text-red-300 border-red-500/50'
+                        : 'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20'
+                }`}
             >
-                {overriding ? '...' : 'PERDIDO'}
+                {overriding ? '...' : 'PERDIDA'}
             </button>
             <button
-                onClick={() => handleOverride('VOID')}
+                onClick={() => handleLegOverride('VOID')}
                 disabled={overriding}
-                className="py-2 sm:py-1.5 px-3 rounded-lg text-sm sm:text-xs font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30 hover:bg-slate-500/30 transition-all disabled:opacity-50"
+                className={`py-1.5 px-2.5 rounded text-xs font-bold border transition-all disabled:opacity-50 ${
+                    currentResult === 'VOID'
+                        ? 'bg-slate-500/30 text-slate-300 border-slate-500/50'
+                        : 'bg-slate-500/10 text-slate-400 border-slate-500/20 hover:bg-slate-500/20'
+                }`}
             >
-                {overriding ? '...' : 'NULO'}
+                {overriding ? '...' : 'NULA'}
             </button>
         </div>
     );
