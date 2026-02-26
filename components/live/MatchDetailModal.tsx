@@ -310,12 +310,12 @@ const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                     </div>
 
                     {/* Tabs */}
-                    <div className="flex overflow-x-auto -mx-4 px-4 gap-0 scrollbar-hide">
+                    <div className="flex overflow-x-auto -mx-4 px-4 gap-0 scrollbar-hide border-b border-white/5">
                         {tabs.map(tab => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex items-center gap-1.5 px-3 py-3 sm:py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 ${
+                                className={`flex items-center justify-center gap-1.5 flex-1 sm:flex-none px-3 py-3 sm:py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors ${
                                     activeTab === tab.id
                                         ? 'border-brand text-brand'
                                         : 'border-transparent text-slate-500 hover:text-white'
