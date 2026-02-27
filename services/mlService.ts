@@ -128,7 +128,8 @@ export async function getDateRangeAuditStatus(startDate: string, endDate: string
     const { data: picks } = await supabase
         .from('value_picks_v2')
         .select('fixture_id, result')
-        .in('fixture_id', allFixtureIds);
+        .in('fixture_id', allFixtureIds)
+        .gte('p_model', 0.80);
 
     // Group picks by fixture → date
     const fixtureToDate = new Map<number, string>();

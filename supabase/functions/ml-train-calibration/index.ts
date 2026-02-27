@@ -231,7 +231,7 @@ serve(async (req) => {
             }
 
             const picksForDate = (picks || []).filter(p => fixtureIdsForDate.includes(p.fixture_id));
-            const pendingCount = picksForDate.filter(p => p.result === 'PENDING').length;
+            const pendingCount = picksForDate.filter(p => p.result === 'PENDING' && p.p_model != null && p.p_model >= 0.80).length;
 
             if (pendingCount > 0) {
                 console.log(`[ml-train-calibration] SKIPPING ${date}: ${pendingCount} PENDING picks`);
