@@ -434,21 +434,21 @@ serve(async (req) => {
             // Get parlay results for valid dates
             const { data: parlays } = await supabase
                 .from('parlay_combos_v2')
-                .select('id, picks, risk_level, combined_odds, status, match_date')
-                .in('match_date', validDates)
-                .in('status', ['WON', 'LOST']);
+                .select('id, picks, risk_tier, combined_odds, status, date')
+                .in('date', validDates)
+                .in('status', ['won', 'lost']);
 
             if (parlays && parlays.length > 0) {
                 const parlayAggs = new Map<string, { wins: number; losses: number; totalOdds: number }>();
 
                 for (const p of parlays) {
                     const legsCount = Array.isArray(p.picks) ? p.picks.length : 0;
-                    const risk = p.risk_level || 'moderate';
+                    const risk = p.risk_tier || 'moderate';
                     const key = `${legsCount}|${risk}`;
 
                     if (!parlayAggs.has(key)) parlayAggs.set(key, { wins: 0, losses: 0, totalOdds: 0 });
                     const agg = parlayAggs.get(key)!;
-                    if (p.status === 'WON') agg.wins++;
+                    if (p.status === 'won') agg.wins++;
                     else agg.losses++;
                     agg.totalOdds += p.combined_odds || 0;
                 }
