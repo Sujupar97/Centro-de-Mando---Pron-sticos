@@ -6,14 +6,20 @@ import { Page } from '../App';
 import { CreateSubAccountModal } from './agency/CreateSubAccountModal';
 import { isAgencyRole } from '../utils/roles';
 import { useOrganization } from '../contexts/OrganizationContext';
+import { RecapBadge } from './recap/RecapBadge';
 
 interface LayoutProps {
   children: React.ReactNode;
   currentPage: string;
   setCurrentPage: (page: Page) => void;
+  recapBadge?: {
+    hasData: boolean;
+    hasUnseen: boolean;
+    onReopen: () => void;
+  };
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurrentPage }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurrentPage, recapBadge }) => {
   const { profile, signOut } = useAuth();
   const { isImpersonating, stopImpersonation, currentOrg } = useOrganization();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -80,6 +86,15 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
           })}
         </nav>
 
+        {recapBadge && (
+          <RecapBadge
+            hasData={recapBadge.hasData}
+            hasUnseen={recapBadge.hasUnseen}
+            onReopen={recapBadge.onReopen}
+            variant="sidebar"
+          />
+        )}
+
         <div className="p-4 border-t border-white/5 bg-slate-900/40">
           <div className="flex items-center space-x-3 mb-4 px-2">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-brand to-blue-500 flex items-center justify-center text-xs font-bold text-white shadow-lg">
@@ -122,9 +137,19 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
         {/* Mobile Header */}
         <header className="md:hidden h-16 glass flex items-center justify-between px-4 sm:px-6 sticky top-0 z-30 backdrop-blur-xl border-b border-white/5 shadow-lg">
           <img src="/derbix-logo.png" alt="Derbix" className="h-10 object-contain" />
-          <button onClick={signOut} className="text-slate-400 hover:text-white">
-            <ArrowLeftOnRectangleIcon className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-3">
+            {recapBadge && (
+              <RecapBadge
+                hasData={recapBadge.hasData}
+                hasUnseen={recapBadge.hasUnseen}
+                onReopen={recapBadge.onReopen}
+                variant="mobile"
+              />
+            )}
+            <button onClick={signOut} className="text-slate-400 hover:text-white">
+              <ArrowLeftOnRectangleIcon className="w-6 h-6" />
+            </button>
+          </div>
         </header>
 
         {/* Scrollable Content */}

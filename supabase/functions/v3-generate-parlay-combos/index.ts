@@ -198,6 +198,58 @@ serve(async (req) => {
 
         log(`[PARLAY-COMBOS] Generated ${combos.length} valid combinations`);
 
+        // 4.5 ML CALIBRATION: Filter picks and combos using learned patterns
+        try {
+            const { data: blacklistPatterns } = await supabase
+                .from('ml_learned_patterns')
+                .select('scope, scope_key')
+                .eq('pattern_type', 'blacklist')
+                .eq('active', true);
+
+            if (blacklistPatterns && blacklistPatterns.length > 0) {
+                const blacklistMarkets = new Set(blacklistPatterns.filter((p: any) => p.scope === 'market').map((p: any) => p.scope_key.toLowerCase()));
+                const blacklistLeagues = new Set(blacklistPatterns.filter((p: any) => p.scope === 'league').map((p: any) => p.scope_key.toLowerCase()));
+
+                const beforeCount = combos.length;
+                const filtered = combos.filter(combo => {
+                    return !combo.picks.some((pick: any) => {
+                        const market = (pick.market || '').toLowerCase();
+                        const league = (pick.league || '').toLowerCase();
+                        return blacklistMarkets.has(market) || blacklistLeagues.has(league);
+                    });
+                });
+
+                if (filtered.length < combos.length) {
+                    log(`[PARLAY-COMBOS] ML blacklist removed ${beforeCount - filtered.length} combos (${blacklistPatterns.length} patterns active)`);
+                    combos.length = 0;
+                    combos.push(...filtered);
+                }
+            }
+
+            // Apply parlay calibration: use recommended_min_leg_prob
+            const { data: parlayCalib } = await supabase
+                .from('ml_parlay_calibration')
+                .select('legs_count, recommended_min_leg_prob')
+                .eq('legs_count', 3)
+                .eq('status', 'active')
+                .limit(1);
+
+            if (parlayCalib && parlayCalib.length > 0 && parlayCalib[0].recommended_min_leg_prob) {
+                const minProb = parlayCalib[0].recommended_min_leg_prob / 100;
+                const beforeCount = combos.length;
+                const filtered = combos.filter(combo =>
+                    combo.picks.every((pick: any) => pick.p_model >= minProb)
+                );
+                if (filtered.length < combos.length) {
+                    log(`[PARLAY-COMBOS] ML min prob filter (${parlayCalib[0].recommended_min_leg_prob}%) removed ${beforeCount - filtered.length} combos`);
+                    combos.length = 0;
+                    combos.push(...filtered);
+                }
+            }
+        } catch (mlErr: any) {
+            log(`[PARLAY-COMBOS] ML calibration check failed (non-blocking): ${mlErr.message}`);
+        }
+
         // 5. Sort by EV and select with GREEDY EXCLUSION (no pick repeated across parlays)
         // Rule: each individual pick can only appear in ONE parlay.
         // If a pick fails, only 1 parlay is affected instead of all of them.

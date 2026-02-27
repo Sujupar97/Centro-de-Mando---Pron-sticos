@@ -16,13 +16,26 @@ import { TermsOfService } from './components/legal/TermsOfService';
 import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
 import { RefundPolicy } from './components/legal/RefundPolicy';
 import { isAgencyRole } from './utils/roles';
+import { useSubscription } from './contexts/SubscriptionContext';
+import { useOrganization } from './contexts/OrganizationContext';
+import { useDailyRecap } from './hooks/useDailyRecap';
+import { DailyRecapModal } from './components/recap/DailyRecapModal';
 
 export type Page = 'live' | 'admin' | 'pricing';
 
 // --- PLATFORM (PROTECTED APP) ---
 const Platform: React.FC = () => {
   const { profile } = useAuth();
+  const { plan, isAdmin } = useSubscription();
+  const { isImpersonating } = useOrganization();
   const [currentPage, setCurrentPage] = React.useState<Page>('live');
+
+  const recap = useDailyRecap(
+    plan.plan_name,
+    isAdmin || isAgencyRole(profile?.role),
+    !!profile,
+    isImpersonating
+  );
 
   // Error safety for profile loading
   if (!profile) {
@@ -52,8 +65,25 @@ const Platform: React.FC = () => {
   };
 
   return (
-    <Layout currentPage={currentPage} setCurrentPage={setCurrentPage}>
+    <Layout
+      currentPage={currentPage}
+      setCurrentPage={setCurrentPage}
+      recapBadge={{
+        hasData: recap.hasData,
+        hasUnseen: recap.hasUnseen,
+        onReopen: recap.reopen,
+      }}
+    >
       {renderContent()}
+      {recap.isVisible && recap.data && (
+        <DailyRecapModal
+          data={recap.data}
+          tier={recap.tier}
+          onDismiss={recap.dismiss}
+          onUpgrade={() => setCurrentPage('pricing')}
+          onViewResults={() => setCurrentPage('live')}
+        />
+      )}
     </Layout>
   );
 };

@@ -6,9 +6,11 @@ import { CreateSubAccountModal } from './CreateSubAccountModal';
 import { ManageSubAccountPage } from './ManageSubAccountPage';
 import { OperationsCenter } from '../superadmin/OperationsCenter';
 import AnaliticaAvanzada from '../admin/AnaliticaAvanzada';
+import PlanPerformanceComparison from '../admin/PlanPerformanceComparison';
 import RevenueDashboard from './RevenueDashboard';
 import UserActivityMonitor from './UserActivityMonitor';
 import AuditLog from './AuditLog';
+import MLTrainingPanel from './MLTrainingPanel';
 
 interface AgencyLayoutProps {
     onBack?: () => void;
@@ -33,7 +35,9 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
         revenue: 'Revenue',
         subaccounts: t('nav.clients'),
         activity: 'Actividad',
+        'plan-performance': 'Rendimiento por Plan',
         'advanced-analytics': 'Analítica',
+        'ml-training': 'ML Training',
         'audit-log': 'Audit Log',
     };
 
@@ -121,10 +125,18 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
                             <UserActivityMonitor />
                         )}
 
+                        {activeView === 'plan-performance' && (
+                            <PlanPerformanceComparison />
+                        )}
+
                         {activeView === 'advanced-analytics' && (
                             <div className="glass p-6 rounded-xl border border-white/5">
                                 <AnaliticaAvanzada />
                             </div>
+                        )}
+
+                        {activeView === 'ml-training' && (
+                            <MLTrainingPanel />
                         )}
 
                         {activeView === 'audit-log' && (

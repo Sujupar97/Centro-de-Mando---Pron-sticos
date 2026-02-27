@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseService';
-import { SparklesIcon, ComputerDesktopIcon, BoltIcon, CheckCircleIcon, ChartBarIcon, EyeSlashIcon } from '../icons/Icons';
+import { SparklesIcon, ComputerDesktopIcon, BoltIcon, CheckCircleIcon, ChartBarIcon, EyeSlashIcon, BrainIcon } from '../icons/Icons';
 
 export const OperationsCenter: React.FC = () => {
     const [settings, setSettings] = useState<{ [key: string]: boolean }>({
@@ -77,7 +77,7 @@ export const OperationsCenter: React.FC = () => {
                     Control de Automatización del Sistema
                 </h2>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     {/* Switch 1: Auto Analysis */}
                     <div className={`p-4 rounded-xl border transition-all ${settings.auto_analysis_enabled ? 'bg-blue-900/20 border-blue-500/30' : 'bg-slate-800/50 border-slate-700'}`}>
                         <div className="flex justify-between items-start mb-2">
@@ -118,7 +118,27 @@ export const OperationsCenter: React.FC = () => {
                         <p className="text-xs text-gray-400 mt-1">Crea combinadas automáticamente tras finalizar los análisis diarios.</p>
                     </div>
 
-                    {/* Switch 3: Auto Verification */}
+                    {/* Switch 3: ML Auto-Learning */}
+                    <div className={`p-4 rounded-xl border transition-all ${settings.ml_auto_learning_enabled ? 'bg-cyan-900/20 border-cyan-500/30' : 'bg-slate-800/50 border-slate-700'}`}>
+                        <div className="flex justify-between items-start mb-2">
+                            <div className="p-2 rounded-lg bg-cyan-500/10">
+                                <BrainIcon className={`w-6 h-6 ${settings.ml_auto_learning_enabled ? 'text-cyan-400' : 'text-slate-500'}`} />
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={settings.ml_auto_learning_enabled}
+                                    onChange={() => toggleSetting('ml_auto_learning_enabled')}
+                                />
+                                <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+                            </label>
+                        </div>
+                        <h3 className="font-bold text-gray-200">ML Auto-Learning</h3>
+                        <p className="text-xs text-gray-400 mt-1">Activa la inyeccion dinamica de calibracion ML en el motor de analisis.</p>
+                    </div>
+
+                    {/* Switch 4: Auto Verification */}
                     <div className={`p-4 rounded-xl border transition-all ${settings.auto_verification_enabled ? 'bg-amber-900/20 border-amber-500/30' : 'bg-slate-800/50 border-slate-700'}`}>
                         <div className="flex justify-between items-start mb-2">
                             <div className="p-2 rounded-lg bg-amber-500/10">

@@ -112,3 +112,89 @@ export const getRecommendedUpgradePlan = (currentPlan: string): string | null =>
     };
     return upgradeMap[currentPlan] || null;
 };
+
+// --- PER-PLAN PERFORMANCE TRACKING ---
+
+export type PlanTier = 'free' | 'starter' | 'pro' | 'premium';
+
+export const PLAN_TIERS: PlanTier[] = ['free', 'starter', 'pro', 'premium'];
+
+export const PLAN_DISPLAY_NAMES: Record<PlanTier, string> = {
+    free: 'Gratuito',
+    starter: 'Starter',
+    pro: 'Pro',
+    premium: 'Premium',
+};
+
+export const PLAN_PREDICTIONS_PERCENTAGES: Record<PlanTier, number> = {
+    free: 1,
+    starter: 35,
+    pro: 80,
+    premium: 100,
+};
+
+export const PLAN_PARLAY_PERCENTAGES: Record<PlanTier, number> = {
+    free: 0,
+    starter: 0,
+    pro: 30,
+    premium: 80,
+};
+
+/**
+ * Dado N picks totales en un dia, calcula cuantos ve cada plan.
+ */
+export const getPickCountPerPlan = (totalPicks: number): Record<PlanTier, number> => {
+    return {
+        free: getAllowedPickCount(totalPicks, PLAN_PREDICTIONS_PERCENTAGES.free, false),
+        starter: getAllowedPickCount(totalPicks, PLAN_PREDICTIONS_PERCENTAGES.starter, false),
+        pro: getAllowedPickCount(totalPicks, PLAN_PREDICTIONS_PERCENTAGES.pro, false),
+        premium: getAllowedPickCount(totalPicks, PLAN_PREDICTIONS_PERCENTAGES.premium, false),
+    };
+};
+
+/**
+ * Dado N picks ordenados por p_model DESC, asigna el tier exclusivo mas bajo a cada uno.
+ * Pick #1 → 'free' (todos lo ven), Picks #2..starter_count → 'starter', etc.
+ * El tier exclusivo indica el plan MAS BAJO que incluye ese pick.
+ */
+export const assignExclusiveTiers = (totalPicks: number): PlanTier[] => {
+    const counts = getPickCountPerPlan(totalPicks);
+    const tiers: PlanTier[] = [];
+
+    for (let i = 0; i < totalPicks; i++) {
+        if (i < counts.free) tiers.push('free');
+        else if (i < counts.starter) tiers.push('starter');
+        else if (i < counts.pro) tiers.push('pro');
+        else tiers.push('premium');
+    }
+    return tiers;
+};
+
+/**
+ * Determina si un pick (por su indice 0-based en el arreglo ordenado por p_model DESC)
+ * es visible para un plan dado.
+ */
+export const isPickVisibleForPlan = (
+    pickIndex: number,
+    totalPicks: number,
+    planName: PlanTier
+): boolean => {
+    const counts = getPickCountPerPlan(totalPicks);
+    return pickIndex < counts[planName];
+};
+
+/**
+ * Filtra un arreglo de picks (ya ordenados por p_model DESC) para un plan especifico.
+ * Retorna solo los picks que ese plan puede ver.
+ */
+export const filterPicksForPlan = <T>(
+    picks: T[],
+    planName: PlanTier
+): T[] => {
+    const allowedCount = getAllowedPickCount(
+        picks.length,
+        PLAN_PREDICTIONS_PERCENTAGES[planName],
+        false
+    );
+    return picks.slice(0, allowedCount);
+};

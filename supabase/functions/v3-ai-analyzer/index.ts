@@ -7,8 +7,300 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import JSON5 from "https://esm.sh/json5@2.2.3"
 import { corsHeaders } from '../_shared/cors.ts'
 
-const ENGINE_VERSION = '8.0.0';
-const PROMPT_VERSION = '8.0.0';
+const ENGINE_VERSION = '8.1.0-ML';
+const PROMPT_VERSION = '8.1.0-ML';
+
+// ── ML Calibration: Dynamic Prompt Injection ─────────────────────────
+
+const HARDCODED_CALIBRATION_FALLBACK = `
+📊 DATOS REALES DE CALIBRACIÓN (Feb 2026 — 63 picks verificados manualmente):
+- Picks que asignamos 80-82% → ganaron solo 55.6%. ESTAMOS INFLANDO ~25 PUNTOS.
+- Picks que asignamos 83-85% → ganaron 91.7%. EXCELENTE CALIBRACIÓN AQUÍ.
+- Picks que asignamos 86-89% → ganaron solo 62.5%. INFLANDO ~24 PUNTOS.
+- CONCLUSIÓN: Solo asigna 80-82% si realmente crees que gana ~55%. Si crees que gana >70%, asigna 83-85%.
+- CONCLUSIÓN 2: El rango 86-89% está MÁS INFLADO que el 80-82%. No subas de 85% salvo evidencia ABRUMADORA.
+- EN LA PRÁCTICA: Tu "85%" real es más como un "62%" de probabilidad real. Sé BRUTALMENTE honesto.
+
+🏆 LIGAS CON RENDIMIENTO HISTÓRICO (usa para ajustar confianza):
+LIGAS FUERTES (podemos confiar más en nuestro análisis):
+- Serie A → 100% WR histórico. Podemos ser más agresivos.
+- UEFA Champions League → 100% WR. Los grandes equipos son predecibles aquí.
+- Liga Argentina → 80% WR. Buen terreno para análisis.
+- Championship → 75% WR. Ligas inglesas nos van bien.
+- Eredivisie → 75% WR.
+LIGAS DÉBILES (reducir confianza 5-10% automáticamente):
+- La Liga (España) → solo 25% WR. REDUCIR confianza 10% en TODOS los picks de La Liga.
+- Europa League → solo 33% WR. Reducir confianza 8%.
+- Eerste Divisie → solo 40% WR. Reducir confianza 5%.
+- Ligas menores (1. Lig turca, etc.) → Reducir confianza 5%.
+`;
+
+const HARDCODED_MARKET_PRIORITIES_FALLBACK = `
+Sigue esta jerarquía de búsqueda (ORDENADA POR RENDIMIENTO HISTÓRICO):
+
+1. 🏆 MERCADOS COMBINADOS — NUESTRO MEJOR PRODUCTO (70% WR, ROI positivo):
+   Subtipos que funcionan mejor:
+   - "Resultado y Total" (ej: "Equipo & Más de 1.5 Goles") → 100% WR histórico
+   - "Doble Oportunidad & Total" (ej: "Local o Empate & Más de 1.5") → 100% WR
+   - "Goles & BTTS" (ej: "Más de 2.5 & Ambos Anotan") → 100% WR
+   APUNTA A CUOTAS ≥1.70 en combinados — ese rango tiene +29% ROI.
+
+2. MERCADOS INDIVIDUALES FUERTES:
+   - BTTS/Ambos Anotan → Buen rendimiento (100% WR)
+   - Draw No Bet → Buen rendimiento
+   - Over/Under Goles (con datos claros) → 67% WR
+   - Corners de equipo → Rentables con buena data
+   - Goles del Local/Visitante → Buenos cuando la data es clara
+
+3. ⛔ MERCADOS A EVITAR O USAR CON EXTREMA CAUTELA:
+   - "Doble Oportunidad" SOLO (sin combinar) → 0% WR HISTÓRICO (0 de 5 picks ganados).
+     NUNCA recomiendes Doble Oportunidad como pick individual.
+   - Resultado 1X2 puro (sin combinar) → Solo 50% WR. Evitar salvo evidencia extrema.
+
+4. ⚠️ GESTIÓN DE CUOTAS:
+   - CUOTAS IDEALES: 1.70-2.00 → Rango con MEJOR ROI (+29.3%). Priorizar.
+   - CUOTAS ACEPTABLES: 1.40-1.69 → Rango más voluminoso pero ROI ~0%.
+   - CUOTAS BAJAS (<1.40): Buscar "SOCIO" para combinar y superar 1.40.
+`;
+
+interface MLCalibrationBlock {
+    calibrationText: string;
+    marketPrioritiesText: string;
+    source: string;
+    factorCount: number;
+}
+
+async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock> {
+    try {
+        // Fetch active calibration factors
+        const { data: factors, error: fErr } = await supabase
+            .from('ml_calibration_factors')
+            .select('*')
+            .eq('status', 'active');
+
+        // Fetch active learned patterns
+        const { data: patterns, error: pErr } = await supabase
+            .from('ml_learned_patterns')
+            .select('*')
+            .eq('active', true);
+
+        if (fErr || pErr || !factors || factors.length === 0) {
+            console.log('[v3-ai-analyzer] ML tables empty or error, using hardcoded calibration fallback');
+            return {
+                calibrationText: HARDCODED_CALIBRATION_FALLBACK,
+                marketPrioritiesText: HARDCODED_MARKET_PRIORITIES_FALLBACK,
+                source: 'hardcoded-fallback',
+                factorCount: 0,
+            };
+        }
+
+        // ── Build calibration text from real data ──
+        let calText = `\n📊 DATOS DE CALIBRACIÓN DINÁMICOS (generados por ML Auto-Learning, ${factors.length} factores activos):\n\n`;
+
+        // Prob band factors
+        const probBandFactors = factors.filter((f: any) => f.dimension === 'prob_band');
+        if (probBandFactors.length > 0) {
+            calText += `CALIBRACIÓN POR BANDA DE PROBABILIDAD:\n`;
+            for (const f of probBandFactors) {
+                const gap = f.predicted_avg - f.actual_wr;
+                const label = gap > 15 ? 'SOBRECONFIANZA ALTA' : gap > 5 ? 'SOBRECONFIANZA MODERADA' : gap > -5 ? 'CALIBRACIÓN ACEPTABLE' : 'INFRACONFIANZA';
+                calText += `- Picks que asignamos ${f.dimension_key} → ganaron ${f.actual_wr.toFixed(1)}% (${label}, gap: ${gap.toFixed(1)}pts, muestra: ${f.sample_size}).\n`;
+            }
+            calText += `\n`;
+        }
+
+        // League factors
+        const leagueFactors = factors.filter((f: any) => f.dimension === 'league');
+        if (leagueFactors.length > 0) {
+            const strong = leagueFactors.filter((f: any) => f.actual_wr >= 65 && f.sample_size >= 5);
+            const weak = leagueFactors.filter((f: any) => f.actual_wr < 45 && f.sample_size >= 5);
+
+            if (strong.length > 0) {
+                calText += `🏆 LIGAS FUERTES (confiar más en nuestro análisis):\n`;
+                for (const f of strong) {
+                    calText += `- ${f.dimension_key} → ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. ${f.actual_wr >= 80 ? 'Podemos ser más agresivos.' : 'Buen terreno.'}\n`;
+                }
+                calText += `\n`;
+            }
+
+            if (weak.length > 0) {
+                calText += `⚠️ LIGAS DÉBILES (reducir confianza automáticamente):\n`;
+                for (const f of weak) {
+                    const reduction = f.actual_wr < 30 ? 10 : f.actual_wr < 40 ? 8 : 5;
+                    calText += `- ${f.dimension_key} → solo ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. REDUCIR confianza ${reduction}%.\n`;
+                }
+                calText += `\n`;
+            }
+        }
+
+        // ── Build market priorities from real data ──
+        let marketText = `\nJerarquía de mercados (BASADA EN RENDIMIENTO REAL):\n\n`;
+
+        const marketFactors = factors.filter((f: any) => f.dimension === 'market' && f.sample_size >= 5);
+        if (marketFactors.length > 0) {
+            const sorted = [...marketFactors].sort((a: any, b: any) => b.actual_wr - a.actual_wr);
+            const best = sorted.filter((f: any) => f.actual_wr >= 65);
+            const worst = sorted.filter((f: any) => f.actual_wr < 35);
+
+            if (best.length > 0) {
+                marketText += `🏆 MEJORES MERCADOS:\n`;
+                for (const f of best) {
+                    marketText += `- ${f.dimension_key}: ${f.actual_wr.toFixed(1)}% WR, ROI ${f.roi > 0 ? '+' : ''}${f.roi?.toFixed(1)}%, muestra ${f.sample_size}. PRIORIZAR.\n`;
+                }
+                marketText += `\n`;
+            }
+
+            if (worst.length > 0) {
+                marketText += `⛔ MERCADOS A EVITAR:\n`;
+                for (const f of worst) {
+                    marketText += `- ${f.dimension_key}: solo ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. ${f.actual_wr === 0 ? 'NUNCA recomendar.' : 'Usar con extrema cautela.'}\n`;
+                }
+                marketText += `\n`;
+            }
+        }
+
+        // Odds range factors
+        const oddsFactors = factors.filter((f: any) => f.dimension === 'odds_range' && f.sample_size >= 5);
+        if (oddsFactors.length > 0) {
+            const bestOdds = [...oddsFactors].sort((a: any, b: any) => (b.roi || 0) - (a.roi || 0));
+            marketText += `⚠️ GESTIÓN DE CUOTAS (basada en datos reales):\n`;
+            for (const f of bestOdds) {
+                marketText += `- Cuotas ${f.dimension_key}: ${f.actual_wr.toFixed(1)}% WR, ROI ${f.roi > 0 ? '+' : ''}${f.roi?.toFixed(1)}%, muestra ${f.sample_size}.\n`;
+            }
+            marketText += `\n`;
+        }
+
+        // ── Inject learned patterns ──
+        const activePatterns = (patterns || []).filter((p: any) => p.active);
+        if (activePatterns.length > 0) {
+            calText += `\n🧠 PATRONES APRENDIDOS POR ML (${activePatterns.length} activos):\n`;
+            for (const p of activePatterns) {
+                const icon = p.pattern_type === 'blacklist' ? '⛔' : p.pattern_type === 'boost' ? '🏆' : '⚠️';
+                calText += `${icon} ${p.rule_text}\n`;
+            }
+            calText += `\n`;
+        }
+
+        return {
+            calibrationText: calText,
+            marketPrioritiesText: marketText,
+            source: 'ml-dynamic',
+            factorCount: factors.length,
+        };
+    } catch (err) {
+        console.error('[v3-ai-analyzer] Error building ML calibration block, using fallback:', err);
+        return {
+            calibrationText: HARDCODED_CALIBRATION_FALLBACK,
+            marketPrioritiesText: HARDCODED_MARKET_PRIORITIES_FALLBACK,
+            source: 'hardcoded-fallback-error',
+            factorCount: 0,
+        };
+    }
+}
+
+// ── ML Post-Processing: Apply calibration factors to picks ──────────
+
+interface CalibrationAdjustment {
+    market: string;
+    league: string;
+    originalProb: number;
+    adjustedProb: number;
+    factorsApplied: string[];
+}
+
+async function applyCalibrationPostProcessing(
+    picks: any[],
+    leagueName: string,
+    supabase: any
+): Promise<{ adjustedPicks: any[]; adjustments: CalibrationAdjustment[] }> {
+    const adjustments: CalibrationAdjustment[] = [];
+
+    try {
+        const { data: factors } = await supabase
+            .from('ml_calibration_factors')
+            .select('dimension, dimension_key, calibration_factor, confidence_adjustment, actual_wr, sample_size')
+            .eq('status', 'active');
+
+        if (!factors || factors.length === 0) {
+            return { adjustedPicks: picks, adjustments: [] };
+        }
+
+        // Build lookup maps
+        const factorMap = new Map<string, any>();
+        for (const f of factors) {
+            factorMap.set(`${f.dimension}|${f.dimension_key}`, f);
+        }
+
+        const adjustedPicks = picks.map((pick: any) => {
+            const originalProb = pick.probabilidad_calculada_porcentaje || 50;
+            const market = pick.mercado || '';
+            const odds = pick.cuota_actual || 0;
+            const probBandKey = originalProb < 80 ? '<80%' : originalProb < 83 ? '80-82%' : originalProb < 86 ? '83-85%' : originalProb < 90 ? '86-89%' : '90%+';
+            const oddsRangeKey = odds < 1.40 ? '<1.40' : odds < 1.70 ? '1.40-1.69' : odds < 2.00 ? '1.70-1.99' : odds < 2.50 ? '2.00-2.49' : '2.50+';
+
+            let adjustedProb = originalProb;
+            const appliedFactors: string[] = [];
+
+            // Apply market factor
+            const marketFactor = factorMap.get(`market|${market}`);
+            if (marketFactor && marketFactor.sample_size >= 5) {
+                adjustedProb = adjustedProb * marketFactor.calibration_factor;
+                appliedFactors.push(`market:${marketFactor.calibration_factor.toFixed(3)}`);
+            }
+
+            // Apply league factor
+            const leagueFactor = factorMap.get(`league|${leagueName}`);
+            if (leagueFactor && leagueFactor.sample_size >= 5) {
+                // Use confidence_adjustment instead of multiplying (additive, not multiplicative)
+                adjustedProb += leagueFactor.confidence_adjustment;
+                appliedFactors.push(`league:${leagueFactor.confidence_adjustment > 0 ? '+' : ''}${leagueFactor.confidence_adjustment}`);
+            }
+
+            // Apply prob band factor (subtle — only if there's a significant gap)
+            const probFactor = factorMap.get(`prob_band|${probBandKey}`);
+            if (probFactor && probFactor.sample_size >= 5) {
+                const gap = probFactor.predicted_avg - probFactor.actual_wr;
+                if (gap > 10) {
+                    // Significant overconfidence in this band — reduce
+                    const reduction = Math.min(gap * 0.3, 15);
+                    adjustedProb -= reduction;
+                    appliedFactors.push(`prob_band:-${reduction.toFixed(1)}`);
+                }
+            }
+
+            // Cap: never reduce more than 25 points from original
+            adjustedProb = Math.max(originalProb - 25, Math.min(100, adjustedProb));
+            // Floor: never go below 40%
+            adjustedProb = Math.max(40, adjustedProb);
+
+            adjustedProb = Math.round(adjustedProb * 10) / 10;
+
+            if (appliedFactors.length > 0 && Math.abs(adjustedProb - originalProb) >= 0.5) {
+                adjustments.push({
+                    market,
+                    league: leagueName,
+                    originalProb,
+                    adjustedProb,
+                    factorsApplied: appliedFactors,
+                });
+
+                return {
+                    ...pick,
+                    probabilidad_calculada_porcentaje: adjustedProb,
+                    probabilidad_original_pre_ml: originalProb,
+                    ml_adjustments: appliedFactors,
+                };
+            }
+
+            return pick;
+        });
+
+        return { adjustedPicks, adjustments };
+    } catch (err) {
+        console.error('[v3-ai-analyzer] ML post-processing error (non-blocking):', err);
+        return { adjustedPicks: picks, adjustments: [] };
+    }
+}
 
 // Lista completa de mercados a evaluar
 const MARKETS_CATALOG = `
@@ -340,6 +632,10 @@ serve(async (req) => {
             oddsText = 'SIN CUOTAS VIVAS (USAR FALLBACK)';
         }
 
+        // ═══ ML AUTO-LEARNING: Build dynamic calibration block ═══
+        const mlCalibration = await buildCalibrationBlock(supabase);
+        console.log(`[v3-ai-analyzer] Using ${mlCalibration.source} calibration data (${mlCalibration.factorCount} factors)`);
+
         // CONSTRUIR EL SUPER-PROMPT V8 (MASTERMIND + EVENTS + CONTEXT)
         // ═══════════════════════════════════════════════════════════════
         const prompt = `
@@ -507,26 +803,7 @@ CONFIANZA FINAL = (Score Estadístico × 0.50) + (Score Inteligencia Partido × 
 - Si asignas >85% a más de 1 pick por partido, estás inflando. Revisa.
 - PREGÚNTATE: "¿Apostaría mi propio dinero con esta confianza?" Si dudas → baja 5-10%.
 
-📊 DATOS REALES DE CALIBRACIÓN (Feb 2026 — 63 picks verificados manualmente):
-- Picks que asignamos 80-82% → ganaron solo 55.6%. ESTAMOS INFLANDO ~25 PUNTOS.
-- Picks que asignamos 83-85% → ganaron 91.7%. EXCELENTE CALIBRACIÓN AQUÍ.
-- Picks que asignamos 86-89% → ganaron solo 62.5%. INFLANDO ~24 PUNTOS.
-- CONCLUSIÓN: Solo asigna 80-82% si realmente crees que gana ~55%. Si crees que gana >70%, asigna 83-85%.
-- CONCLUSIÓN 2: El rango 86-89% está MÁS INFLADO que el 80-82%. No subas de 85% salvo evidencia ABRUMADORA.
-- EN LA PRÁCTICA: Tu "85%" real es más como un "62%" de probabilidad real. Sé BRUTALMENTE honesto.
-
-🏆 LIGAS CON RENDIMIENTO HISTÓRICO (usa para ajustar confianza):
-LIGAS FUERTES (podemos confiar más en nuestro análisis):
-- Serie A → 100% WR histórico. Podemos ser más agresivos.
-- UEFA Champions League → 100% WR. Los grandes equipos son predecibles aquí.
-- Liga Argentina → 80% WR. Buen terreno para análisis.
-- Championship → 75% WR. Ligas inglesas nos van bien.
-- Eredivisie → 75% WR.
-LIGAS DÉBILES (reducir confianza 5-10% automáticamente):
-- La Liga (España) → solo 25% WR. REDUCIR confianza 10% en TODOS los picks de La Liga.
-- Europa League → solo 33% WR. Reducir confianza 8%.
-- Eerste Divisie → solo 40% WR. Reducir confianza 5%.
-- Ligas menores (1. Lig turca, etc.) → Reducir confianza 5%.
+${mlCalibration.calibrationText}
 
 ⚠️ REGLA CRÍTICA V6:
 - Stats SOLAS ya no son suficientes para >80%. Necesitas TAMBIÉN contexto favorable.
@@ -572,35 +849,7 @@ TU MISIÓN PRINCIPAL: Encontrar picks con ≥83% de confianza REAL por partido.
 RECUERDA: Tu "83%" real gana ~92% de las veces. Tu "80%" solo gana 55%.
 Solo reporta picks que GENUINAMENTE merecen ≥83%.
 
-Sigue esta jerarquía de búsqueda (ORDENADA POR RENDIMIENTO HISTÓRICO):
-
-1. 🏆 MERCADOS COMBINADOS — NUESTRO MEJOR PRODUCTO (70% WR, ROI positivo):
-   Estos son CONSISTENTEMENTE nuestros picks más exitosos. PRIORÍZALOS.
-   Subtipos que funcionan mejor:
-   - "Resultado y Total" (ej: "Equipo & Más de 1.5 Goles") → 100% WR histórico
-   - "Doble Oportunidad & Total" (ej: "Local o Empate & Más de 1.5") → 100% WR
-   - "Goles & BTTS" (ej: "Más de 2.5 & Ambos Anotan") → 100% WR
-   Usa las cuotas combinadas que aparecen en la sección "MERCADOS COMBINADOS" de los datos.
-   APUNTA A CUOTAS ≥1.70 en combinados — ese rango tiene +29% ROI.
-
-2. MERCADOS INDIVIDUALES FUERTES:
-   - BTTS/Ambos Anotan → Buen rendimiento (100% WR)
-   - Draw No Bet → Buen rendimiento
-   - Over/Under Goles (con datos claros) → 67% WR
-   - Corners de equipo → Rentables con buena data
-   - Goles del Local/Visitante → Buenos cuando la data es clara
-
-3. ⛔ MERCADOS A EVITAR O USAR CON EXTREMA CAUTELA:
-   - "Doble Oportunidad" SOLO (sin combinar) → 0% WR HISTÓRICO (0 de 5 picks ganados).
-     NUNCA recomiendes Doble Oportunidad como pick individual.
-     Solo úsala DENTRO de un combinado (ej: "DC + Over 1.5").
-   - Resultado 1X2 puro (sin combinar) → Solo 50% WR. Evitar salvo evidencia extrema.
-
-4. ⚠️ GESTIÓN DE CUOTAS:
-   - CUOTAS IDEALES: 1.70-2.00 → Rango con MEJOR ROI (+29.3%). Priorizar.
-   - CUOTAS ACEPTABLES: 1.40-1.69 → Rango más voluminoso pero ROI ~0%.
-   - CUOTAS BAJAS (<1.40): Buscar "SOCIO" para combinar y superar 1.40.
-     Si no es posible, reportar como "banker" solo si confianza ≥88%.
+${mlCalibration.marketPrioritiesText}
 
 NOTA: Si no encuentras un pick que GENUINAMENTE merezca ≥83%, reporta el mejor
 con su confianza REAL. Preferimos MENOS picks de MEJOR calidad.
@@ -1100,6 +1349,20 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                     justificacion: p.justificacion || p.justificacion_detallada || { estadistica: "N/A", tactica: "N/A" }
                 };
             });
+        }
+
+        // ═══ ML POST-PROCESSING: Apply calibration factors to picks ═══
+        if (analysisResult.pronosticos && analysisResult.pronosticos.length > 0) {
+            const { adjustedPicks, adjustments } = await applyCalibrationPostProcessing(
+                analysisResult.pronosticos,
+                leagueName || '',
+                supabase
+            );
+            analysisResult.pronosticos = adjustedPicks;
+            if (adjustments.length > 0) {
+                console.log(`[v3-ai-analyzer] ML post-processing applied ${adjustments.length} adjustment(s):`,
+                    adjustments.map(a => `${a.market}: ${a.originalProb}% → ${a.adjustedProb}% [${a.factorsApplied.join(', ')}]`).join(' | '));
+            }
         }
 
         // SAVE RESULTS

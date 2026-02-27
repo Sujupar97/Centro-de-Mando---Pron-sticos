@@ -622,6 +622,37 @@ export interface ParlayResultData {
     verified_at: string | null;
 }
 
+// --- PER-PLAN PERFORMANCE TYPES ---
+
+export type PlanTier = 'free' | 'starter' | 'pro' | 'premium';
+
+export interface PlanPerformanceSummary {
+    planName: PlanTier;
+    displayName: string;
+    predictionsPercentage: number;
+    picksCount: number;
+    won: number;
+    lost: number;
+    pending: number;
+    winRate: number;
+    totalStaked: number;
+    totalProfit: number;
+    roi: number;
+    avgOdds: number;
+    currentStreak: { type: 'win' | 'loss'; count: number };
+    exclusivePicks: number;
+    exclusiveWon: number;
+    exclusiveLost: number;
+    exclusiveWinRate: number;
+    exclusiveROI: number;
+}
+
+export interface PerPlanComparisonData {
+    dateRange: { start: string; end: string };
+    plans: Record<PlanTier, PlanPerformanceSummary>;
+    baseBankroll: number;
+}
+
 export interface AdvancedAnalyticsFilters {
     startDate: string;
     endDate: string;
@@ -666,4 +697,89 @@ export interface AdvancedAnalyticsData {
         profit_loss: number;
         league?: string;
     }>;
+}
+
+// --- DAILY RECAP TYPES ---
+
+export type RecapTier = 'free' | 'starter' | 'pro' | 'premium' | 'admin';
+
+export interface RecapPeriodStats {
+    winRate: number;
+    roi: number;
+    won: number;
+    lost: number;
+    total: number;
+}
+
+export interface DailyRecapData {
+    date: string;
+    hasData: boolean;
+    isBadDay: boolean;
+
+    // Core stats (all tiers)
+    totalPicks: number;
+    winRate: number;
+    won: number;
+    lost: number;
+    totalPending: number;
+
+    // Financial (starter+)
+    roi: number;
+    profit: number;
+    bankrollChange: number;
+
+    // Streak (starter+)
+    currentStreak: { type: 'win' | 'loss'; count: number };
+
+    // Best pick (all tiers, blurred for free)
+    bestPick: {
+        home_team: string;
+        away_team: string;
+        market: string;
+        selection: string;
+        odds: number | null;
+        p_model: number;
+        result: PickResult;
+        profit_loss: number;
+        league?: string;
+    } | null;
+
+    // Winning picks list (limited by tier)
+    winningPicks: Array<{
+        home_team: string;
+        away_team: string;
+        market: string;
+        selection: string;
+        odds: number | null;
+        result: PickResult;
+        profit_loss: number;
+        league?: string;
+    }>;
+
+    // Parlays (starter+)
+    parlays?: {
+        won: number;
+        lost: number;
+        totalVerified: number;
+        bestOdds?: number;
+    };
+
+    // Multi-period context (for bad days)
+    periodStats?: {
+        days7: RecapPeriodStats;
+        days15: RecapPeriodStats;
+        days30: RecapPeriodStats;
+    };
+
+    // Market insights (pro+)
+    bestMarket?: { name: string; accuracy: number; profit: number };
+
+    // League breakdown (premium)
+    leagueBreakdown?: Record<string, { won: number; lost: number; accuracy: number }>;
+
+    // Best odds hit (premium)
+    bestOddsHit?: { odds: number; match: string; market: string };
+
+    // Calibration insight (premium)
+    calibrationInsight?: string;
 }
