@@ -231,7 +231,7 @@ serve(async (req) => {
             }
 
             const picksForDate = (picks || []).filter(p => fixtureIdsForDate.includes(p.fixture_id));
-            const pendingCount = picksForDate.filter(p => p.result === 'PENDING' && p.p_model != null && p.p_model >= 0.80).length;
+            const pendingCount = picksForDate.filter(p => p.result === 'PENDING' && p.p_model != null && p.p_model >= 0.83).length;
 
             if (pendingCount > 0) {
                 console.log(`[ml-train-calibration] SKIPPING ${date}: ${pendingCount} PENDING picks`);
@@ -273,7 +273,7 @@ serve(async (req) => {
         const trainingPicks = (picks || []).filter(p =>
             validFixtureIds.has(p.fixture_id) &&
             (p.result === 'WON' || p.result === 'LOST') &&
-            p.p_model != null && p.p_model >= 0.80 && p.odds != null
+            p.p_model != null && p.p_model >= 0.83 && p.odds != null
         ) as PickRow[];
 
         console.log(`[ml-train-calibration] Training with ${trainingPicks.length} verified picks`);

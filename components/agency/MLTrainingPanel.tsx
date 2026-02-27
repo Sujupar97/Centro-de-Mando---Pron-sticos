@@ -232,7 +232,7 @@ const MLTrainingPanel: React.FC = () => {
                     <h2 className="text-xl font-display font-bold text-white flex items-center gap-3">
                         <BrainIcon className="w-6 h-6 text-cyan-400" />
                         ML Auto-Learning
-                        <span className="text-xs font-normal text-slate-500 ml-2">(Audit: Picks {'\u2265'} 80%)</span>
+                        <span className="text-xs font-normal text-slate-500 ml-2">(Audit: Picks {'\u2265'} 83%)</span>
                     </h2>
                     <button onClick={loadData} className="p-2 rounded-lg hover:bg-white/5 transition-colors" title="Refrescar">
                         <ArrowPathIcon className={`w-5 h-5 text-slate-400 ${loading ? 'animate-spin' : ''}`} />

@@ -129,7 +129,7 @@ export async function getDateRangeAuditStatus(startDate: string, endDate: string
         .from('value_picks_v2')
         .select('fixture_id, result')
         .in('fixture_id', allFixtureIds)
-        .gte('p_model', 0.80);
+        .gte('p_model', 0.83);
 
     // Group picks by fixture → date
     const fixtureToDate = new Map<number, string>();
