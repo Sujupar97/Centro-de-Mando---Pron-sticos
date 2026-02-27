@@ -95,12 +95,13 @@ export async function getPublicResults(startDate: string, endDate: string, filte
         return emptyResults(baseBankroll, baseBankroll + totalProfit, totalProfit);
     }
 
-    // Step 2: Get verified picks for those fixtures — ALL Oportunidades (p_model >= 0.83, any odds)
+    // Step 2: Get verified picks — ALIGNED with Oportunidades (p_model >= 0.83 AND odds >= 1.40)
     const { data: picks, error } = await supabase
         .from('value_picks_v2')
         .select('id, fixture_id, market, selection, p_model, odds, result, verified_at, actual_score')
         .in('result', ['WON', 'LOST'])
         .gte('p_model', 0.83)
+        .gte('odds', 1.40)
         .in('fixture_id', fixtureIdsInRange)
         .order('verified_at', { ascending: false });
 
@@ -109,12 +110,13 @@ export async function getPublicResults(startDate: string, endDate: string, filte
         throw error;
     }
 
-    // Step 2.5: Count PENDING picks (not yet verified) for transparency
+    // Step 2.5: Count PENDING picks — ALIGNED with same filters as verified
     const { count: pendingCount } = await supabase
         .from('value_picks_v2')
         .select('id', { count: 'exact', head: true })
         .in('fixture_id', fixtureIdsInRange)
         .gte('p_model', 0.83)
+        .gte('odds', 1.40)
         .eq('result', 'PENDING');
 
     const results = picks || [];
@@ -339,12 +341,13 @@ async function calculateProfitFromPicks(baseBankroll: number, startDate: string,
     const { fixtureIds } = await getFixtureIdsForDateRange(startDate, endDate);
     if (fixtureIds.length === 0) return { totalProfit: 0, totalStaked: 0 };
 
-    // Get verified Oportunidades (all picks >= 83%, any odds)
+    // Get verified Oportunidades — ALIGNED with display (p_model >= 0.83 AND odds >= 1.40)
     const { data: picks } = await supabase
         .from('value_picks_v2')
         .select('result, odds')
         .in('fixture_id', fixtureIds)
         .gte('p_model', 0.83)
+        .gte('odds', 1.40)
         .in('result', ['WON', 'LOST']);
 
     const stakeAmount = baseBankroll * 0.04;

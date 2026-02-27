@@ -4,9 +4,12 @@
 // Includes Smart Parlay results with filtering (Todos / Pronósticos / Parlays)
 
 import React, { useState, useEffect } from 'react';
-import { getPublicResults } from '../../services/resultsService';
-import type { PublicResultsData, ParlayResultData, PickResult } from '../../types';
+import { getPublicResults, getResultsByPlan } from '../../services/resultsService';
+import type { PublicResultsData, ParlayResultData, PickResult, PlanTier } from '../../types';
 import { ChartBarIcon, ArrowPathIcon, TrophyIcon } from '../icons/Icons';
+import { useSubscription } from '../../contexts/SubscriptionContext';
+import { PLAN_DISPLAY_NAMES, PLAN_PREDICTIONS_PERCENTAGES, getRecommendedUpgradePlan } from '../../utils/planAccessUtils';
+import { getCurrentDateInBogota } from '../../utils/dateUtils';
 
 type PeriodKey = 'ayer' | 'hoy' | '7d' | '30d' | '90d';
 type PeriodOption = { key: PeriodKey; label: string };
@@ -27,32 +30,39 @@ const RESULT_FILTERS: { key: ResultFilter; label: string }[] = [
 ];
 
 function getDateRange(period: PeriodKey): { startDate: string; endDate: string } {
-    const today = new Date();
-    const fmt = (d: Date) => d.toISOString().split('T')[0];
-    const todayStr = fmt(today);
+    // Use Bogotá timezone to match Oportunidades date handling
+    const todayStr = getCurrentDateInBogota();
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const bogotaToday = new Date(y, m - 1, d);
+    const fmt = (date: Date) => {
+        const yr = date.getFullYear();
+        const mo = String(date.getMonth() + 1).padStart(2, '0');
+        const dy = String(date.getDate()).padStart(2, '0');
+        return `${yr}-${mo}-${dy}`;
+    };
 
     switch (period) {
         case 'hoy':
             return { startDate: todayStr, endDate: todayStr };
         case 'ayer': {
-            const ayer = new Date(today);
+            const ayer = new Date(bogotaToday);
             ayer.setDate(ayer.getDate() - 1);
             return { startDate: fmt(ayer), endDate: fmt(ayer) };
         }
         case '7d': {
-            const d = new Date(today);
-            d.setDate(d.getDate() - 7);
-            return { startDate: fmt(d), endDate: todayStr };
+            const start = new Date(bogotaToday);
+            start.setDate(start.getDate() - 7);
+            return { startDate: fmt(start), endDate: todayStr };
         }
         case '30d': {
-            const d = new Date(today);
-            d.setDate(d.getDate() - 30);
-            return { startDate: fmt(d), endDate: todayStr };
+            const start = new Date(bogotaToday);
+            start.setDate(start.getDate() - 30);
+            return { startDate: fmt(start), endDate: todayStr };
         }
         case '90d': {
-            const d = new Date(today);
-            d.setDate(d.getDate() - 90);
-            return { startDate: fmt(d), endDate: todayStr };
+            const start = new Date(bogotaToday);
+            start.setDate(start.getDate() - 90);
+            return { startDate: fmt(start), endDate: todayStr };
         }
     }
 }
@@ -69,20 +79,33 @@ const RISK_LABELS: Record<string, string> = {
     aggressive: 'Agresivo',
 };
 
+type ViewMode = 'plan' | 'global';
+
 const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => {
     const [data, setData] = useState<PublicResultsData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>('ayer');
     const [resultFilter, setResultFilter] = useState<ResultFilter>('all');
+    const [viewMode, setViewMode] = useState<ViewMode>('plan');
+
+    const { plan, isAdmin } = useSubscription();
+    const planName = plan.plan_name as PlanTier;
+    const isUnlimited = planName === 'unlimited' || isAdmin;
+    const effectiveViewMode = isUnlimited ? 'global' : viewMode;
 
     const loadResults = async () => {
         setLoading(true);
         setError(null);
         try {
             const { startDate, endDate } = getDateRange(selectedPeriod);
-            const results = await getPublicResults(startDate, endDate, resultFilter);
-            setData(results);
+            if (effectiveViewMode === 'plan' && !isUnlimited) {
+                const results = await getResultsByPlan(startDate, endDate, planName, resultFilter);
+                setData(results);
+            } else {
+                const results = await getPublicResults(startDate, endDate, resultFilter);
+                setData(results);
+            }
         } catch (err: any) {
             console.error('[ResultadosPublic] Error:', err);
             setError(err.message || 'Error al cargar resultados');
@@ -91,7 +114,7 @@ const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigge
         }
     };
 
-    useEffect(() => { loadResults(); }, [selectedPeriod, resultFilter, refreshTrigger]);
+    useEffect(() => { loadResults(); }, [selectedPeriod, resultFilter, refreshTrigger, effectiveViewMode]);
 
     if (loading) {
         return (
@@ -181,6 +204,23 @@ const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigge
                 </div>
                 <PeriodFilters selectedPeriod={selectedPeriod} onSelect={setSelectedPeriod} onRefresh={loadResults} />
             </div>
+
+            {/* View Mode Toggle (Mi Plan / Global) — only for non-admin users */}
+            {!isUnlimited && (
+                <div className="flex items-center gap-2">
+                    <ViewModeToggle selected={effectiveViewMode} onSelect={setViewMode} planDisplayName={PLAN_DISPLAY_NAMES[planName] || plan.display_name} />
+                </div>
+            )}
+
+            {/* Plan Value Banner — only in plan view mode for non-admin users */}
+            {effectiveViewMode === 'plan' && !isUnlimited && data && data.totalVerified > 0 && (
+                <PlanValueBanner
+                    data={data}
+                    planName={planName}
+                    planDisplayName={PLAN_DISPLAY_NAMES[planName] || plan.display_name}
+                    predictionsPercentage={PLAN_PREDICTIONS_PERCENTAGES[planName] || plan.predictions_percentage}
+                />
+            )}
 
             {/* Result Type Filter */}
             <ResultFilterButtons selected={resultFilter} onSelect={setResultFilter} />
@@ -308,6 +348,93 @@ const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigge
             {showParlays && (
                 <ParlayResultsSection parlays={pl} baseBankroll={br?.base || 100} />
             )}
+        </div>
+    );
+};
+
+// ─── Plan View Sub-components ────────────────────────────────
+
+const ViewModeToggle: React.FC<{
+    selected: ViewMode;
+    onSelect: (m: ViewMode) => void;
+    planDisplayName: string;
+}> = ({ selected, onSelect, planDisplayName }) => (
+    <div className="flex items-center bg-slate-800 rounded-lg border border-white/10 p-0.5">
+        <button
+            onClick={() => onSelect('plan')}
+            className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
+                selected === 'plan'
+                    ? 'bg-emerald-500/20 text-emerald-300 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+            }`}
+        >
+            Mi Plan ({planDisplayName})
+        </button>
+        <button
+            onClick={() => onSelect('global')}
+            className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
+                selected === 'global'
+                    ? 'bg-emerald-500/20 text-emerald-300 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+            }`}
+        >
+            Global
+        </button>
+    </div>
+);
+
+const PlanValueBanner: React.FC<{
+    data: PublicResultsData;
+    planName: PlanTier;
+    planDisplayName: string;
+    predictionsPercentage: number;
+}> = ({ data, planName, planDisplayName, predictionsPercentage }) => {
+    const br = data.bankroll;
+    const periodProfit = br?.periodProfit ?? 0;
+    const isPositive = periodProfit >= 0;
+    const upgradePlan = getRecommendedUpgradePlan(planName);
+    const upgradeDisplayName = upgradePlan ? (PLAN_DISPLAY_NAMES[upgradePlan as PlanTier] || upgradePlan) : null;
+
+    return (
+        <div className={`rounded-xl border p-4 ${
+            isPositive
+                ? 'bg-emerald-500/5 border-emerald-500/20'
+                : 'bg-red-500/5 border-red-500/20'
+        }`}>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${isPositive ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
+                        <ChartBarIcon className={`w-5 h-5 ${isPositive ? 'text-emerald-400' : 'text-red-400'}`} />
+                    </div>
+                    <div>
+                        <h4 className="text-white font-bold text-sm">
+                            Tu Plan {planDisplayName}
+                            <span className="text-slate-500 font-normal ml-2 text-xs">
+                                {predictionsPercentage >= 100 ? '100%' : predictionsPercentage <= 1 ? '1 pick/dia' : `${predictionsPercentage}%`} de los picks
+                            </span>
+                        </h4>
+                        <div className="flex items-center gap-4 mt-1">
+                            <span className={`font-bold text-lg ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {isPositive ? '+' : ''}${periodProfit.toFixed(2)}
+                            </span>
+                            <span className="text-slate-400 text-xs">
+                                {data.winRate.toFixed(1)}% aciertos
+                            </span>
+                            <span className="text-slate-400 text-xs">
+                                {data.totalVerified} picks
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                {upgradePlan && upgradeDisplayName && (
+                    <a
+                        href="/app/pricing"
+                        className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors font-medium whitespace-nowrap"
+                    >
+                        Desbloquea mas con {upgradeDisplayName} →
+                    </a>
+                )}
+            </div>
         </div>
     );
 };

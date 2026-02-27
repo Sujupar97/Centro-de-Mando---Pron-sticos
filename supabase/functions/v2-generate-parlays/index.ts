@@ -298,7 +298,7 @@ serve(async (req) => {
                     // FILTER >= 83% (raised from 80% based on performance data:
                     // 80-82% band had only 55.6% WR vs 83-85% band at 91.7%)
                     if (prob >= 83) {
-                        const pickKey = `${resolvedFixtureId}_${p.mercado}_${p.seleccion}`;
+                        const pickKey = `${resolvedFixtureId}_${(p.mercado || '').toLowerCase()}_${(p.seleccion || '').toLowerCase()}`;
                         if (seenPickKeys.has(pickKey)) return;
                         seenPickKeys.add(pickKey);
 
@@ -340,9 +340,9 @@ serve(async (req) => {
                 // Normalize: if stored as decimal (0.85), convert to percentage (85)
                 if (prob > 0 && prob < 1) prob = prob * 100;
                 // If stored as percentage already (85), keep as is
-                if (prob < 80) continue;
+                if (prob < 83) continue;
 
-                const pickKey = `${vp.fixture_id}_${vp.market}_${vp.selection}`;
+                const pickKey = `${vp.fixture_id}_${(vp.market || '').toLowerCase()}_${(vp.selection || '').toLowerCase()}`;
                 if (seenPickKeys.has(pickKey)) continue;
                 seenPickKeys.add(pickKey);
 
@@ -407,15 +407,19 @@ serve(async (req) => {
                             || 0;
                         let prob = typeof probRaw === 'string' ? parseFloat(probRaw.replace('%', '')) : probRaw;
                         if (prob > 0 && prob < 1) prob = prob * 100;
-                        if (prob < 80) continue;
+                        if (prob < 83) continue;
 
-                        const pickKey = `${row.partido_id}_${p.mercado}_${p.seleccion}`;
+                        const pickKey = `${row.partido_id}_${(p.mercado || '').toLowerCase()}_${(p.seleccion || '').toLowerCase()}`;
                         if (seenPickKeys.has(pickKey)) continue;
                         seenPickKeys.add(pickKey);
 
                         // Lookup result from value_picks_v2
                         const cResKey = `${row.partido_id}_${(p.mercado || '').toLowerCase()}_${(p.seleccion || '').toLowerCase()}`;
                         const cRes = vpResultMap.get(cResKey);
+
+                        // Aligned odds extraction (same 5 fields as Source A)
+                        const cOddsRaw = p.cuota_actual || p.cuota || p.odds || p.odd || p.price || null;
+                        const cOdds = cOddsRaw ? (typeof cOddsRaw === 'string' ? parseFloat(cOddsRaw) : cOddsRaw) : null;
 
                         highProbPicks.push({
                             id: `analisis_${row.partido_id}_${p.mercado}_${p.seleccion}`,
@@ -428,7 +432,7 @@ serve(async (req) => {
                             home_team: dailyMatch.home_team,
                             away_team: dailyMatch.away_team,
                             league: dailyMatch.league_name,
-                            odds: p.odds || null,
+                            odds: cOdds && !isNaN(cOdds) && cOdds > 1.0 ? cOdds : null,
                             logo_home: dailyMatch.home_team_logo,
                             logo_away: dailyMatch.away_team_logo,
                             tesis: "Análisis IA V8.",
@@ -495,24 +499,62 @@ serve(async (req) => {
         // This ensures every displayed Oportunidad can be verified.
         // ═══════════════════════════════════════════════════════════════
         try {
-            // Get all existing picks in value_picks_v2 for these fixtures
+            // Get all existing picks in value_picks_v2 for these fixtures (WITH p_model and odds for UPSERT)
             const pickFixtureIds = [...new Set(highProbPicks.map((p: any) => p.fixture_id))];
             const { data: existingVPs } = await supabase
                 .from('value_picks_v2')
-                .select('fixture_id, market, selection')
+                .select('id, fixture_id, market, selection, p_model, odds')
                 .in('fixture_id', pickFixtureIds);
 
-            const existingKeys = new Set<string>();
+            // Case-insensitive key mapping for dedup
+            const existingMap = new Map<string, any>();
             (existingVPs || []).forEach((vp: any) => {
-                existingKeys.add(`${vp.fixture_id}_${vp.market}_${vp.selection}`);
+                const key = `${vp.fixture_id}_${(vp.market || '').toLowerCase()}_${(vp.selection || '').toLowerCase()}`;
+                existingMap.set(key, vp);
             });
 
-            // Find picks that need to be inserted
-            const picksToInsert = highProbPicks.filter((p: any) => {
-                const key = `${p.fixture_id}_${p.market}_${p.selection}`;
-                return !existingKeys.has(key);
-            });
+            // Classify picks into: INSERT (missing) or UPDATE (existing but with worse data)
+            const picksToInsert: any[] = [];
+            const picksToUpdate: Array<{ id: string; p_model?: number; odds?: number }> = [];
 
+            for (const p of highProbPicks) {
+                const key = `${p.fixture_id}_${(p.market || '').toLowerCase()}_${(p.selection || '').toLowerCase()}`;
+                const existing = existingMap.get(key);
+
+                if (!existing) {
+                    // MISSING — needs INSERT
+                    picksToInsert.push(p);
+                } else {
+                    // EXISTS — check if we have BETTER data
+                    const existingProb = existing.p_model > 1 ? existing.p_model / 100 : existing.p_model;
+                    const incomingProb = p.p_model > 1 ? p.p_model / 100 : p.p_model;
+                    const betterProb = incomingProb >= 0.83 && existingProb < 0.83;
+                    const betterOdds = p.odds && p.odds >= 1.40 && (!existing.odds || existing.odds <= 1.0);
+
+                    if (betterProb || betterOdds) {
+                        const updates: any = { id: existing.id };
+                        if (betterProb) updates.p_model = incomingProb;
+                        if (betterOdds) updates.odds = p.odds;
+                        picksToUpdate.push(updates);
+                    }
+
+                    // Map the real UUID back to the highProbPick for the frontend
+                    p.id = existing.id;
+                }
+            }
+
+            // UPSERT: Update existing picks with better data
+            if (picksToUpdate.length > 0) {
+                for (const upd of picksToUpdate) {
+                    const updateData: any = {};
+                    if (upd.p_model !== undefined) updateData.p_model = upd.p_model;
+                    if (upd.odds !== undefined) updateData.odds = upd.odds;
+                    await supabase.from('value_picks_v2').update(updateData).eq('id', upd.id);
+                }
+                log(`[OPP-V8.1] SYNC: Updated ${picksToUpdate.length} picks with corrected p_model/odds`);
+            }
+
+            // INSERT missing picks
             if (picksToInsert.length > 0) {
                 const payload = picksToInsert.map((p: any) => ({
                     job_id: p.job_id || null,
@@ -546,19 +588,20 @@ serve(async (req) => {
                     if (insertedPicks) {
                         const idMap = new Map<string, string>();
                         insertedPicks.forEach((ip: any) => {
-                            idMap.set(`${ip.fixture_id}_${ip.market}_${ip.selection}`, ip.id);
+                            idMap.set(`${ip.fixture_id}_${(ip.market || '').toLowerCase()}_${(ip.selection || '').toLowerCase()}`, ip.id);
                         });
-                        // Update highProbPicks with real UUIDs
                         for (const p of highProbPicks) {
-                            const key = `${p.fixture_id}_${p.market}_${p.selection}`;
+                            const key = `${p.fixture_id}_${(p.market || '').toLowerCase()}_${(p.selection || '').toLowerCase()}`;
                             if (idMap.has(key)) {
                                 p.id = idMap.get(key);
                             }
                         }
                     }
                 }
-            } else {
-                log(`[OPP-V8.1] SYNC: All ${highProbPicks.length} picks already in value_picks_v2`);
+            }
+
+            if (picksToInsert.length === 0 && picksToUpdate.length === 0) {
+                log(`[OPP-V8.1] SYNC: All ${highProbPicks.length} picks already in value_picks_v2 with correct data`);
             }
         } catch (syncErr: any) {
             log(`[OPP-V8.1] SYNC failed (non-blocking): ${syncErr.message}`);

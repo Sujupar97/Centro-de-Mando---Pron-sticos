@@ -1074,12 +1074,20 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
         } else {
             // NORMALIZE PREDICTIONS (Map synonyms and fix types)
             analysisResult.pronosticos = analysisResult.pronosticos.map((p: any) => {
-                const prob = p.probabilidad_calculada_porcentaje || p.probabilidad || p.probability || p.confidence_score || p.probabilidad_estimada || 50;
+                const prob = p.probabilidad_calculada_porcentaje
+                    || p.probabilidad_estimado_porcentaje
+                    || p.probabilidad_derbix
+                    || p.probabilidad
+                    || p.probability
+                    || p.confidence_score
+                    || p.confianza
+                    || p.probabilidad_estimada
+                    || 50;
                 const edge = p.edge_porcentaje || p.edge || p.valor || 0;
 
                 // ROBUST ODDS EXTRACTION
-                const rawOdds = p.cuota_actual || p.cuota || p.odds || p.odd || p.price || 1.0;
-                const odds = typeof rawOdds === 'string' ? parseFloat(rawOdds) : rawOdds;
+                const rawOdds = p.cuota_actual || p.cuota || p.odds || p.odd || p.price || null;
+                const odds = rawOdds ? (typeof rawOdds === 'string' ? parseFloat(rawOdds) : rawOdds) : null;
 
                 return {
                     ...p,
@@ -1088,7 +1096,7 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                     probabilidad_calculada_porcentaje: typeof prob === 'string' ? parseFloat(prob.replace('%', '')) : prob,
                     probabilidad_implicita_porcentaje: p.probabilidad_implicita_porcentaje || 50,
                     edge_porcentaje: typeof edge === 'string' ? parseFloat(edge) : edge,
-                    cuota_actual: odds,
+                    cuota_actual: odds && !isNaN(odds) && odds > 1.0 ? odds : null,
                     justificacion: p.justificacion || p.justificacion_detallada || { estadistica: "N/A", tactica: "N/A" }
                 };
             });
@@ -1293,7 +1301,16 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
             };
 
             const picksPayload = betPicks.map((p: any) => {
-                let prob = p.probabilidad_calculada_porcentaje || 50;
+                // Aligned probability extraction (same 7 fallback fields as v2-generate-parlays)
+                let prob = p.probabilidad_calculada_porcentaje
+                    || p.probabilidad_estimado_porcentaje
+                    || p.probabilidad_derbix
+                    || p.probabilidad
+                    || p.probability
+                    || p.confidence_score
+                    || p.confianza
+                    || 50;
+                if (typeof prob === 'string') prob = parseFloat(prob.replace('%', ''));
                 if (prob > 1) prob = prob / 100;
 
                 // Strict Enum Mapping
@@ -1304,6 +1321,10 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                     decision = 'BET';
                 }
 
+                // Aligned odds extraction (same 5 fallback fields as v2-generate-parlays)
+                const rawPickOdds = p.cuota_actual || p.cuota || p.odds || p.odd || p.price || null;
+                const pickOdds = rawPickOdds ? (typeof rawPickOdds === 'string' ? parseFloat(rawPickOdds) : rawPickOdds) : null;
+
                 return {
                     job_id: job_id,
                     fixture_id: finalFixtureId,
@@ -1313,7 +1334,7 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                     decision: decision,
                     confidence: mapConf(p.nivel_confianza || p.confianza),
                     engine_version: "V8.1-MASTERMIND",
-                    odds: p.cuota_actual || null,
+                    odds: pickOdds && !isNaN(pickOdds) && pickOdds > 1.0 ? pickOdds : null,
                     created_at: new Date().toISOString()
                 };
             });
