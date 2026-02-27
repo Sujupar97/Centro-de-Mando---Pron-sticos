@@ -273,7 +273,7 @@ serve(async (req) => {
         const trainingPicks = (picks || []).filter(p =>
             validFixtureIds.has(p.fixture_id) &&
             (p.result === 'WON' || p.result === 'LOST') &&
-            p.p_model != null && p.odds != null
+            p.p_model != null && p.p_model >= 0.80 && p.odds != null
         ) as PickRow[];
 
         console.log(`[ml-train-calibration] Training with ${trainingPicks.length} verified picks`);
