@@ -238,10 +238,20 @@ const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                             </span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
+                            {isAdmin && (
+                                <button
+                                    onClick={() => { onAnalyze(); onClose(); }}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-blue-400 hover:text-white bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg transition-all"
+                                >
+                                    <ArrowPathIcon className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">Regenerar</span>
+                                </button>
+                            )}
                             <button
                                 onClick={() => loadDetails(true)}
                                 disabled={isRefetching}
                                 className="p-1.5 text-slate-500 hover:text-white hover:bg-white/5 rounded-lg transition-colors disabled:opacity-50"
+                                title="Refrescar datos"
                             >
                                 <ArrowPathIcon className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
                             </button>
