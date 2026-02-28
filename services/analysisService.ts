@@ -1188,7 +1188,7 @@ export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<V
     // ═══════════════════════════════════════════════════════════════
     const { data: analisisData, error: analisisError } = await supabase
         .from('analisis')
-        .select('resultado_analisis, updated_at')
+        .select('resultado_analisis, creado_en')
         .eq('partido_id', fixtureId)
         .maybeSingle();
 
@@ -1204,7 +1204,7 @@ export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<V
             .limit(1)
             .maybeSingle();
 
-        const cacheTime = analisisData.updated_at ? new Date(analisisData.updated_at).getTime() : 0;
+        const cacheTime = analisisData.creado_en ? new Date(analisisData.creado_en).getTime() : 0;
         const jobTime = newerJob?.created_at ? new Date(newerJob.created_at).getTime() : 0;
         const isFresh = !newerJob || cacheTime >= jobTime;
 
@@ -1234,7 +1234,7 @@ export const getAnalysisResultByFixtureId = async (fixtureId: number): Promise<V
                 };
             }
         } else {
-            console.log(`[analysisService] Cache stale (cache: ${analisisData.updated_at}, job: ${newerJob?.created_at}). Falling through to reports_v2.`);
+            console.log(`[analysisService] Cache stale (cache: ${analisisData.creado_en}, job: ${newerJob?.created_at}). Falling through to reports_v2.`);
         }
     }
 

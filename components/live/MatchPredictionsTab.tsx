@@ -86,7 +86,7 @@ const MatchPredictionsTab: React.FC<MatchPredictionsTabProps> = ({
             // Source 1: value_picks_v2 (individual picks)
             const { data: vpData, error: vpError } = await supabase
                 .from('value_picks_v2')
-                .select('id, fixture_id, market, selection, p_model, odds, confidence, reasoning, result')
+                .select('id, fixture_id, market, selection, p_model, odds, confidence, decision, result')
                 .eq('fixture_id', fixtureId)
                 .order('p_model', { ascending: false });
 
