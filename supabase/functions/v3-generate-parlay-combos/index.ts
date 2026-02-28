@@ -198,7 +198,7 @@ serve(async (req) => {
 
         log(`[PARLAY-COMBOS] Generated ${combos.length} valid combinations`);
 
-        // 4.5 ML CALIBRATION: Filter picks and combos using learned patterns
+        // 4.5 ML CALIBRATION: Penalize (not block) combos using learned patterns (v2 — observational ML)
         try {
             const { data: blacklistPatterns } = await supabase
                 .from('ml_learned_patterns')
@@ -210,23 +210,26 @@ serve(async (req) => {
                 const blacklistMarkets = new Set(blacklistPatterns.filter((p: any) => p.scope === 'market').map((p: any) => p.scope_key.toLowerCase()));
                 const blacklistLeagues = new Set(blacklistPatterns.filter((p: any) => p.scope === 'league').map((p: any) => p.scope_key.toLowerCase()));
 
-                const beforeCount = combos.length;
-                const filtered = combos.filter(combo => {
-                    return !combo.picks.some((pick: any) => {
+                // v2: Penalize instead of blocking — reduce expected_value by 20% for combos with blacklisted picks
+                let penalizedCount = 0;
+                for (const combo of combos) {
+                    const hasBlacklisted = combo.picks.some((pick: any) => {
                         const market = (pick.market || '').toLowerCase();
                         const league = (pick.league || '').toLowerCase();
                         return blacklistMarkets.has(market) || blacklistLeagues.has(league);
                     });
-                });
+                    if (hasBlacklisted) {
+                        combo.expected_value *= 0.80; // 20% penalty — they rank lower but aren't eliminated
+                        penalizedCount++;
+                    }
+                }
 
-                if (filtered.length < combos.length) {
-                    log(`[PARLAY-COMBOS] ML blacklist removed ${beforeCount - filtered.length} combos (${blacklistPatterns.length} patterns active)`);
-                    combos.length = 0;
-                    combos.push(...filtered);
+                if (penalizedCount > 0) {
+                    log(`[PARLAY-COMBOS] ML blacklist penalized ${penalizedCount} combos (-20% EV) instead of removing (${blacklistPatterns.length} patterns active)`);
                 }
             }
 
-            // Apply parlay calibration: use recommended_min_leg_prob
+            // Parlay calibration: use recommended_min_leg_prob as informational log only (v2 — don't hard-filter)
             const { data: parlayCalib } = await supabase
                 .from('ml_parlay_calibration')
                 .select('legs_count, recommended_min_leg_prob')
@@ -236,14 +239,11 @@ serve(async (req) => {
 
             if (parlayCalib && parlayCalib.length > 0 && parlayCalib[0].recommended_min_leg_prob) {
                 const minProb = parlayCalib[0].recommended_min_leg_prob / 100;
-                const beforeCount = combos.length;
-                const filtered = combos.filter(combo =>
-                    combo.picks.every((pick: any) => pick.p_model >= minProb)
-                );
-                if (filtered.length < combos.length) {
-                    log(`[PARLAY-COMBOS] ML min prob filter (${parlayCalib[0].recommended_min_leg_prob}%) removed ${beforeCount - filtered.length} combos`);
-                    combos.length = 0;
-                    combos.push(...filtered);
+                const belowMin = combos.filter(combo =>
+                    combo.picks.some((pick: any) => pick.p_model < minProb)
+                ).length;
+                if (belowMin > 0) {
+                    log(`[PARLAY-COMBOS] ML parlay calibration: ${belowMin} combos have legs below ${parlayCalib[0].recommended_min_leg_prob}% (informational, not filtered)`);
                 }
             }
         } catch (mlErr: any) {

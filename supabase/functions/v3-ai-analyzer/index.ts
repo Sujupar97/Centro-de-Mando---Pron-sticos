@@ -94,17 +94,18 @@ async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock>
             };
         }
 
-        // ── Build calibration text from real data ──
-        let calText = `\n📊 DATOS DE CALIBRACIÓN DINÁMICOS (generados por ML Auto-Learning, ${factors.length} factores activos):\n\n`;
+        // ── Build calibration text from real data (v2 OBSERVATIONAL — informative, not directive) ──
+        let calText = `\n📊 DATOS HISTÓRICOS DE RENDIMIENTO (${factors.length} dimensiones analizadas por ML Auto-Learning):\n`;
+        calText += `IMPORTANTE: Estos datos son INFORMATIVOS para tu análisis. Tu evaluación del partido específico tiene PRIORIDAD.\n`;
+        calText += `Si los fundamentos del partido son sólidos, mantén probabilidades altas incluso si el dato histórico es bajo.\n\n`;
 
         // Prob band factors
         const probBandFactors = factors.filter((f: any) => f.dimension === 'prob_band');
         if (probBandFactors.length > 0) {
-            calText += `CALIBRACIÓN POR BANDA DE PROBABILIDAD:\n`;
+            calText += `RENDIMIENTO HISTÓRICO POR BANDA DE PROBABILIDAD:\n`;
             for (const f of probBandFactors) {
                 const gap = f.predicted_avg - f.actual_wr;
-                const label = gap > 15 ? 'SOBRECONFIANZA ALTA' : gap > 5 ? 'SOBRECONFIANZA MODERADA' : gap > -5 ? 'CALIBRACIÓN ACEPTABLE' : 'INFRACONFIANZA';
-                calText += `- Picks que asignamos ${f.dimension_key} → ganaron ${f.actual_wr.toFixed(1)}% (${label}, gap: ${gap.toFixed(1)}pts, muestra: ${f.sample_size}).\n`;
+                calText += `- Picks asignados ${f.dimension_key} → ganaron ${f.actual_wr.toFixed(1)}% (gap: ${gap.toFixed(1)}pts, muestra: ${f.sample_size}). Dato informativo.\n`;
             }
             calText += `\n`;
         }
@@ -112,71 +113,70 @@ async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock>
         // League factors
         const leagueFactors = factors.filter((f: any) => f.dimension === 'league');
         if (leagueFactors.length > 0) {
-            const strong = leagueFactors.filter((f: any) => f.actual_wr >= 65 && f.sample_size >= 5);
-            const weak = leagueFactors.filter((f: any) => f.actual_wr < 45 && f.sample_size >= 5);
+            const strong = leagueFactors.filter((f: any) => f.actual_wr >= 65 && f.sample_size >= 10);
+            const weak = leagueFactors.filter((f: any) => f.actual_wr < 45 && f.sample_size >= 10);
 
             if (strong.length > 0) {
-                calText += `🏆 LIGAS FUERTES (confiar más en nuestro análisis):\n`;
+                calText += `LIGAS CON BUEN HISTORIAL:\n`;
                 for (const f of strong) {
-                    calText += `- ${f.dimension_key} → ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. ${f.actual_wr >= 80 ? 'Podemos ser más agresivos.' : 'Buen terreno.'}\n`;
+                    calText += `- ${f.dimension_key} → ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. Dato positivo a considerar.\n`;
                 }
                 calText += `\n`;
             }
 
             if (weak.length > 0) {
-                calText += `⚠️ LIGAS DÉBILES (reducir confianza automáticamente):\n`;
+                calText += `LIGAS CON HISTORIAL BAJO (evaluar con más detalle):\n`;
                 for (const f of weak) {
-                    const reduction = f.actual_wr < 30 ? 10 : f.actual_wr < 40 ? 8 : 5;
-                    calText += `- ${f.dimension_key} → solo ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. REDUCIR confianza ${reduction}%.\n`;
+                    calText += `- ${f.dimension_key} → ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. Considerar con cautela extra, pero NO descartar automáticamente.\n`;
                 }
                 calText += `\n`;
             }
         }
 
         // ── Build market priorities from real data ──
-        let marketText = `\nJerarquía de mercados (BASADA EN RENDIMIENTO REAL):\n\n`;
+        let marketText = `\nDatos de mercados (REFERENCIA HISTÓRICA — el contexto del partido es más importante):\n\n`;
 
-        const marketFactors = factors.filter((f: any) => f.dimension === 'market' && f.sample_size >= 5);
+        const marketFactors = factors.filter((f: any) => f.dimension === 'market' && f.sample_size >= 10);
         if (marketFactors.length > 0) {
             const sorted = [...marketFactors].sort((a: any, b: any) => b.actual_wr - a.actual_wr);
             const best = sorted.filter((f: any) => f.actual_wr >= 65);
             const worst = sorted.filter((f: any) => f.actual_wr < 35);
 
             if (best.length > 0) {
-                marketText += `🏆 MEJORES MERCADOS:\n`;
+                marketText += `MERCADOS CON MEJOR RENDIMIENTO HISTÓRICO:\n`;
                 for (const f of best) {
-                    marketText += `- ${f.dimension_key}: ${f.actual_wr.toFixed(1)}% WR, ROI ${f.roi > 0 ? '+' : ''}${f.roi?.toFixed(1)}%, muestra ${f.sample_size}. PRIORIZAR.\n`;
+                    marketText += `- ${f.dimension_key}: ${f.actual_wr.toFixed(1)}% WR, ROI ${f.roi > 0 ? '+' : ''}${f.roi?.toFixed(1)}%, muestra ${f.sample_size}.\n`;
                 }
                 marketText += `\n`;
             }
 
             if (worst.length > 0) {
-                marketText += `⛔ MERCADOS A EVITAR:\n`;
+                marketText += `MERCADOS CON RENDIMIENTO BAJO (evaluar con cautela extra, NO prohibidos):\n`;
                 for (const f of worst) {
-                    marketText += `- ${f.dimension_key}: solo ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. ${f.actual_wr === 0 ? 'NUNCA recomendar.' : 'Usar con extrema cautela.'}\n`;
+                    marketText += `- ${f.dimension_key}: ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. Rendimiento históricamente bajo — evaluar el partido individualmente.\n`;
                 }
                 marketText += `\n`;
             }
         }
 
         // Odds range factors
-        const oddsFactors = factors.filter((f: any) => f.dimension === 'odds_range' && f.sample_size >= 5);
+        const oddsFactors = factors.filter((f: any) => f.dimension === 'odds_range' && f.sample_size >= 10);
         if (oddsFactors.length > 0) {
             const bestOdds = [...oddsFactors].sort((a: any, b: any) => (b.roi || 0) - (a.roi || 0));
-            marketText += `⚠️ GESTIÓN DE CUOTAS (basada en datos reales):\n`;
+            marketText += `RENDIMIENTO POR RANGO DE CUOTAS:\n`;
             for (const f of bestOdds) {
                 marketText += `- Cuotas ${f.dimension_key}: ${f.actual_wr.toFixed(1)}% WR, ROI ${f.roi > 0 ? '+' : ''}${f.roi?.toFixed(1)}%, muestra ${f.sample_size}.\n`;
             }
             marketText += `\n`;
         }
 
-        // ── Inject learned patterns ──
+        // ── Inject learned patterns (as informational, not as orders) ──
         const activePatterns = (patterns || []).filter((p: any) => p.active);
         if (activePatterns.length > 0) {
-            calText += `\n🧠 PATRONES APRENDIDOS POR ML (${activePatterns.length} activos):\n`;
+            calText += `\nPATRONES HISTÓRICOS DETECTADOS POR ML (${activePatterns.length} — usar como REFERENCIA, no como prohibición):\n`;
             for (const p of activePatterns) {
-                const icon = p.pattern_type === 'blacklist' ? '⛔' : p.pattern_type === 'boost' ? '🏆' : '⚠️';
-                calText += `${icon} ${p.rule_text}\n`;
+                const icon = p.pattern_type === 'boost' ? '📈' : '📊';
+                calText += `${icon} ${p.rule_text} (dato histórico — evaluar en contexto del partido)\n`;
             }
             calText += `\n`;
         }
@@ -1351,19 +1351,14 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
             });
         }
 
-        // ═══ ML POST-PROCESSING: Apply calibration factors to picks ═══
-        if (analysisResult.pronosticos && analysisResult.pronosticos.length > 0) {
-            const { adjustedPicks, adjustments } = await applyCalibrationPostProcessing(
-                analysisResult.pronosticos,
-                leagueName || '',
-                supabase
-            );
-            analysisResult.pronosticos = adjustedPicks;
-            if (adjustments.length > 0) {
-                console.log(`[v3-ai-analyzer] ML post-processing applied ${adjustments.length} adjustment(s):`,
-                    adjustments.map(a => `${a.market}: ${a.originalProb}% → ${a.adjustedProb}% [${a.factorsApplied.join(', ')}]`).join(' | '));
-            }
-        }
+        // ═══ ML POST-PROCESSING: DISABLED (v2 — "ML Observacional") ═══
+        // The mathematical post-processing was causing a "double dip" effect:
+        // Layer 1 (buildCalibrationBlock) already tells Gemini to lower probabilities,
+        // then Layer 2 (applyCalibrationPostProcessing) reduced them AGAIN mathematically.
+        // This destroyed pick volume (70 matches → 1 pick). Now Gemini receives data
+        // as informational context and makes intelligent decisions on its own.
+        // The function is preserved below for rollback if needed.
+        console.log(`[v3-ai-analyzer] ML post-processing SKIPPED (v2 observational mode — calibration via prompt only)`);
 
         // SAVE RESULTS
         // ═══════════════════════════════════════════════════════════════

@@ -7,7 +7,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from '../_shared/cors.ts'
 
-const MIN_SAMPLE_SIZE = 5; // Minimum picks to generate a calibration factor
+const MIN_SAMPLE_SIZE = 10; // Minimum picks to generate a calibration factor (raised from 5 — small samples produced unreliable factors)
 const MAX_CALIBRATION_REDUCTION = 25; // Max percentage points a factor can reduce probability
 
 interface PickRow {
@@ -104,37 +104,37 @@ function generatePatterns(
     const scope = dimension === 'market_league' ? 'market_league' : dimension;
     const gap = predictedAvg - wr;
 
-    // Blacklist: WR < 30%
-    if (wr < 30) {
+    // Blacklist: WR < 25% AND sample >= 15 (v2: raised thresholds — small samples were generating premature blacklists)
+    if (wr < 25 && sample >= 15) {
         patterns.push({
             pattern_type: 'blacklist',
             scope,
             scope_key: key,
-            rule_text: `EVITAR ${key}: solo ${wr.toFixed(1)}% WR en ${sample} picks. Rendimiento inaceptable.`,
+            rule_text: `Rendimiento históricamente bajo en ${key}: ${wr.toFixed(1)}% WR en ${sample} picks. Evaluar con cautela extra.`,
             severity: 'critical',
             based_on_sample: sample,
             based_on_wr: wr,
         });
     }
-    // Boost: WR > 85%
-    else if (wr > 85) {
+    // Boost: WR > 80% AND sample >= 10 (v2: lowered threshold to be more generous with positive signals)
+    else if (wr > 80 && sample >= 10) {
         patterns.push({
             pattern_type: 'boost',
             scope,
             scope_key: key,
-            rule_text: `PRIORIZAR ${key}: ${wr.toFixed(1)}% WR en ${sample} picks. Excelente rendimiento.`,
+            rule_text: `Buen historial en ${key}: ${wr.toFixed(1)}% WR en ${sample} picks. Dato positivo a considerar.`,
             severity: 'info',
             based_on_sample: sample,
             based_on_wr: wr,
         });
     }
-    // Warning: overconfidence gap > 20 points
-    if (gap > 20) {
+    // Warning: overconfidence gap > 25 points AND sample >= 10 (v2: raised — requires more evidence)
+    if (gap > 25 && sample >= 10) {
         patterns.push({
             pattern_type: 'warning',
             scope,
             scope_key: key,
-            rule_text: `SOBRECONFIANZA en ${key}: predicho ${predictedAvg.toFixed(1)}% pero real ${wr.toFixed(1)}% (gap ${gap.toFixed(1)}pts). Reducir confianza.`,
+            rule_text: `Dato de calibración para ${key}: predicho ${predictedAvg.toFixed(1)}% pero real ${wr.toFixed(1)}% (gap ${gap.toFixed(1)}pts en ${sample} picks).`,
             severity: 'warning',
             based_on_sample: sample,
             based_on_wr: wr,
@@ -457,7 +457,7 @@ serve(async (req) => {
                     const [legsStr, risk] = key.split('|');
                     const legsCount = parseInt(legsStr);
                     const total = stats.wins + stats.losses;
-                    if (total < 3) continue; // Lower threshold for parlays (fewer samples)
+                    if (total < 8) continue; // v2: raised from 3 — parlay results are too volatile with tiny samples
 
                     const wr = (stats.wins / total) * 100;
                     const avgOdds = stats.totalOdds / total;
