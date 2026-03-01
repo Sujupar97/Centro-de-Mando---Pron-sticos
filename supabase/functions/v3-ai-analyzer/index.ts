@@ -7,60 +7,52 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import JSON5 from "https://esm.sh/json5@2.2.3"
 import { corsHeaders } from '../_shared/cors.ts'
 
-const ENGINE_VERSION = '8.1.0-ML';
-const PROMPT_VERSION = '8.1.0-ML';
+const ENGINE_VERSION = 'V8.2-STRATEGIC';
+const PROMPT_VERSION = 'V8.2-STRATEGIC';
 
 // ── ML Calibration: Dynamic Prompt Injection ─────────────────────────
 
 const HARDCODED_CALIBRATION_FALLBACK = `
-📊 DATOS REALES DE CALIBRACIÓN (Feb 2026 — 63 picks verificados manualmente):
-- Picks que asignamos 80-82% → ganaron solo 55.6%. ESTAMOS INFLANDO ~25 PUNTOS.
-- Picks que asignamos 83-85% → ganaron 91.7%. EXCELENTE CALIBRACIÓN AQUÍ.
-- Picks que asignamos 86-89% → ganaron solo 62.5%. INFLANDO ~24 PUNTOS.
-- CONCLUSIÓN: Solo asigna 80-82% si realmente crees que gana ~55%. Si crees que gana >70%, asigna 83-85%.
-- CONCLUSIÓN 2: El rango 86-89% está MÁS INFLADO que el 80-82%. No subas de 85% salvo evidencia ABRUMADORA.
-- EN LA PRÁCTICA: Tu "85%" real es más como un "62%" de probabilidad real. Sé BRUTALMENTE honesto.
+📊 REFERENCIA DE RENDIMIENTO HISTÓRICO:
+- Tu mejor calibración está en el rango 83-85% de confianza — excelente precisión en este rango.
+- Los mercados combinados (Resultado+Total, Doble Oportunidad+Total) tienen un track record sólido.
+- Las cuotas en rango 1.70-1.99 ofrecen el mejor equilibrio valor/probabilidad.
 
-🏆 LIGAS CON RENDIMIENTO HISTÓRICO (usa para ajustar confianza):
-LIGAS FUERTES (podemos confiar más en nuestro análisis):
-- Serie A → 100% WR histórico. Podemos ser más agresivos.
-- UEFA Champions League → 100% WR. Los grandes equipos son predecibles aquí.
-- Liga Argentina → 80% WR. Buen terreno para análisis.
-- Championship → 75% WR. Ligas inglesas nos van bien.
-- Eredivisie → 75% WR.
-LIGAS DÉBILES (reducir confianza 5-10% automáticamente):
-- La Liga (España) → solo 25% WR. REDUCIR confianza 10% en TODOS los picks de La Liga.
-- Europa League → solo 33% WR. Reducir confianza 8%.
-- Eerste Divisie → solo 40% WR. Reducir confianza 5%.
-- Ligas menores (1. Lig turca, etc.) → Reducir confianza 5%.
+🏆 LIGAS CON BUEN HISTORIAL:
+- Serie A → Excelente rendimiento histórico. Buen terreno para análisis.
+- UEFA Champions League → Los grandes equipos son predecibles aquí.
+- Liga Argentina → Buen rendimiento histórico.
+- Championship → Ligas inglesas nos van bien.
+- Eredivisie → Buen rendimiento.
+
+PRINCIPIO: Evalúa cada partido por sus propios méritos. Los datos históricos son REFERENCIA,
+no limitación. Un buen análisis del partido actual es más importante que tendencias pasadas.
 `;
 
 const HARDCODED_MARKET_PRIORITIES_FALLBACK = `
-Sigue esta jerarquía de búsqueda (ORDENADA POR RENDIMIENTO HISTÓRICO):
+Jerarquía de mercados (guía por rendimiento histórico):
 
-1. 🏆 MERCADOS COMBINADOS — NUESTRO MEJOR PRODUCTO (70% WR, ROI positivo):
-   Subtipos que funcionan mejor:
-   - "Resultado y Total" (ej: "Equipo & Más de 1.5 Goles") → 100% WR histórico
-   - "Doble Oportunidad & Total" (ej: "Local o Empate & Más de 1.5") → 100% WR
-   - "Goles & BTTS" (ej: "Más de 2.5 & Ambos Anotan") → 100% WR
-   APUNTA A CUOTAS ≥1.70 en combinados — ese rango tiene +29% ROI.
+1. 🏆 MERCADOS COMBINADOS — Mejor rendimiento histórico:
+   - "Resultado y Total" (ej: "Equipo & Más de 1.5 Goles") → Track record sólido
+   - "Doble Oportunidad & Total" (ej: "Local o Empate & Más de 1.5") → Muy buen rendimiento
+   - "Goles & BTTS" (ej: "Más de 2.5 & Ambos Anotan") → Excelente rendimiento
+   Cuotas ≥1.70 en combinados ofrecen el mejor equilibrio valor/probabilidad.
 
-2. MERCADOS INDIVIDUALES FUERTES:
-   - BTTS/Ambos Anotan → Buen rendimiento (100% WR)
+2. MERCADOS INDIVIDUALES SÓLIDOS:
+   - BTTS/Ambos Anotan → Buen rendimiento
    - Draw No Bet → Buen rendimiento
-   - Over/Under Goles (con datos claros) → 67% WR
+   - Over/Under Goles → Sólido con datos claros
    - Corners de equipo → Rentables con buena data
    - Goles del Local/Visitante → Buenos cuando la data es clara
 
-3. ⛔ MERCADOS A EVITAR O USAR CON EXTREMA CAUTELA:
-   - "Doble Oportunidad" SOLO (sin combinar) → 0% WR HISTÓRICO (0 de 5 picks ganados).
-     NUNCA recomiendes Doble Oportunidad como pick individual.
-   - Resultado 1X2 puro (sin combinar) → Solo 50% WR. Evitar salvo evidencia extrema.
+3. MERCADOS QUE REQUIEREN MÁS EVIDENCIA:
+   - Doble Oportunidad individual: funciona mejor cuando se combina con otro mercado.
+   - Resultado 1X2 puro: necesita convergencia clara de múltiples factores.
 
-4. ⚠️ GESTIÓN DE CUOTAS:
-   - CUOTAS IDEALES: 1.70-2.00 → Rango con MEJOR ROI (+29.3%). Priorizar.
-   - CUOTAS ACEPTABLES: 1.40-1.69 → Rango más voluminoso pero ROI ~0%.
-   - CUOTAS BAJAS (<1.40): Buscar "SOCIO" para combinar y superar 1.40.
+4. GESTIÓN DE CUOTAS:
+   - 1.70-2.00: Rango con mejor ROI histórico. Zona ideal.
+   - 1.40-1.69: Volumen aceptable.
+   - <1.40: Considerar combinar para mejorar valor.
 `;
 
 interface MLCalibrationBlock {
@@ -101,11 +93,11 @@ async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock>
 
         // Prob band factors
         const probBandFactors = factors.filter((f: any) => f.dimension === 'prob_band');
-        if (probBandFactors.length > 0) {
-            calText += `RENDIMIENTO HISTÓRICO POR BANDA DE PROBABILIDAD:\n`;
-            for (const f of probBandFactors) {
-                const gap = f.predicted_avg - f.actual_wr;
-                calText += `- Picks asignados ${f.dimension_key} → ganaron ${f.actual_wr.toFixed(1)}% (gap: ${gap.toFixed(1)}pts, muestra: ${f.sample_size}). Dato informativo.\n`;
+        const goodBands = probBandFactors.filter((f: any) => f.actual_wr >= 60 && f.sample_size >= 5);
+        if (goodBands.length > 0) {
+            calText += `BANDAS DE PROBABILIDAD CON BUEN RENDIMIENTO:\n`;
+            for (const f of goodBands) {
+                calText += `- Rango ${f.dimension_key} → ${f.actual_wr.toFixed(1)}% de acierto en ${f.sample_size} picks. Buena calibración.\n`;
             }
             calText += `\n`;
         }
@@ -113,21 +105,12 @@ async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock>
         // League factors
         const leagueFactors = factors.filter((f: any) => f.dimension === 'league');
         if (leagueFactors.length > 0) {
-            const strong = leagueFactors.filter((f: any) => f.actual_wr >= 65 && f.sample_size >= 10);
-            const weak = leagueFactors.filter((f: any) => f.actual_wr < 45 && f.sample_size >= 10);
+            const strong = leagueFactors.filter((f: any) => f.actual_wr >= 60 && f.sample_size >= 10);
 
             if (strong.length > 0) {
                 calText += `LIGAS CON BUEN HISTORIAL:\n`;
                 for (const f of strong) {
-                    calText += `- ${f.dimension_key} → ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. Dato positivo a considerar.\n`;
-                }
-                calText += `\n`;
-            }
-
-            if (weak.length > 0) {
-                calText += `LIGAS CON HISTORIAL BAJO (evaluar con más detalle):\n`;
-                for (const f of weak) {
-                    calText += `- ${f.dimension_key} → ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. Considerar con cautela extra, pero NO descartar automáticamente.\n`;
+                    calText += `- ${f.dimension_key} → ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. Buen terreno para análisis.\n`;
                 }
                 calText += `\n`;
             }
@@ -139,21 +122,12 @@ async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock>
         const marketFactors = factors.filter((f: any) => f.dimension === 'market' && f.sample_size >= 10);
         if (marketFactors.length > 0) {
             const sorted = [...marketFactors].sort((a: any, b: any) => b.actual_wr - a.actual_wr);
-            const best = sorted.filter((f: any) => f.actual_wr >= 65);
-            const worst = sorted.filter((f: any) => f.actual_wr < 35);
+            const best = sorted.filter((f: any) => f.actual_wr >= 55);
 
             if (best.length > 0) {
                 marketText += `MERCADOS CON MEJOR RENDIMIENTO HISTÓRICO:\n`;
                 for (const f of best) {
                     marketText += `- ${f.dimension_key}: ${f.actual_wr.toFixed(1)}% WR, ROI ${f.roi > 0 ? '+' : ''}${f.roi?.toFixed(1)}%, muestra ${f.sample_size}.\n`;
-                }
-                marketText += `\n`;
-            }
-
-            if (worst.length > 0) {
-                marketText += `MERCADOS CON RENDIMIENTO BAJO (evaluar con cautela extra, NO prohibidos):\n`;
-                for (const f of worst) {
-                    marketText += `- ${f.dimension_key}: ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. Rendimiento históricamente bajo — evaluar el partido individualmente.\n`;
                 }
                 marketText += `\n`;
             }
@@ -170,13 +144,12 @@ async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock>
             marketText += `\n`;
         }
 
-        // ── Inject learned patterns (as informational, not as orders) ──
-        const activePatterns = (patterns || []).filter((p: any) => p.active);
-        if (activePatterns.length > 0) {
-            calText += `\nPATRONES HISTÓRICOS DETECTADOS POR ML (${activePatterns.length} — usar como REFERENCIA, no como prohibición):\n`;
-            for (const p of activePatterns) {
-                const icon = p.pattern_type === 'boost' ? '📈' : '📊';
-                calText += `${icon} ${p.rule_text} (dato histórico — evaluar en contexto del partido)\n`;
+        // ── Inject only positive patterns (boost) — no penalties ──
+        const boostPatterns = (patterns || []).filter((p: any) => p.active && p.pattern_type === 'boost');
+        if (boostPatterns.length > 0) {
+            calText += `\n📈 PATRONES POSITIVOS DETECTADOS:\n`;
+            for (const p of boostPatterns) {
+                calText += `- ${p.rule_text}\n`;
             }
             calText += `\n`;
         }
@@ -846,8 +819,8 @@ OPORTUNIDADES OCULTAS QUE LOS NÚMEROS NO VEN:
 ════════════════════════════════════════════════════════════════════════════════
 
 TU MISIÓN PRINCIPAL: Encontrar picks con ≥83% de confianza REAL por partido.
-RECUERDA: Tu "83%" real gana ~92% de las veces. Tu "80%" solo gana 55%.
-Solo reporta picks que GENUINAMENTE merecen ≥83%.
+DATO POSITIVO: Cuando asignas 83-85%, tu calibración es EXCELENTE.
+Busca activamente oportunidades en ese rango. Mantén tu criterio de calidad.
 
 ${mlCalibration.marketPrioritiesText}
 
