@@ -7,8 +7,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import JSON5 from "https://esm.sh/json5@2.2.3"
 import { corsHeaders } from '../_shared/cors.ts'
 
-const ENGINE_VERSION = 'V8.2-STRATEGIC';
-const PROMPT_VERSION = 'V8.2-STRATEGIC';
+// ENGINE_VERSION is declared inside serve() handler (line ~425) — single source of truth
 
 // ── ML Calibration: Dynamic Prompt Injection ─────────────────────────
 
@@ -422,7 +421,7 @@ serve(async (req) => {
 
     const startTime = Date.now();
     const GEMINI_MODEL = 'gemini-3.1-pro-preview';
-    const ENGINE_VERSION = 'V8.1-MASTERMIND';
+    const ENGINE_VERSION = 'V8.2-STRATEGIC';
     let _jobId: string | null = null; // For error handler access
 
     try {
@@ -1572,7 +1571,7 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
                     p_model: prob,
                     decision: decision,
                     confidence: mapConf(p.nivel_confianza || p.confianza),
-                    engine_version: "V8.1-MASTERMIND",
+                    engine_version: ENGINE_VERSION,
                     odds: pickOdds && !isNaN(pickOdds) && pickOdds > 1.0 ? pickOdds : null,
                     created_at: new Date().toISOString()
                 };
