@@ -104,33 +104,29 @@ async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock>
 
         // League factors
         const leagueFactors = factors.filter((f: any) => f.dimension === 'league');
-        if (leagueFactors.length > 0) {
-            const strong = leagueFactors.filter((f: any) => f.actual_wr >= 60 && f.sample_size >= 10);
+        const strong = leagueFactors.filter((f: any) => f.actual_wr >= 60 && f.sample_size >= 10);
 
-            if (strong.length > 0) {
-                calText += `LIGAS CON BUEN HISTORIAL:\n`;
-                for (const f of strong) {
-                    calText += `- ${f.dimension_key} → ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. Buen terreno para análisis.\n`;
-                }
-                calText += `\n`;
+        if (strong.length > 0) {
+            calText += `LIGAS CON BUEN HISTORIAL:\n`;
+            for (const f of strong) {
+                calText += `- ${f.dimension_key} → ${f.actual_wr.toFixed(1)}% WR en ${f.sample_size} picks. Buen terreno para análisis.\n`;
             }
+            calText += `\n`;
         }
 
         // ── Build market priorities from real data ──
         let marketText = `\nDatos de mercados (REFERENCIA HISTÓRICA — el contexto del partido es más importante):\n\n`;
 
         const marketFactors = factors.filter((f: any) => f.dimension === 'market' && f.sample_size >= 10);
-        if (marketFactors.length > 0) {
-            const sorted = [...marketFactors].sort((a: any, b: any) => b.actual_wr - a.actual_wr);
-            const best = sorted.filter((f: any) => f.actual_wr >= 55);
+        const sorted = marketFactors.length > 0 ? [...marketFactors].sort((a: any, b: any) => b.actual_wr - a.actual_wr) : [];
+        const best = sorted.filter((f: any) => f.actual_wr >= 55);
 
-            if (best.length > 0) {
-                marketText += `MERCADOS CON MEJOR RENDIMIENTO HISTÓRICO:\n`;
-                for (const f of best) {
-                    marketText += `- ${f.dimension_key}: ${f.actual_wr.toFixed(1)}% WR, ROI ${f.roi > 0 ? '+' : ''}${f.roi?.toFixed(1)}%, muestra ${f.sample_size}.\n`;
-                }
-                marketText += `\n`;
+        if (best.length > 0) {
+            marketText += `MERCADOS CON MEJOR RENDIMIENTO HISTÓRICO:\n`;
+            for (const f of best) {
+                marketText += `- ${f.dimension_key}: ${f.actual_wr.toFixed(1)}% WR, ROI ${f.roi > 0 ? '+' : ''}${f.roi?.toFixed(1)}%, muestra ${f.sample_size}.\n`;
             }
+            marketText += `\n`;
         }
 
         // Odds range factors
@@ -152,6 +148,18 @@ async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock>
                 calText += `- ${p.rule_text}\n`;
             }
             calText += `\n`;
+        }
+
+        // If no positive data was found, use hardcoded fallback
+        const hasPositiveData = goodBands.length > 0 || (leagueFactors.length > 0 && strong.length > 0) || (marketFactors.length > 0 && best.length > 0) || boostPatterns.length > 0;
+        if (!hasPositiveData) {
+            console.log('[v3-ai-analyzer] No positive ML data found, using hardcoded fallback');
+            return {
+                calibrationText: HARDCODED_CALIBRATION_FALLBACK,
+                marketPrioritiesText: HARDCODED_MARKET_PRIORITIES_FALLBACK,
+                source: 'hardcoded-fallback-no-positive-data',
+                factorCount: 0,
+            };
         }
 
         return {
