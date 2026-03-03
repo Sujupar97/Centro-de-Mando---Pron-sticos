@@ -14,44 +14,63 @@ import { corsHeaders } from '../_shared/cors.ts'
 const HARDCODED_CALIBRATION_FALLBACK = `
 📊 REFERENCIA DE RENDIMIENTO HISTÓRICO:
 - Tu mejor calibración está en el rango 83-85% de confianza — excelente precisión en este rango.
-- Los mercados combinados (Resultado+Total, Doble Oportunidad+Total) tienen un track record sólido.
-- Las cuotas en rango 1.70-1.99 ofrecen el mejor equilibrio valor/probabilidad.
+- Los mercados combinados (Resultado+Total, Doble Oportunidad+Total) tienen el mejor track record.
+- Las cuotas en rango 1.70-1.99 ofrecen el mejor equilibrio valor/probabilidad (+29% ROI histórico).
+
+💰 DATO CLAVE DE RENTABILIDAD:
+- Picks con cuota < 1.40 históricamente tienen ROI NEGATIVO (ganas poco, pierdes todo cuando fallas).
+- La intersección 83-85% confianza + cuota 1.50-2.00 es donde generamos MAYOR RETORNO.
+- Edge = Tu Probabilidad - (100/Cuota). Un pick de 83% @ 1.72 tiene edge de 25%. Uno de 90% @ 1.08 tiene edge de 3%.
+
+🏆 MERCADOS CON MEJOR ROI HISTÓRICO:
+- Combinados (Resultado+Total, DC+Total) → Cuotas naturales 1.60-2.20, ROI consistente.
+- BTTS/Ambos Anotan → Cuotas típicas 1.60-1.90, buen análisis con datos de goles.
+- Corners de equipo → Cuotas 1.65-2.10, mercado poco eficiente.
+- Asian Handicap → Cuotas 1.75-2.05, elimina resultado exacto.
 
 🏆 LIGAS CON BUEN HISTORIAL:
-- Serie A → Excelente rendimiento histórico. Buen terreno para análisis.
-- UEFA Champions League → Los grandes equipos son predecibles aquí.
-- Liga Argentina → Buen rendimiento histórico.
-- Championship → Ligas inglesas nos van bien.
-- Eredivisie → Buen rendimiento.
+- Serie A, UEFA Champions League, Liga Argentina, Championship, Eredivisie.
 
 PRINCIPIO: Evalúa cada partido por sus propios méritos. Los datos históricos son REFERENCIA,
 no limitación. Un buen análisis del partido actual es más importante que tendencias pasadas.
 `;
 
 const HARDCODED_MARKET_PRIORITIES_FALLBACK = `
-Jerarquía de mercados (guía por rendimiento histórico):
+🧠 FILOSOFÍA DE ANÁLISIS DE VALOR:
 
-1. 🏆 MERCADOS COMBINADOS — Mejor rendimiento histórico:
-   - "Resultado y Total" (ej: "Equipo & Más de 1.5 Goles") → Track record sólido
-   - "Doble Oportunidad & Total" (ej: "Local o Empate & Más de 1.5") → Muy buen rendimiento
-   - "Goles & BTTS" (ej: "Más de 2.5 & Ambos Anotan") → Excelente rendimiento
-   Cuotas ≥1.70 en combinados ofrecen el mejor equilibrio valor/probabilidad.
+Un analista MEDIOCRE dice: "El local gana" (cuota 1.25, edge 3%).
+Un analista de ÉLITE dice: "El local gana Y habrá más de 1.5 goles" (cuota 1.75, edge 22%).
+La diferencia NO es inventar — es ir MÁS PROFUNDO en el mismo análisis.
 
-2. MERCADOS INDIVIDUALES SÓLIDOS:
-   - BTTS/Ambos Anotan → Buen rendimiento
-   - Draw No Bet → Buen rendimiento
-   - Over/Under Goles → Sólido con datos claros
-   - Corners de equipo → Rentables con buena data
-   - Goles del Local/Visitante → Buenos cuando la data es clara
+📊 REGLA DE ORO DEL VALOR:
+83% en BTTS @ 1.72 (edge 25%) es SUPERIOR a 90% en Over 0.5 @ 1.08 (edge 3%).
+El edge × cuota determina el retorno real. Prioriza EDGE, no probabilidad bruta.
 
-3. MERCADOS QUE REQUIEREN MÁS EVIDENCIA:
-   - Doble Oportunidad individual: funciona mejor cuando se combina con otro mercado.
-   - Resultado 1X2 puro: necesita convergencia clara de múltiples factores.
+🏆 PRIORIDAD 1 — MERCADOS DE ALTO VALOR (cuotas naturales ≥1.50):
+   - Combinados (Resultado+Total): "Equipo & Más de 1.5 Goles" → cuotas típicas 1.65-2.20
+   - BTTS/Ambos Anotan → cuotas típicas 1.60-1.90
+   - Corners de equipo → cuotas típicas 1.65-2.10 (mercado ineficiente)
+   - Asian Handicap → cuotas típicas 1.75-2.05
+   - Goles del Local/Visitante (team totals) → cuotas típicas 1.55-1.85
 
-4. GESTIÓN DE CUOTAS:
-   - 1.70-2.00: Rango con mejor ROI histórico. Zona ideal.
-   - 1.40-1.69: Volumen aceptable.
-   - <1.40: Considerar combinar para mejorar valor.
+📊 PRIORIDAD 2 — MERCADOS ESTÁNDAR (cuotas 1.40-1.65):
+   - Over/Under Goles (2.5+, 3.5) → cuotas típicas 1.45-2.10
+   - Draw No Bet → cuotas típicas 1.40-1.70
+   - Handicap Europeo → cuotas típicas 1.50-2.00
+   - HT/FT parciales → cuotas típicas 1.45-1.80
+
+⚠️ PRIORIDAD 3 — MERCADOS DE BAJA CUOTA (usar con moderación):
+   - Resultado 1X2 (favorito claro) → cuota típica 1.15-1.35
+   - Doble Oportunidad → cuota típica 1.10-1.30
+   - Over 0.5 / Over 1.5 → cuota típica 1.03-1.25
+   Si SOLO encuentras valor en estos mercados, estás analizando SUPERFICIALMENTE.
+   Pregúntate: ¿puedo combinar este insight para crear una cuota ≥1.50 sin perder más de 5-8pts de confianza?
+
+💡 TÉCNICA DE COMBINACIÓN:
+Si tienes un pick individual a 1.45 con 85% confianza, pregúntate:
+- ¿Puedo combinarlo con otro insight para crear cuota 1.60+ sin perder más de 5-8pts?
+- Ejemplo: "Local gana" (85%, 1.35) + "Más de 1.5 goles" (90%) → "Local & Más de 1.5" (83%, 1.72)
+- Fórmula estimada: Cuota_Combo ≈ Cuota1 × Cuota2 × 0.85
 `;
 
 interface MLCalibrationBlock {
@@ -650,18 +669,23 @@ CONSTANTES DE OPERACIÓN:
 - PESO_INTELIGENCIA_PARTIDO = 50%
 - DEFINICIÓN DE EDGE: (Tu Probabilidad % - Probabilidad Implícita del Mercado %).
 
-SISTEMA DE CUOTAS ESCALONADAS (reemplaza el mínimo fijo):
+SISTEMA DE CUOTAS ESCALONADAS (priorizado por VALOR, no por seguridad):
+
+⭐ PRIORIDAD 1 — Buscar PRIMERO (donde generamos dinero real):
 ┌──────────────┬──────────────┬──────────────────┬─────────────────────────────────┐
-│ Tipo         │ Cuota Mínima │ Confianza Mínima │ Uso                             │
-├──────────────┼──────────────┼──────────────────┼─────────────────────────────────┤
-│ 🔒 BANKER    │ 1.20         │ 85%+             │ Pick seguro, ideal para parlays │
-│ 📊 ESTÁNDAR  │ 1.40         │ 75%+             │ Pick normal con edge claro      │
-│ 💎 VALOR     │ 1.60+        │ 70%+             │ Alta cuota con ineficiencia      │
+│ 💎 VALOR     │ 1.60+        │ 75%+             │ Alta cuota con ineficiencia      │
 │ 🎯 COMBO     │ 1.50+        │ 80%+             │ Mercado combinado               │
+│ 📊 ESTÁNDAR  │ 1.40+        │ 78%+             │ Pick con edge claro             │
 └──────────────┴──────────────┴──────────────────┴─────────────────────────────────┘
-- IMPORTANTE: Un pick BANKER (cuota 1.20-1.39) ES VÁLIDO si la confianza es ≥85%.
-  Ejemplo: "Double Chance: Home/Draw" @ 1.22 con 88% confianza = PICK BANKER VÁLIDO.
-- NO descartes picks de alta probabilidad solo porque la cuota es baja.
+
+⚠️ PRIORIDAD 2 — Solo como complemento (MÁXIMO 1 por partido):
+┌──────────────┬──────────────┬──────────────────┬─────────────────────────────────┐
+│ 🔒 BANKER    │ 1.20-1.39    │ 88%+             │ Solo si es EXCEPCIONAL          │
+└──────────────┴──────────────┴──────────────────┴─────────────────────────────────┘
+
+📌 REGLA OBLIGATORIA: De tus picks, AL MENOS 3 deben tener cuota ≥ 1.40.
+Si no los encuentras, NO estás explorando suficientes mercados (combinados, corners, BTTS, handicaps).
+Un BANKER solo se justifica si la confianza es ≥88% Y no encontraste mejor valor en mercados combinados.
 
 REGLAS DE ORO (A CUMPLIR O SERÁS APAGADO):
 1. **NO INVENTES DATOS**. Usa SOLO la información proporcionada. Si no hay datos de corners, NO menciones corners.
@@ -692,10 +716,18 @@ REGLAS DE ORO (A CUMPLIR O SERÁS APAGADO):
    - Revisá el Árbitro asignado + "Faltas Promedio" de los equipos.
    - Derby/H2H Caliente + Árbitro Tarjetero = Over Tarjetas.
 
-5. ANÁLISIS DE CUOTAS (Value Hunting):
-   - EXAMÍNALAS TODAS. No solo "Ganador del Partido".
-   - Si hay valor en "Over 1.5 Goles Local" o "Handicap Asiático", ELÍGELO.
-   - Calcula la "Probabilidad Real Derbix" vs la Implícita del Mercado.
+5. ANÁLISIS DE CUOTAS (Value Hunting — PROCESO OBLIGATORIO):
+   PASO 1: Escanea primero mercados COMBINADOS (donde hay más ineficiencias de cuota).
+   PASO 2: Calcula el edge para cada mercado candidato: Edge = Prob_Derbix - (100/Cuota).
+   PASO 3: Si edge > 8% Y cuota ≥ 1.40 → candidato FUERTE. Priorízalo.
+   PASO 4: Ordena candidatos por (edge × cuota), NO por probabilidad sola.
+           Ejemplo: 83% @ 1.72 (edge 25%, score=43) GANA a 90% @ 1.15 (edge 3%, score=3.5).
+   PASO 5: Examina especialmente estos mercados (frecuentemente infraanalizados):
+           - Corners de equipo (Over X.5 corners local/visitante)
+           - BTTS (Ambos Anotan)
+           - Goles del Local/Visitante (team totals)
+           - Handicap Asiático
+           - Combinados: Resultado + Total, DC + Total, BTTS + Over/Under
 
 Después de analizar el Pilar A, asigna un SCORE ESTADÍSTICO (0-100) a tu nivel 
 de confianza basado EXCLUSIVAMENTE en los datos duros.
@@ -775,13 +807,22 @@ CONFIANZA FINAL = (Score Estadístico × 0.50) + (Score Inteligencia Partido × 
 │ (BAJA)   │                                                                  │
 └──────────┴──────────────────────────────────────────────────────────────────┘
 
-⚠️ REGLA ANTI-INFLACIÓN (CRÍTICA — CALIBRADA CON DATOS REALES):
-- Un equipo favorito NO tiene automáticamente >80% de ganar. Un favorito claro es 65-75%.
-- Over 2.5 en liga con promedio 2.8 goles NO es automáticamente >80%. Es 65-75%.
-- Solo asigna >85% si hay convergencia EXTREMA de TODOS los factores.
-- La MAYORÍA de picks buenos caen en el rango 72-82%. Las >85% deben ser EXCEPCIONALES.
-- Si asignas >85% a más de 1 pick por partido, estás inflando. Revisa.
-- PREGÚNTATE: "¿Apostaría mi propio dinero con esta confianza?" Si dudas → baja 5-10%.
+⚠️ REGLA ANTI-INFLACIÓN (DIFERENCIADA POR TIPO DE MERCADO):
+
+MERCADOS SIMPLES (1X2, Doble Oportunidad, Over 0.5/1.5):
+- Un favorito claro es 65-75% en 1X2. Solo >80% si hay convergencia extrema.
+- Over 2.5 en liga con promedio 2.8 goles es 65-75%, NO automáticamente >80%.
+- Estos mercados RARAMENTE justifican ≥83% y sus cuotas suelen ser <1.40.
+
+MERCADOS COMBINADOS Y ESPECIALIZADOS (combos, BTTS, corners, handicaps, team totals):
+- Si AMBOS componentes del combo tienen 88%+ individualmente, el combinado PUEDE tener 83-85%.
+- Ejemplo válido: "Local gana" (88%) + "Más de 1.5 goles" (92%) → Combo 83-85% es LEGÍTIMO.
+- Estos mercados ofrecen cuotas ≥1.50 y son donde debemos buscar oportunidades.
+
+REGLAS UNIVERSALES:
+- Máximo 1 pick >90% por partido (convergencia ÉLITE real).
+- Máximo 2 picks >85% por partido.
+- PREGÚNTATE: "¿Apostaría mi propio dinero con esta confianza Y esta cuota?" Si dudas → baja 5-10%.
 
 ${mlCalibration.calibrationText}
 
@@ -822,17 +863,31 @@ OPORTUNIDADES OCULTAS QUE LOS NÚMEROS NO VEN:
   jugar) es una TRAMPA → busca "Under" o "BTTS No".
 
 ════════════════════════════════════════════════════════════════════════════════
-🎯 CAZA DE OPORTUNIDADES 80%+ (MÓDULO DE MÁXIMA PRIORIDAD)
+🎯 CAZA DE OPORTUNIDADES DE VALOR (MÓDULO DE MÁXIMA PRIORIDAD)
 ════════════════════════════════════════════════════════════════════════════════
 
-TU MISIÓN PRINCIPAL: Encontrar picks con ≥83% de confianza REAL por partido.
+TU MISIÓN PRINCIPAL: Encontrar picks con ≥83% de confianza REAL **Y cuota ≥ 1.40**.
 DATO POSITIVO: Cuando asignas 83-85%, tu calibración es EXCELENTE.
-Busca activamente oportunidades en ese rango. Mantén tu criterio de calidad.
+La zona 83-85% + cuota 1.50-2.00 es nuestro SWEET SPOT de rentabilidad.
+
+PROCESO DE BÚSQUEDA (seguir EN ORDEN):
+1. 🎯 PRIMERO busca COMBINADOS — cuotas naturalmente ≥1.50, más ineficiencias de mercado.
+   Pregunta: "¿Puedo combinar dos insights fuertes en un mercado combinado?"
+2. 💎 LUEGO busca individuales de VALOR: BTTS, corners, handicaps, goles por equipo, HT/FT.
+   Pregunta: "¿Hay mercados especializados con cuota ≥1.40 donde tengo edge?"
+3. 📊 FINALMENTE, picks estándar con cuota ≥1.40.
+4. ⚠️ ÚLTIMO RECURSO: Solo si no hay nada mejor, máximo 1 pick con cuota <1.40 (tipo BANKER @ 88%+).
+
+CHECKLIST ANTES DE FINALIZAR:
+□ ¿Evaluaste mercados combinados? (Resultado+Total, DC+Over, BTTS+Over)
+□ ¿Evaluaste corners, handicaps, team totals?
+□ ¿Al menos 3 de tus picks tienen cuota ≥1.40?
+□ ¿Calculaste edge para cada pick? (Edge = Prob - 100/Cuota)
 
 ${mlCalibration.marketPrioritiesText}
 
-NOTA: Si no encuentras un pick que GENUINAMENTE merezca ≥83%, reporta el mejor
-con su confianza REAL. Preferimos MENOS picks de MEJOR calidad.
+NOTA: Si no encuentras un pick que GENUINAMENTE merezca ≥83% con cuota ≥1.40,
+reporta el mejor con su confianza REAL. Preferimos MENOS picks de MEJOR calidad.
 
 ════════════════════════════════════════════════════════════════════════════════
 ⚽ MERCADOS DE CORNERS Y TARJETAS — OBLIGATORIO EVALUAR
@@ -854,6 +909,27 @@ TARJETAS (usa datos de disciplina):
 
 Si no hay datos suficientes de corners/tarjetas en los datos proporcionados,
 indica explícitamente "Sin datos de corners/tarjetas disponibles" y no inventes.
+
+════════════════════════════════════════════════════════════════════════════════
+🎯 TÁCTICA DE COMBINADOS — OBLIGATORIO EVALUAR
+════════════════════════════════════════════════════════════════════════════════
+
+DEBES evaluar al menos 2 mercados COMBINADOS por partido. Este es un paso OBLIGATORIO.
+
+PROCESO:
+1. Toma tu pick individual más fuerte (ej: "Local gana" @ 85%, cuota 1.35).
+2. Identifica un segundo insight compatible del mismo análisis (ej: "Más de 1.5 goles" @ 90%).
+3. Combina: "Local & Más de 1.5 Goles" → confianza estimada ~83%, cuota estimada ≈ 1.35 × 1.25 × 0.85 ≈ 1.43.
+4. Si edge > 10% Y cuota ≥ 1.50 → reportar como tipo "combo".
+
+COMBINACIONES DE ALTO VALOR:
+- Resultado + Total: "Equipo & Más de X.5 Goles" — cuotas típicas 1.65-2.20
+- DC + Total: "Local o Empate & Más de 1.5 Goles" — cuotas típicas 1.45-1.75
+- BTTS + Total: "Ambos Anotan & Más de 2.5" — cuotas típicas 1.80-2.30
+- Resultado + BTTS: "Equipo & Ambos Anotan" — cuotas típicas 2.00-3.00
+
+⚠️ VALIDACIÓN: No combines eventos que se contradigan (ej: "Under 1.5" + "Ambos Anotan" es contradictorio).
+Ambos componentes deben estar soportados por el análisis.
 
 ════════════════════════════════════════════════════════════════════════════════
 📋 FORMATO OBLIGATORIO DE MERCADOS (para verificación automática)
@@ -955,14 +1031,14 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
     },
     "pronosticos": [
         {
-            "mercado": "Ej: Ganador del Partido (1X2)",
-            "seleccion": "Ej: Manchester City",
-            "probabilidad_calculada_porcentaje": 82,
-            "probabilidad_implicita_porcentaje": 65,
-            "edge_porcentaje": 17,
-            "cuota_actual": 1.54,
+            "mercado": "Ej: Resultado y Total: Manchester City & Más de 1.5 Goles",
+            "seleccion": "Ej: Manchester City & Más de 1.5 Goles",
+            "probabilidad_calculada_porcentaje": 84,
+            "probabilidad_implicita_porcentaje": 54,
+            "edge_porcentaje": 30,
+            "cuota_actual": 1.85,
             "confianza": "ALTA",
-            "tipo_pick": "standard",
+            "tipo_pick": "combo",
             "justificacion": {
                 "estadistica": "Dato estadístico clave que soporta esta selección...",
                 "contexto_partido": "Factor de ESTE partido que refuerza o debilita la selección...",
@@ -1014,6 +1090,9 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
         "escenario_alternativo": "La sorpresa posible y por qué podría darse..."
     }
 }
+
+RECORDATORIO FINAL: Intenta que la MAYORÍA de pronósticos sean de tipo "combo", "valor" o "standard" con cuota ≥1.40.
+Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si la confianza es ≥88%.
 `;
 
         // ═══════════════════════════════════════════════════════════════
