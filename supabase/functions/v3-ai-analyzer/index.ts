@@ -12,14 +12,12 @@ import { corsHeaders } from '../_shared/cors.ts'
 // ── ML Calibration: Dynamic Prompt Injection ─────────────────────────
 
 const HARDCODED_CALIBRATION_FALLBACK = `
-📊 REFERENCIA DE RENDIMIENTO HISTÓRICO:
-- Tu mejor calibración está en el rango 83-85% de confianza — excelente precisión en este rango.
-- Los mercados combinados (Resultado+Total, Doble Oportunidad+Total) tienen el mejor track record.
-- Las cuotas en rango 1.70-1.99 ofrecen el mejor equilibrio valor/probabilidad (+29% ROI histórico).
+📊 REFERENCIA: Asigna la probabilidad que refleje tu análisis honesto.
+El sistema de calibración matemática ajustará según datos verificados de rendimiento real.
 
-💰 DATO CLAVE DE RENTABILIDAD:
+💰 CONTEXTO DE RENTABILIDAD:
 - Picks con cuota < 1.40 históricamente tienen ROI NEGATIVO (ganas poco, pierdes todo cuando fallas).
-- La intersección 83-85% confianza + cuota 1.50-2.00 es donde generamos MAYOR RETORNO.
+- La intersección confianza alta + cuota 1.50-2.00 es donde generamos MAYOR RETORNO.
 - Edge = Tu Probabilidad - (100/Cuota). Un pick de 83% @ 1.72 tiene edge de 25%. Uno de 90% @ 1.08 tiene edge de 3%.
 
 🏆 MERCADOS CON MEJOR ROI HISTÓRICO:
@@ -104,10 +102,9 @@ async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock>
             };
         }
 
-        // ── Build calibration text from real data (v2 OBSERVATIONAL — informative, not directive) ──
-        let calText = `\n📊 DATOS HISTÓRICOS DE RENDIMIENTO (${factors.length} dimensiones analizadas por ML Auto-Learning):\n`;
-        calText += `IMPORTANTE: Estos datos son INFORMATIVOS para tu análisis. Tu evaluación del partido específico tiene PRIORIDAD.\n`;
-        calText += `Si los fundamentos del partido son sólidos, mantén probabilidades altas incluso si el dato histórico es bajo.\n\n`;
+        // ── Build calibration text from real data (V3 — context only, math calibrates separately) ──
+        let calText = `\n📊 CONTEXTO HISTÓRICO DE RENDIMIENTO (${factors.length} dimensiones, el post-procesamiento matemático se encarga de la calibración):\n`;
+        calText += `REFERENCIA: Asigna la probabilidad que refleje tu análisis honesto. El sistema de calibración matemática ajustará según datos verificados.\n\n`;
 
         // Prob band factors
         const probBandFactors = factors.filter((f: any) => f.dimension === 'prob_band');
@@ -297,6 +294,100 @@ async function applyCalibrationPostProcessing(
         return { adjustedPicks, adjustments };
     } catch (err) {
         console.error('[v3-ai-analyzer] ML post-processing error (non-blocking):', err);
+        return { adjustedPicks: picks, adjustments: [] };
+    }
+}
+
+// ── ML Post-Processing V3: Clean math-only calibration ──────────
+// V3 approach: Gemini assigns raw probs freely (no "lower your confidence" in prompt).
+// This function applies ONLY prob_band correction (the most reliable dimension).
+// Market/league factors are logged but NOT applied until sample sizes are large enough.
+
+async function applyCalibrationPostProcessingV3(
+    picks: any[],
+    leagueName: string,
+    supabase: any,
+    minSamplesForCorrection: number = 20
+): Promise<{ adjustedPicks: any[]; adjustments: CalibrationAdjustment[] }> {
+    const adjustments: CalibrationAdjustment[] = [];
+
+    try {
+        const { data: factors } = await supabase
+            .from('ml_calibration_factors')
+            .select('dimension, dimension_key, calibration_factor, confidence_adjustment, actual_wr, predicted_avg, sample_size')
+            .eq('status', 'active');
+
+        if (!factors || factors.length === 0) {
+            console.log('[v3-ai-analyzer] ML V3 post-processing: No calibration factors found. NO-OP.');
+            return { adjustedPicks: picks, adjustments: [] };
+        }
+
+        // Build lookup maps
+        const factorMap = new Map<string, any>();
+        for (const f of factors) {
+            factorMap.set(`${f.dimension}|${f.dimension_key}`, f);
+        }
+
+        const adjustedPicks = picks.map((pick: any) => {
+            const originalProb = pick.probabilidad_calculada_porcentaje || 50;
+            const market = pick.mercado || '';
+            const probBandKey = originalProb < 80 ? '<80%' : originalProb < 83 ? '80-82%' : originalProb < 86 ? '83-85%' : originalProb < 90 ? '86-89%' : '90%+';
+
+            let adjustedProb = originalProb;
+            const appliedFactors: string[] = [];
+
+            // ── PRIMARY: Prob band correction (most reliable dimension) ──
+            const probFactor = factorMap.get(`prob_band|${probBandKey}`);
+            if (probFactor && probFactor.sample_size >= minSamplesForCorrection) {
+                const gap = (probFactor.predicted_avg || originalProb) - (probFactor.actual_wr || originalProb);
+                if (gap > 10) {
+                    // Significant overconfidence — apply weighted reduction
+                    const sampleConfidence = Math.min(1.0, probFactor.sample_size / 100);
+                    const rawReduction = Math.min(gap * 0.4, 12); // Cap at 12pts (not 15)
+                    const weightedReduction = rawReduction * sampleConfidence;
+                    adjustedProb -= weightedReduction;
+                    appliedFactors.push(`prob_band:-${weightedReduction.toFixed(1)}(n=${probFactor.sample_size},gap=${gap.toFixed(0)})`);
+                }
+            }
+
+            // ── INFORMATIONAL: Log market/league factors but don't apply yet ──
+            const marketFactor = factorMap.get(`market|${market}`);
+            if (marketFactor && marketFactor.sample_size >= 10) {
+                console.log(`[v3-ai-analyzer] ML info: market "${market}" → WR ${marketFactor.actual_wr?.toFixed(1)}%, factor ${marketFactor.calibration_factor?.toFixed(3)}, n=${marketFactor.sample_size} (not applied)`);
+            }
+            const leagueFactor = factorMap.get(`league|${leagueName}`);
+            if (leagueFactor && leagueFactor.sample_size >= 10) {
+                console.log(`[v3-ai-analyzer] ML info: league "${leagueName}" → WR ${leagueFactor.actual_wr?.toFixed(1)}%, adj ${leagueFactor.confidence_adjustment}, n=${leagueFactor.sample_size} (not applied)`);
+            }
+
+            // ── Safety caps ──
+            adjustedProb = Math.max(originalProb - 12, adjustedProb); // Never reduce more than 12pts
+            adjustedProb = Math.max(50, adjustedProb); // Floor at 50%
+            adjustedProb = Math.round(adjustedProb * 10) / 10;
+
+            if (appliedFactors.length > 0 && Math.abs(adjustedProb - originalProb) >= 0.5) {
+                adjustments.push({
+                    market,
+                    league: leagueName,
+                    originalProb,
+                    adjustedProb,
+                    factorsApplied: appliedFactors,
+                });
+
+                return {
+                    ...pick,
+                    probabilidad_calculada_porcentaje: adjustedProb,
+                    probabilidad_original_pre_ml: originalProb,
+                    ml_adjustments: appliedFactors,
+                };
+            }
+
+            return pick;
+        });
+
+        return { adjustedPicks, adjustments };
+    } catch (err) {
+        console.error('[v3-ai-analyzer] ML V3 post-processing error (non-blocking):', err);
         return { adjustedPicks: picks, adjustments: [] };
     }
 }
@@ -807,32 +898,15 @@ CONFIANZA FINAL = (Score Estadístico × 0.50) + (Score Inteligencia Partido × 
 │ (BAJA)   │                                                                  │
 └──────────┴──────────────────────────────────────────────────────────────────┘
 
-⚠️ REGLA ANTI-INFLACIÓN (DIFERENCIADA POR TIPO DE MERCADO):
-
-MERCADOS SIMPLES (1X2, Doble Oportunidad, Over 0.5/1.5):
-- Un favorito claro es 65-75% en 1X2. Solo >80% si hay convergencia extrema.
-- Over 2.5 en liga con promedio 2.8 goles es 65-75%, NO automáticamente >80%.
-- Estos mercados RARAMENTE justifican ≥83% y sus cuotas suelen ser <1.40.
-
-MERCADOS COMBINADOS Y ESPECIALIZADOS (combos, BTTS, corners, handicaps, team totals):
-- Si AMBOS componentes del combo tienen 88%+ individualmente, el combinado PUEDE tener 83-85%.
-- Ejemplo válido: "Local gana" (88%) + "Más de 1.5 goles" (92%) → Combo 83-85% es LEGÍTIMO.
-- Estos mercados ofrecen cuotas ≥1.50 y son donde debemos buscar oportunidades.
-
-REGLAS UNIVERSALES:
+⚠️ CALIBRACIÓN DE CONFIANZA:
+- Asigna la probabilidad que GENUINAMENTE refleje tu análisis. No infles para cumplir umbrales.
 - Máximo 1 pick >90% por partido (convergencia ÉLITE real).
 - Máximo 2 picks >85% por partido.
 - PREGÚNTATE: "¿Apostaría mi propio dinero con esta confianza Y esta cuota?" Si dudas → baja 5-10%.
+- El sistema de post-procesamiento matemático ajustará probabilidades según datos reales de rendimiento.
+- Para >80%, necesitas AMBOS pilares (stats + contexto). Si se contradicen, REDUCE 10-15%.
 
 ${mlCalibration.calibrationText}
-
-⚠️ REGLA CRÍTICA V6:
-- Stats SOLAS ya no son suficientes para >80%. Necesitas TAMBIÉN contexto favorable.
-- Contexto SOLO tampoco es suficiente para >80%. Necesitas TAMBIÉN stats.
-- PERO: Si el contexto CONTRADICE las stats (ej: stats geniales pero juegan
-  con suplentes porque tienen final de Copa en 3 días), REDUCE la confianza 10-15%.
-- BONUS +5%: Si 4+ factores se alinean (stats + H2H + motivación + táctica + contexto)
-  Y NINGUNO contradice → permite subir hasta el techo de la banda.
 
 ═══ ANÁLISIS DE EVENTOS MINUTO A MINUTO (NUEVO V8) ═══
 
@@ -1113,15 +1187,15 @@ Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si 
 
         // ═══ RETRY WITH EXPONENTIAL BACKOFF ═══
         // Retries on 429 (quota), 503 (overloaded), 500 (server error)
-        // Budget: ~250s max (frontend timeout = 300s, Supabase limit = 300s)
-        // 1 retry × 120s timeout + delay (10s) = ~250s worst case
-        const MAX_RETRIES = 1;
-        const RETRY_DELAYS = [10000]; // 10s
+        // Budget: ~300s max (frontend timeout = 300s)
+        // 3 attempts × 90s timeout + delays (5s, 10s) = ~290s worst case
+        const MAX_RETRIES = 2;
+        const RETRY_DELAYS = [5000, 10000]; // 5s, 10s
         let genRes: Response | null = null;
 
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             const geminiController = new AbortController();
-            const geminiTimeout = setTimeout(() => geminiController.abort(), 120000); // 120s per attempt
+            const geminiTimeout = setTimeout(() => geminiController.abort(), 90000); // 90s per attempt
 
             try {
                 genRes = await fetch(genUrl, {
@@ -1410,14 +1484,26 @@ Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si 
             });
         }
 
-        // ═══ ML POST-PROCESSING: DISABLED (v2 — "ML Observacional") ═══
-        // The mathematical post-processing was causing a "double dip" effect:
-        // Layer 1 (buildCalibrationBlock) already tells Gemini to lower probabilities,
-        // then Layer 2 (applyCalibrationPostProcessing) reduced them AGAIN mathematically.
-        // This destroyed pick volume (70 matches → 1 pick). Now Gemini receives data
-        // as informational context and makes intelligent decisions on its own.
-        // The function is preserved below for rollback if needed.
-        console.log(`[v3-ai-analyzer] ML post-processing SKIPPED (v2 observational mode — calibration via prompt only)`);
+        // ═══ ML POST-PROCESSING V3: Math-only calibration ═══
+        // Gemini assigns raw probabilities freely. This layer applies mathematical
+        // corrections based on VERIFIED historical performance data (prob_band dimension).
+        // No "double dip" because the prompt no longer instructs Gemini to lower probs.
+        // When ML tables are empty → NO-OP (picks pass through unchanged).
+        const MIN_SAMPLES_FOR_CORRECTION = 20;
+        if (analysisResult.pronosticos && analysisResult.pronosticos.length > 0) {
+            const { adjustedPicks, adjustments } = await applyCalibrationPostProcessingV3(
+                analysisResult.pronosticos, leagueName, supabase, MIN_SAMPLES_FOR_CORRECTION
+            );
+            analysisResult.pronosticos = adjustedPicks;
+            if (adjustments.length > 0) {
+                console.log(`[v3-ai-analyzer] ML V3 applied ${adjustments.length} calibration adjustments:`);
+                for (const adj of adjustments) {
+                    console.log(`  - ${adj.market}: ${adj.originalProb}% → ${adj.adjustedProb}% [${adj.factorsApplied.join(', ')}]`);
+                }
+            } else {
+                console.log(`[v3-ai-analyzer] ML V3 post-processing: no adjustments needed (${analysisResult.pronosticos.length} picks unchanged)`);
+            }
+        }
 
         // SAVE RESULTS
         // ═══════════════════════════════════════════════════════════════
