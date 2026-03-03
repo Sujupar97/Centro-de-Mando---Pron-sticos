@@ -717,7 +717,7 @@ serve(async (req) => {
             oddsText += fmtSection('CORNERS', odds.CORNERS);
             oddsText += fmtSection('OTROS (ASIATICOS/ESPECIALES)', odds.OTHERS); // Include ALL odds
         } else if (odds?.bookmakers?.[0]) {
-            oddsText = `${odds.bookmakers[0].title}:\n` + odds.bookmakers[0].markets?.map((m: any) => `${m.key}: ` + m.outcomes?.map((o: any) => `${o.name} @ ${o.price}`).join(' | ')).join('\n');
+            oddsText = `${odds.bookmakers[0].title || 'Bookmaker'}:\n` + (odds.bookmakers[0].markets || []).map((m: any) => `${m.key}: ` + (m.outcomes || []).map((o: any) => `${o.name} @ ${o.price}`).join(' | ')).join('\n');
         } else {
             oddsText = 'SIN CUOTAS VIVAS (USAR FALLBACK)';
         }
@@ -1189,8 +1189,8 @@ Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si 
         // Retries on 429 (quota), 503 (overloaded), 500 (server error)
         // Budget: ~300s max (frontend timeout = 300s)
         // 3 attempts × 90s timeout + delays (5s, 10s) = ~290s worst case
-        const MAX_RETRIES = 2;
-        const RETRY_DELAYS = [5000, 10000]; // 5s, 10s
+        const MAX_RETRIES = 1;
+        const RETRY_DELAYS = [5000]; // 5s between attempts
         let genRes: Response | null = null;
 
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -1601,7 +1601,12 @@ Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si 
             v3_source: true,
             job_id: job_id,
             generated_at: new Date().toISOString(),
-            payload: payload // EXPOSE RAW PAYLOAD TO FRONTEND FOR DEBUG VIEW
+            // payload removed — was causing OOM/502 on large ETL contexts
+            payload_summary: {
+                has_odds: !!odds,
+                has_h2h: !!(datasets.h2h_matches?.length),
+                teams: `${homeTeam} vs ${awayTeam}`
+            }
         };
 
         // ═══════════════════════════════════════════════════════════════
@@ -1820,15 +1825,17 @@ Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si 
         // Dar tiempo al Deno runtime para enviar el fire-and-forget del parlay analyzer
         await new Promise(r => setTimeout(r, 500));
 
+        // LIGHTWEIGHT RESPONSE — frontend reads full data from DB via polling
+        // (analisis, reports_v2, value_picks_v2 tables)
+        // Removed: analysis + dashboard objects that caused OOM/502 on large payloads
         return new Response(JSON.stringify({
             success: true,
             job_id,
-            fixture_id,
-            analysis: analysisResult,
-            dashboard: dashboardData,
+            fixture_id: finalFixtureId,
             summary: {
                 veredicto: analysisResult.resumen_ejecutivo.veredicto,
-                picks: betPicks.length
+                picks: betPicks.length,
+                titular: tit
             },
             tokens_used: tokensUsed,
             execution_time_ms: executionTime,
@@ -1857,13 +1864,22 @@ Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si 
             console.error('[V3-AI-ANALYZER] Failed to update job status:', updateErr);
         }
 
-        return new Response(JSON.stringify({
-            success: false,
-            error: e.message,
-            execution_time_ms: Date.now() - startTime
-        }), {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+        try {
+            return new Response(JSON.stringify({
+                success: false,
+                error: (e.message || 'Unknown error').substring(0, 500),
+                execution_time_ms: Date.now() - startTime
+            }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        } catch (responseErr) {
+            // Ultra-fallback if even JSON.stringify fails
+            console.error('[V3-AI-ANALYZER] Error response construction failed:', responseErr);
+            return new Response('{"success":false,"error":"Internal server error"}', {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
     }
 });
