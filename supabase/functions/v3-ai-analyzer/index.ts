@@ -1174,8 +1174,6 @@ Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si 
         // ═══════════════════════════════════════════════════════════════
         console.log(`[V3 - AI - ANALYZER] Sending prompt to Gemini(${prompt.length} chars)...`);
 
-        const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`;
-
         const requestBody = {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
@@ -1185,20 +1183,27 @@ Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si 
             }
         };
 
-        // ═══ RETRY WITH EXPONENTIAL BACKOFF ═══
-        // Retries on 429 (quota), 503 (overloaded), 500 (server error)
-        // Budget: ~300s max (frontend timeout = 300s)
-        // 3 attempts × 90s timeout + delays (5s, 10s) = ~290s worst case
-        const MAX_RETRIES = 1;
-        const RETRY_DELAYS = [5000]; // 5s between attempts
+        // ═══ GEMINI CALL WITH MODEL FALLBACK ═══
+        // Supabase Edge Function wall clock limit: ~150s
+        // Strategy: Try primary model (60s) → if fails, try fallback model (60s)
+        // Budget: ~10s setup + 60s model1 + 2s pause + 60s model2 + ~10s save = ~142s
+        const GEMINI_TIMEOUT_MS = 60000; // 60s per attempt (2 models × 60s fits in 150s limit)
+        const FALLBACK_MODEL = 'gemini-3-pro-preview'; // Same family, used by v3-smart-parlays
+        const PRIMARY_MODEL = GEMINI_MODEL; // gemini-3.1-pro-preview (best quality)
+        const models = [PRIMARY_MODEL, FALLBACK_MODEL];
         let genRes: Response | null = null;
 
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        for (let modelIdx = 0; modelIdx < models.length; modelIdx++) {
+            const currentModel = models[modelIdx];
+            const currentUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${geminiKey}`;
+            const attemptStart = Date.now();
+
             const geminiController = new AbortController();
-            const geminiTimeout = setTimeout(() => geminiController.abort(), 90000); // 90s per attempt
+            const geminiTimeout = setTimeout(() => geminiController.abort(), GEMINI_TIMEOUT_MS);
 
             try {
-                genRes = await fetch(genUrl, {
+                console.log(`[V3-AI-ANALYZER] Calling ${currentModel} (attempt ${modelIdx + 1}/${models.length})...`);
+                genRes = await fetch(currentUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(requestBody),
@@ -1206,44 +1211,51 @@ Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si 
                 });
                 clearTimeout(geminiTimeout);
 
-                if (genRes.ok) break; // Success — exit retry loop
+                if (genRes.ok) {
+                    if (modelIdx > 0) console.log(`[V3-AI-ANALYZER] Fallback model ${currentModel} succeeded`);
+                    break; // Success
+                }
 
                 const statusCode = genRes.status;
+                const elapsed = Date.now() - attemptStart;
                 const isRetryable = statusCode === 429 || statusCode === 503 || statusCode === 500;
+                const hasTimeBudget = (Date.now() - startTime) < 25000; // Only retry if <25s elapsed total
 
-                if (isRetryable && attempt < MAX_RETRIES) {
-                    const delay = RETRY_DELAYS[attempt];
-                    console.warn(`[V3-AI-ANALYZER] Gemini returned ${statusCode}, retrying in ${delay/1000}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
-                    await new Promise(r => setTimeout(r, delay));
+                if (isRetryable && modelIdx < models.length - 1 && hasTimeBudget) {
+                    console.warn(`[V3-AI-ANALYZER] ${currentModel} returned ${statusCode} in ${elapsed}ms, trying fallback ${models[modelIdx + 1]}...`);
+                    await new Promise(r => setTimeout(r, 2000)); // 2s pause before fallback
                     continue;
                 }
 
-                // Non-retryable error or max retries exhausted
+                // No more models to try or no time budget
                 const errorText = await genRes.text();
                 if (statusCode === 429) {
-                    throw new Error(`QUOTA_EXCEEDED: Tu API key de Gemini alcanzó el límite. Espera unos minutos e intenta de nuevo. (${errorText.substring(0, 200)})`);
+                    throw new Error(`QUOTA_EXCEEDED: API key de Gemini alcanzó el límite. Espera unos minutos. (${errorText.substring(0, 200)})`);
                 } else if (statusCode === 503) {
-                    throw new Error(`GEMINI_OVERLOADED: Gemini está sobrecargado. Intenta de nuevo en unos minutos. (${errorText.substring(0, 200)})`);
+                    throw new Error(`GEMINI_OVERLOADED: Gemini (${currentModel}) sobrecargado. Intenta de nuevo en unos minutos. (${errorText.substring(0, 200)})`);
                 } else {
-                    throw new Error(`Gemini Error (${statusCode}): ${errorText}`);
+                    throw new Error(`Gemini Error (${statusCode}): ${errorText.substring(0, 300)}`);
                 }
 
             } catch (fetchErr: any) {
                 clearTimeout(geminiTimeout);
                 if (fetchErr.name === 'AbortError') {
-                    if (attempt < MAX_RETRIES) {
-                        console.warn(`[V3-AI-ANALYZER] Gemini timeout on attempt ${attempt + 1}, retrying...`);
+                    // Timeout — try fallback model if we have time budget
+                    const hasTimeBudgetForFallback = (Date.now() - startTime) < 80000; // <80s elapsed = room for 60s fallback
+                    if (modelIdx < models.length - 1 && hasTimeBudgetForFallback) {
+                        console.warn(`[V3-AI-ANALYZER] ${currentModel} timed out after ${GEMINI_TIMEOUT_MS / 1000}s, trying fallback ${models[modelIdx + 1]}...`);
                         continue;
                     }
-                    throw new Error('GEMINI_TIMEOUT: Gemini no respondió después de múltiples intentos. Intenta de nuevo más tarde.');
+                    throw new Error(`GEMINI_TIMEOUT: ${currentModel} no respondió en ${GEMINI_TIMEOUT_MS / 1000}s. Intenta de nuevo.`);
                 }
-                // Re-throw user-facing errors (QUOTA_EXCEEDED, etc.)
+                // Re-throw user-facing errors
                 if (fetchErr.message?.startsWith('QUOTA_') || fetchErr.message?.startsWith('GEMINI_')) {
                     throw fetchErr;
                 }
-                if (attempt < MAX_RETRIES) {
-                    console.warn(`[V3-AI-ANALYZER] Fetch error: ${fetchErr.message}, retrying...`);
-                    await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+                // Network error — try fallback if budget allows
+                const hasTimeBudget = (Date.now() - startTime) < 25000;
+                if (modelIdx < models.length - 1 && hasTimeBudget) {
+                    console.warn(`[V3-AI-ANALYZER] ${currentModel} fetch error: ${fetchErr.message}, trying fallback...`);
                     continue;
                 }
                 throw fetchErr;
@@ -1251,7 +1263,7 @@ Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si 
         }
 
         if (!genRes || !genRes.ok) {
-            throw new Error('Gemini failed after all retry attempts');
+            throw new Error('Gemini failed on all models');
         }
 
         const genJson = await genRes.json();
