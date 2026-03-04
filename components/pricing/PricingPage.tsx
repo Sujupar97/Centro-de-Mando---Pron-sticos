@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getActivePlans, formatPrice, SubscriptionPlan, assignPlanToUser } from '../../services/subscriptionService';
 import { openCheckoutOverlay, getVariantId, getPlanPrice } from '../../services/lemonSqueezyService';
+import { openEpaycoCheckout, getEpaycoPlanId } from '../../services/epaycoService';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useOrganization } from '../../contexts/OrganizationContext';
@@ -184,6 +185,16 @@ export const PricingPage: React.FC = () => {
         loadPlans();
     }, []);
 
+    /**
+     * Detecta qué gateway de pago usar para un plan.
+     * Prioridad: ePayco → Lemon Squeezy → null
+     */
+    const getPaymentProvider = (plan: SubscriptionPlan, period: 'monthly' | 'annual'): 'epayco' | 'lemon_squeezy' | null => {
+        if (getEpaycoPlanId(plan, period)) return 'epayco';
+        if (getVariantId(plan, period)) return 'lemon_squeezy';
+        return null;
+    };
+
     const handleSelectPlan = async (plan: SubscriptionPlan) => {
         if (!user || !currentOrg) {
             setMessage({ type: 'error', text: 'Debes iniciar sesión para seleccionar un plan.' });
@@ -203,8 +214,28 @@ export const PricingPage: React.FC = () => {
                     setMessage({ type: 'error', text: result.error || 'Error al asignar plan' });
                 }
             } else {
-                const variantId = getVariantId(plan, billingPeriod);
-                if (variantId) {
+                const provider = getPaymentProvider(plan, billingPeriod);
+
+                if (provider === 'epayco') {
+                    const price = billingPeriod === 'annual' && plan.annual_price_cents > 0
+                        ? (plan.annual_price_cents / 100).toString()
+                        : (plan.price_cents / 100).toString();
+
+                    await openEpaycoCheckout({
+                        planId: plan.id,
+                        planName: `Derbix ${plan.display_name}`,
+                        planDescription: `Suscripción ${billingPeriod === 'annual' ? 'anual' : 'mensual'} - ${plan.display_name}`,
+                        amount: price,
+                        currency: 'usd',
+                        userId: user.id,
+                        userEmail: profile?.email || user.email || '',
+                        userName: profile?.full_name || 'Usuario',
+                        orgId: currentOrg.id,
+                        billingPeriod,
+                    });
+                    setMessage({ type: 'success', text: 'Checkout abierto. Completa el pago para activar tu plan.' });
+                } else if (provider === 'lemon_squeezy') {
+                    const variantId = getVariantId(plan, billingPeriod)!;
                     await openCheckoutOverlay({
                         variantId,
                         userId: user.id,
@@ -309,20 +340,28 @@ const ManageSubscriptionSection: React.FC<{
     currentPlan: any;
 }> = ({ currentPlan }) => {
     const hasLSSub = !!currentPlan?.ls_subscription_id && !!currentPlan?.customer_portal_url;
+    const hasEpaycoSub = !!currentPlan?.epayco_subscription_id;
 
-    if (!hasLSSub) return null;
+    if (!hasLSSub && !hasEpaycoSub) return null;
 
     return (
         <div className="max-w-md mx-auto mt-10 text-center">
-            <a
-                href={currentPlan.customer_portal_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-colors border border-white/10"
-            >
-                Gestionar Suscripción
-                <ArrowRightIcon className="w-4 h-4" />
-            </a>
+            {hasLSSub && (
+                <a
+                    href={currentPlan.customer_portal_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-colors border border-white/10"
+                >
+                    Gestionar Suscripción
+                    <ArrowRightIcon className="w-4 h-4" />
+                </a>
+            )}
+            {hasEpaycoSub && !hasLSSub && (
+                <p className="text-sm text-gray-400">
+                    Para gestionar tu suscripción, contacta a <a href="mailto:support@derbix.com" className="text-brand hover:underline">support@derbix.com</a>
+                </p>
+            )}
             <p className="text-xs text-gray-500 mt-2">
                 Cancelar, pausar o cambiar método de pago
             </p>
