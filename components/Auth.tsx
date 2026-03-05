@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseService';
 
 export const AuthPage: React.FC = () => {
+    const navigate = useNavigate();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState(''); // Para el registro
@@ -108,9 +110,9 @@ export const AuthPage: React.FC = () => {
                 {error && <p className="mt-2 text-center text-sm text-red-accent">{error}</p>}
                 {message && <p className="mt-2 text-center text-sm text-green-accent">{message}</p>}
                 <p className="mt-2 text-center text-sm text-gray-400">
-                    {isLogin ? '¿No tienes una cuenta?' : '¿Ya tienes una cuenta?'}
-                    <button onClick={() => { setIsLogin(!isLogin); setError(''); setMessage(''); }} className="ml-1 font-medium text-green-accent hover:text-green-500">
-                        {isLogin ? 'Regístrate' : 'Inicia Sesión'}
+                    ¿No tienes una cuenta?
+                    <button onClick={() => navigate('/signup')} className="ml-1 font-medium text-green-accent hover:text-green-500">
+                        Regístrate
                     </button>
                 </p>
             </div>

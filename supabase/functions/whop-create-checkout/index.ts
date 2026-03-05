@@ -41,7 +41,7 @@ serve(async (req) => {
 
         console.log(`[whop-create-checkout] Creating checkout: plan=${whopPlanId}, user=${userId}, period=${billingPeriod}`);
 
-        const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://derbix.netlify.app';
+        const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://derbix.co';
 
         // Crear checkout configuration en Whop
         const response = await fetch('https://api.whop.com/api/v1/checkout_configurations', {

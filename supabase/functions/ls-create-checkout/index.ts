@@ -18,7 +18,7 @@ serve(async (req) => {
     try {
         const LS_API_KEY = Deno.env.get('LEMON_SQUEEZY_API_KEY');
         const LS_STORE_ID = Deno.env.get('LEMON_SQUEEZY_STORE_ID');
-        const FRONTEND_URL = Deno.env.get('FRONTEND_URL') || 'https://derbix.netlify.app';
+        const FRONTEND_URL = Deno.env.get('FRONTEND_URL') || 'https://derbix.co';
 
         if (!LS_API_KEY || !LS_STORE_ID) {
             console.error('[ls-create-checkout] Missing env vars');
