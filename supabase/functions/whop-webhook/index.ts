@@ -395,17 +395,24 @@ serve(async (req) => {
         });
 
         // 6. Procesar según tipo de evento
+        // Whop UI muestra eventos con guiones bajos (membership_activated)
+        // pero el payload puede usar puntos (membership.went_valid)
+        // Manejamos ambos formatos por seguridad
         switch (action) {
             case 'membership.went_valid':
+            case 'membership_activated':
                 await handleMembershipValid(supabase, data);
                 break;
             case 'membership.went_invalid':
+            case 'membership_deactivated':
                 await handleMembershipInvalid(supabase, data);
                 break;
             case 'payment.succeeded':
+            case 'invoice_paid':
                 await handlePaymentSucceeded(supabase, data);
                 break;
             case 'payment.failed':
+            case 'invoice_past_due':
                 await handlePaymentFailed(supabase, data);
                 break;
             default:
