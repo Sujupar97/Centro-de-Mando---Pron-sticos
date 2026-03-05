@@ -39,9 +39,24 @@ serve(async (req) => {
             });
         }
 
-        console.log(`[whop-create-checkout] Creating checkout: plan=${whopPlanId}, user=${userId}, period=${billingPeriod}`);
+        console.log(`[whop-create-checkout] Creating checkout: plan=${whopPlanId}, user=${userId}, org=${orgId}, period=${billingPeriod}, email=${email}`);
 
         const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://derbix.co';
+
+        const requestBody = {
+            plan_id: whopPlanId,
+            redirect_url: `${frontendUrl}/app?payment=success`,
+            source_url: `${frontendUrl}/pricing`,
+            metadata: {
+                userId,
+                orgId: orgId || '',
+                planId: planId || '',
+                billingPeriod: billingPeriod || 'monthly',
+            },
+            ...(email ? { prefill_email: email } : {}),
+        };
+
+        console.log(`[whop-create-checkout] Request body:`, JSON.stringify(requestBody));
 
         // Crear checkout configuration en Whop
         const response = await fetch('https://api.whop.com/api/v1/checkout_configurations', {
@@ -50,25 +65,15 @@ serve(async (req) => {
                 'Authorization': `Bearer ${whopApiKey}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                plan_id: whopPlanId,
-                redirect_url: `${frontendUrl}/app?payment=success`,
-                source_url: `${frontendUrl}/pricing`,
-                metadata: {
-                    userId,
-                    orgId: orgId || '',
-                    planId: planId || '',
-                    billingPeriod: billingPeriod || 'monthly',
-                },
-                ...(email ? { prefill_email: email } : {}),
-            }),
+            body: JSON.stringify(requestBody),
         });
 
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`[whop-create-checkout] Whop API error ${response.status}: ${errorText}`);
+            console.error(`[whop-create-checkout] API Key prefix: ${whopApiKey.substring(0, 10)}...`);
             return new Response(JSON.stringify({
-                error: 'Error al crear sesión de pago. Intenta de nuevo.'
+                error: `Error al crear sesión de pago (${response.status}). Intenta de nuevo.`
             }), {
                 status: 502,
                 headers: corsHeaders

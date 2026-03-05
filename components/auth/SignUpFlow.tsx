@@ -102,13 +102,7 @@ export const SignUpFlow: React.FC = () => {
 
                 navigate('/app');
             } else {
-                // 3. Plan de pago: abrir checkout Lemon Squeezy
-                const variantId = getVariantId(selectedPlan, billingPeriod);
-                if (!variantId) {
-                    setError('Plan no disponible. Contacta soporte.');
-                    setLoading(false);
-                    return;
-                }
+                // 3. Plan de pago: detectar gateway (Whop → Lemon Squeezy)
 
                 // Esperar un poco para que el user se propague en Supabase
                 await new Promise(r => setTimeout(r, 1000));
@@ -123,17 +117,49 @@ export const SignUpFlow: React.FC = () => {
 
                 const orgId = memberData?.organization_id || authData.user.id;
 
-                await openCheckoutOverlay({
-                    variantId,
-                    userId: authData.user.id,
-                    userEmail: signUpData.email,
-                    userName: signUpData.fullName,
-                    orgId,
-                    billingPeriod,
-                });
+                // Detectar gateway: Whop primero, luego LS
+                const whopPlanId = billingPeriod === 'annual'
+                    ? (selectedPlan.whop_plan_id_annual || selectedPlan.whop_plan_id)
+                    : selectedPlan.whop_plan_id;
 
-                // Redirigir despues de abrir el checkout overlay
-                setTimeout(() => navigate('/app'), 2000);
+                if (whopPlanId) {
+                    // Checkout via Whop (redirect)
+                    const { data, error: checkoutError } = await supabase.functions.invoke('whop-create-checkout', {
+                        body: {
+                            whopPlanId,
+                            planId: selectedPlan.id,
+                            userId: authData.user.id,
+                            orgId,
+                            billingPeriod,
+                            email: signUpData.email,
+                        }
+                    });
+
+                    if (checkoutError || !data?.purchase_url) {
+                        throw new Error(data?.error || 'Error al crear sesión de pago. Intenta de nuevo.');
+                    }
+
+                    window.location.href = data.purchase_url;
+                } else {
+                    // Fallback: Lemon Squeezy
+                    const variantId = getVariantId(selectedPlan, billingPeriod);
+                    if (!variantId) {
+                        setError('Plan no disponible. Contacta soporte.');
+                        setLoading(false);
+                        return;
+                    }
+
+                    await openCheckoutOverlay({
+                        variantId,
+                        userId: authData.user.id,
+                        userEmail: signUpData.email,
+                        userName: signUpData.fullName,
+                        orgId,
+                        billingPeriod,
+                    });
+
+                    setTimeout(() => navigate('/app'), 2000);
+                }
             }
         } catch (err: any) {
             console.error('Error en registro:', err);
