@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getActivePlans, formatPrice, SubscriptionPlan, assignPlanToUser } from '../../services/subscriptionService';
 import { openCheckoutOverlay, getVariantId, getPlanPrice } from '../../services/lemonSqueezyService';
-import { openEpaycoCheckout, getEpaycoPlanId } from '../../services/epaycoService';
+import { supabase } from '../../services/supabaseService';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useOrganization } from '../../contexts/OrganizationContext';
@@ -187,10 +187,11 @@ export const PricingPage: React.FC = () => {
 
     /**
      * Detecta qué gateway de pago usar para un plan.
-     * Prioridad: ePayco → Lemon Squeezy → null
+     * Prioridad: Whop → Lemon Squeezy → null
      */
-    const getPaymentProvider = (plan: SubscriptionPlan, period: 'monthly' | 'annual'): 'epayco' | 'lemon_squeezy' | null => {
-        if (getEpaycoPlanId(plan, period)) return 'epayco';
+    const getPaymentProvider = (plan: SubscriptionPlan, period: 'monthly' | 'annual'): 'whop' | 'lemon_squeezy' | null => {
+        const whopId = period === 'annual' ? (plan.whop_plan_id_annual || plan.whop_plan_id) : plan.whop_plan_id;
+        if (whopId) return 'whop';
         if (getVariantId(plan, period)) return 'lemon_squeezy';
         return null;
     };
@@ -216,24 +217,27 @@ export const PricingPage: React.FC = () => {
             } else {
                 const provider = getPaymentProvider(plan, billingPeriod);
 
-                if (provider === 'epayco') {
-                    const price = billingPeriod === 'annual' && plan.annual_price_cents > 0
-                        ? (plan.annual_price_cents / 100).toString()
-                        : (plan.price_cents / 100).toString();
+                if (provider === 'whop') {
+                    const whopPlanId = billingPeriod === 'annual'
+                        ? (plan.whop_plan_id_annual || plan.whop_plan_id)
+                        : plan.whop_plan_id;
 
-                    await openEpaycoCheckout({
-                        planId: plan.id,
-                        planName: `Derbix ${plan.display_name}`,
-                        planDescription: `Suscripción ${billingPeriod === 'annual' ? 'anual' : 'mensual'} - ${plan.display_name}`,
-                        amount: price,
-                        currency: 'usd',
-                        userId: user.id,
-                        userEmail: profile?.email || user.email || '',
-                        userName: profile?.full_name || 'Usuario',
-                        orgId: currentOrg.id,
-                        billingPeriod,
+                    const { data, error } = await supabase.functions.invoke('whop-create-checkout', {
+                        body: {
+                            whopPlanId,
+                            planId: plan.id,
+                            userId: user.id,
+                            orgId: currentOrg.id,
+                            billingPeriod,
+                            email: profile?.email || user.email || '',
+                        }
                     });
-                    setMessage({ type: 'success', text: 'Checkout abierto. Completa el pago para activar tu plan.' });
+
+                    if (error || !data?.purchase_url) {
+                        throw new Error(data?.error || 'Error al crear checkout. Intenta de nuevo.');
+                    }
+
+                    window.location.href = data.purchase_url;
                 } else if (provider === 'lemon_squeezy') {
                     const variantId = getVariantId(plan, billingPeriod)!;
                     await openCheckoutOverlay({
@@ -340,9 +344,9 @@ const ManageSubscriptionSection: React.FC<{
     currentPlan: any;
 }> = ({ currentPlan }) => {
     const hasLSSub = !!currentPlan?.ls_subscription_id && !!currentPlan?.customer_portal_url;
-    const hasEpaycoSub = !!currentPlan?.epayco_subscription_id;
+    const hasWhopSub = !!currentPlan?.whop_membership_id;
 
-    if (!hasLSSub && !hasEpaycoSub) return null;
+    if (!hasLSSub && !hasWhopSub) return null;
 
     return (
         <div className="max-w-md mx-auto mt-10 text-center">
@@ -357,10 +361,16 @@ const ManageSubscriptionSection: React.FC<{
                     <ArrowRightIcon className="w-4 h-4" />
                 </a>
             )}
-            {hasEpaycoSub && !hasLSSub && (
-                <p className="text-sm text-gray-400">
-                    Para gestionar tu suscripción, contacta a <a href="mailto:support@derbix.com" className="text-brand hover:underline">support@derbix.com</a>
-                </p>
+            {hasWhopSub && !hasLSSub && (
+                <a
+                    href="https://whop.com/orders"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-colors border border-white/10"
+                >
+                    Gestionar Suscripción
+                    <ArrowRightIcon className="w-4 h-4" />
+                </a>
             )}
             <p className="text-xs text-gray-500 mt-2">
                 Cancelar, pausar o cambiar método de pago

@@ -28,9 +28,9 @@ export interface SubscriptionPlan {
     ls_product_id?: string;
     ls_variant_id_monthly?: string;
     ls_variant_id_annual?: string;
-    // ePayco fields
-    epayco_plan_id?: string;
-    epayco_plan_id_annual?: string;
+    // Whop fields
+    whop_plan_id?: string;
+    whop_plan_id_annual?: string;
     annual_price_cents: number;
     annual_discount_percentage: number;
     parlay_percentage: number;
@@ -50,8 +50,8 @@ export interface UserSubscription {
     ends_at: string | null;
     ls_subscription_id: string | null;
     ls_customer_id: string | null;
-    epayco_subscription_id: string | null;
-    epayco_customer_id: string | null;
+    whop_membership_id: string | null;
+    whop_user_id: string | null;
     card_brand: string | null;
     card_last_four: string | null;
     customer_portal_url: string | null;
