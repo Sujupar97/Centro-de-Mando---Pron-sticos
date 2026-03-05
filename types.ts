@@ -22,7 +22,7 @@ export type ConfidenceLevel = 'Alta' | 'Media' | 'Baja';
 
 export type OrganizationRole = 'owner' | 'admin' | 'usuario';
 export type OrganizationStatus = 'active' | 'suspended' | 'trial' | 'cancelled';
-export type SubscriptionPlanName = 'free' | 'starter' | 'pro' | 'premium' | 'unlimited';
+export type SubscriptionPlanName = 'free' | 'starter' | 'pro' | 'premium';
 /** @deprecated Use SubscriptionPlanName instead */
 export type SubscriptionPlan = SubscriptionPlanName;
 export type BillingPeriod = 'monthly' | 'annual';

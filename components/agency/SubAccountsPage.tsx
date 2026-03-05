@@ -24,7 +24,6 @@ const PLAN_COLORS: Record<string, string> = {
     starter: 'bg-blue-500/20 text-blue-400 border-blue-500/20',
     pro: 'bg-purple-500/20 text-purple-400 border-purple-500/20',
     premium: 'bg-amber-500/20 text-amber-400 border-amber-500/20',
-    unlimited: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20',
 };
 
 export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick, onManageClick }) => {

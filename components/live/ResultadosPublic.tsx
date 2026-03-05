@@ -91,7 +91,7 @@ const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigge
 
     const { plan, isAdmin } = useSubscription();
     const planName = plan.plan_name as PlanTier;
-    const isUnlimited = planName === 'unlimited' || isAdmin;
+    const isUnlimited = planName === 'premium' || isAdmin;
     const effectiveViewMode = isUnlimited ? 'global' : viewMode;
 
     const loadResults = async () => {

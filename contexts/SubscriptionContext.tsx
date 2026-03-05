@@ -146,7 +146,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 isPro: planName === 'pro',
                 isStarter: planName === 'starter',
                 isFree: planName === 'free',
-                isAdmin: planName === 'unlimited',
+                isAdmin: planName === 'premium',
             });
         } catch (error) {
             console.error('Error loading subscription:', error);

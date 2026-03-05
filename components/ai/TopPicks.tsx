@@ -55,7 +55,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
         if (!subscription) return 1;
 
         const isAdmin = isAgencyRole(profile?.role);
-        if (isAdmin || subscription.plan_name === 'unlimited') {
+        if (isAdmin || subscription.plan_name === 'premium') {
             return totalPicks;
         }
 
