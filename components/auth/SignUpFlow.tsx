@@ -104,8 +104,8 @@ export const SignUpFlow: React.FC = () => {
             } else {
                 // 3. Plan de pago: detectar gateway (Whop → Lemon Squeezy)
 
-                // Esperar un poco para que el user se propague en Supabase
-                await new Promise(r => setTimeout(r, 1000));
+                // Esperar a que el trigger handle_new_user() cree la org
+                await new Promise(r => setTimeout(r, 2000));
 
                 // Obtener orgId del usuario recien creado
                 const { data: memberData } = await supabase
@@ -113,7 +113,7 @@ export const SignUpFlow: React.FC = () => {
                     .select('organization_id')
                     .eq('user_id', authData.user.id)
                     .limit(1)
-                    .single();
+                    .maybeSingle();
 
                 const orgId = memberData?.organization_id || authData.user.id;
 

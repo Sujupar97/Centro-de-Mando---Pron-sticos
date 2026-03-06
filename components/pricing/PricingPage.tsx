@@ -234,7 +234,8 @@ export const PricingPage: React.FC = () => {
                     });
 
                     if (error || !data?.purchase_url) {
-                        throw new Error(data?.error || 'Error al crear checkout. Intenta de nuevo.');
+                        const msg = data?.error || error?.message || 'Error al crear checkout. Intenta de nuevo.';
+                        throw new Error(msg);
                     }
 
                     window.location.href = data.purchase_url;

@@ -45,6 +45,7 @@ serve(async (req) => {
 
         const requestBody = {
             plan_id: whopPlanId,
+            mode: "payment" as const,
             redirect_url: `${frontendUrl}/app?payment=success`,
             source_url: `${frontendUrl}/pricing`,
             metadata: {
@@ -52,8 +53,8 @@ serve(async (req) => {
                 orgId: orgId || '',
                 planId: planId || '',
                 billingPeriod: billingPeriod || 'monthly',
+                email: email || '',
             },
-            ...(email ? { prefill_email: email } : {}),
         };
 
         console.log(`[whop-create-checkout] Request body:`, JSON.stringify(requestBody));
@@ -75,7 +76,7 @@ serve(async (req) => {
             return new Response(JSON.stringify({
                 error: `Error al crear sesión de pago (${response.status}). Intenta de nuevo.`
             }), {
-                status: 502,
+                status: 422,
                 headers: corsHeaders
             });
         }
