@@ -12,6 +12,7 @@ import { AdminPage } from './components/Admin';
 import { PricingPage } from './components/pricing/PricingPage';
 import { PublicPricingPage } from './components/pricing/PublicPricingPage';
 import { SignUpFlow } from './components/auth/SignUpFlow';
+import { ResetPassword } from './components/auth/ResetPassword';
 import { TermsOfService } from './components/legal/TermsOfService';
 import { PrivacyPolicy } from './components/legal/PrivacyPolicy';
 import { RefundPolicy } from './components/legal/RefundPolicy';
@@ -160,6 +161,7 @@ const AppContent: React.FC = () => {
       <Route path="/refund" element={<RefundPolicy />} />
       <Route path="/signup" element={<SignUpFlow />} />
       <Route path="/login" element={<LoginRoute />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route
         path="/app/*"
         element={

@@ -71,6 +71,7 @@ export const SignUpFlow: React.FC = () => {
                 email: signUpData.email,
                 password: signUpData.password,
                 options: {
+                    emailRedirectTo: `${window.location.origin}/app`,
                     data: {
                         full_name: signUpData.fullName
                     }

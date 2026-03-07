@@ -14,6 +14,7 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
+  isRecoveryMode: boolean;
   signOut: () => Promise<void>;
 }
 
@@ -23,6 +24,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   // 'loading' ahora solo representa la comprobación inicial y muy rápida de la sesión.
   const [loading, setLoading] = useState(true);
 
@@ -30,10 +32,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Este efecto maneja el estado de la sesión. `onAuthStateChange` se dispara
     // inmediatamente al cargar con el estado actual de la sesión.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsRecoveryMode(true);
+        } else if (event === 'USER_UPDATED' || event === 'SIGNED_OUT') {
+          setIsRecoveryMode(false);
+        }
         setSession(session);
         setUser(session?.user ?? null);
-        // La comprobación inicial ha terminado. Desbloqueamos la UI.
         setLoading(false);
       }
     );
@@ -73,7 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await supabase.auth.signOut();
   };
 
-  const value = { session, user, profile, loading, signOut };
+  const value = { session, user, profile, loading, isRecoveryMode, signOut };
 
   // Esta pantalla de carga ahora es muy breve y solo se muestra
   // durante la fracción de segundo que tarda en verificarse la sesión.

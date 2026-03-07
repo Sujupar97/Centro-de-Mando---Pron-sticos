@@ -43,17 +43,21 @@ Deno.serve(async (req) => {
       throw new Error("No se pudo verificar el rol del usuario.")
     }
 
-    // Solo los superadministradores pueden invitar usuarios
-    if (profile.role !== 'superadmin') {
+    // Solo platform_owner y agency_admin pueden invitar usuarios
+    const allowedRoles = ['platform_owner', 'agency_admin', 'superadmin']
+    if (!allowedRoles.includes(profile.role)) {
       return new Response(JSON.stringify({ error: 'No tienes permiso para invitar usuarios.' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 403,
       })
     }
 
+    const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://derbix.co'
+
     // Invitar al nuevo usuario
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      data: { role: role || 'usuario' } // Se puede especificar el rol en la invitación
+      data: { role: role || 'user' },
+      redirectTo: `${frontendUrl}/app`
     })
 
     if (error) {
