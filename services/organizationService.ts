@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseService';
-import { Organization, OrganizationMember, OrganizationInvitation, OrganizationRole, UserProfile } from '../types';
+import { Organization, OrganizationMember, OrganizationInvitation, OrganizationRole, OrganizationWithDetails, UserProfile } from '../types';
 
 export const organizationService = {
 
@@ -238,5 +238,205 @@ export const organizationService = {
         return data as OrganizationInvitation[];
     },
 
+    /**
+     * AGENCY: Obtiene todas las organizaciones con datos enriquecidos
+     * (email real del owner, plan real de user_subscriptions, etc.)
+     */
+    async getOrganizationsWithDetails(): Promise<OrganizationWithDetails[]> {
+        // 3 queries en paralelo
+        const [orgsRes, membersRes, subsRes] = await Promise.all([
+            supabase.from('organizations').select('*').order('created_at', { ascending: false }),
+            supabase.from('organization_members').select('organization_id, user_id, role').eq('role', 'owner'),
+            supabase.from('user_subscriptions').select(`
+                user_id, organization_id, status, billing_period,
+                whop_membership_id, created_at, renews_at, ends_at,
+                plan:subscription_plans(name, display_name, price_cents)
+            `).in('status', ['active', 'trialing', 'past_due']),
+        ]);
+
+        if (orgsRes.error) throw orgsRes.error;
+
+        const orgs = orgsRes.data || [];
+        const members = membersRes.data || [];
+        const subs = subsRes.data || [];
+
+        // Obtener perfiles de los owners
+        const ownerUserIds = members.map((m: any) => m.user_id);
+        let profilesMap = new Map<string, { full_name: string; email: string }>();
+
+        if (ownerUserIds.length > 0) {
+            const { data: profiles } = await supabase
+                .from('profiles')
+                .select('id, full_name, email')
+                .in('id', ownerUserIds);
+            if (profiles) {
+                profilesMap = new Map(profiles.map((p: any) => [p.id, p]));
+            }
+        }
+
+        // Mapear owners por org_id
+        const ownerByOrg = new Map<string, string>();
+        for (const m of members) {
+            ownerByOrg.set(m.organization_id, m.user_id);
+        }
+
+        // Mapear suscripciones por org_id
+        const subByOrg = new Map<string, any>();
+        for (const s of subs) {
+            subByOrg.set(s.organization_id, s);
+        }
+
+        return orgs.map((org: any) => {
+            const ownerUserId = ownerByOrg.get(org.id) || null;
+            const ownerProfile = ownerUserId ? profilesMap.get(ownerUserId) : null;
+            const sub = subByOrg.get(org.id);
+            const planData = sub?.plan as any;
+
+            return {
+                ...org,
+                ownerEmail: ownerProfile?.email || null,
+                ownerName: ownerProfile?.full_name || null,
+                ownerUserId,
+                activePlanName: planData?.name || null,
+                activePlanDisplayName: planData?.display_name || null,
+                subscriptionStatus: sub?.status || null,
+                billingPeriod: sub?.billing_period || null,
+                whopMembershipId: sub?.whop_membership_id || null,
+                subscriptionCreatedAt: sub?.created_at || null,
+                subscriptionRenewsAt: sub?.renews_at || null,
+                subscriptionEndsAt: sub?.ends_at || null,
+                planPriceCents: planData?.price_cents ?? null,
+            } as OrganizationWithDetails;
+        });
+    },
+
+    /**
+     * AGENCY: Obtiene una organización con datos enriquecidos
+     */
+    async getOrganizationWithDetails(orgId: string): Promise<OrganizationWithDetails | null> {
+        const [orgRes, memberRes, subRes] = await Promise.all([
+            supabase.from('organizations').select('*').eq('id', orgId).single(),
+            supabase.from('organization_members').select('user_id').eq('organization_id', orgId).eq('role', 'owner').maybeSingle(),
+            supabase.from('user_subscriptions').select(`
+                user_id, organization_id, status, billing_period,
+                whop_membership_id, created_at, renews_at, ends_at,
+                plan:subscription_plans(name, display_name, price_cents)
+            `).eq('organization_id', orgId).in('status', ['active', 'trialing', 'past_due']).maybeSingle(),
+        ]);
+
+        if (orgRes.error || !orgRes.data) return null;
+        const org = orgRes.data;
+
+        let ownerProfile: { full_name: string; email: string } | null = null;
+        const ownerUserId = memberRes.data?.user_id || null;
+        if (ownerUserId) {
+            const { data } = await supabase.from('profiles').select('full_name, email').eq('id', ownerUserId).single();
+            ownerProfile = data;
+        }
+
+        const sub = subRes.data;
+        const planData = sub?.plan as any;
+
+        return {
+            ...org,
+            ownerEmail: ownerProfile?.email || null,
+            ownerName: ownerProfile?.full_name || null,
+            ownerUserId,
+            activePlanName: planData?.name || null,
+            activePlanDisplayName: planData?.display_name || null,
+            subscriptionStatus: sub?.status || null,
+            billingPeriod: sub?.billing_period || null,
+            whopMembershipId: sub?.whop_membership_id || null,
+            subscriptionCreatedAt: sub?.created_at || null,
+            subscriptionRenewsAt: sub?.renews_at || null,
+            subscriptionEndsAt: sub?.ends_at || null,
+            planPriceCents: planData?.price_cents ?? null,
+        } as OrganizationWithDetails;
+    },
+
+    /**
+     * AGENCY: Elimina una organización y todos sus datos relacionados
+     */
+    async deleteOrganization(orgId: string): Promise<{ success: boolean; error?: string }> {
+        try {
+            // Obtener owner para limpiar su perfil también
+            const { data: memberData } = await supabase
+                .from('organization_members')
+                .select('user_id')
+                .eq('organization_id', orgId)
+                .eq('role', 'owner')
+                .maybeSingle();
+
+            // Borrar en orden de dependencias FK
+            await supabase.from('organization_invitations').delete().eq('organization_id', orgId);
+            await supabase.from('user_subscriptions').delete().eq('organization_id', orgId);
+            await supabase.from('organization_members').delete().eq('organization_id', orgId);
+
+            // Borrar la org
+            const { error: orgError } = await supabase.from('organizations').delete().eq('id', orgId);
+            if (orgError) throw orgError;
+
+            // Limpiar perfil del owner (si existe y no pertenece a otras orgs)
+            if (memberData?.user_id) {
+                const { data: otherOrgs } = await supabase
+                    .from('organization_members')
+                    .select('id')
+                    .eq('user_id', memberData.user_id)
+                    .limit(1);
+
+                if (!otherOrgs || otherOrgs.length === 0) {
+                    await supabase.from('profiles').delete().eq('id', memberData.user_id);
+                }
+            }
+
+            return { success: true };
+        } catch (err: any) {
+            console.error('[organizationService] deleteOrganization error:', err);
+            return { success: false, error: err.message || 'Error al eliminar' };
+        }
+    },
+
+    /**
+     * AGENCY: Suspende una organización
+     */
+    async suspendOrganization(orgId: string): Promise<{ success: boolean; error?: string }> {
+        try {
+            const { error: orgError } = await supabase
+                .from('organizations')
+                .update({ status: 'suspended' })
+                .eq('id', orgId);
+
+            if (orgError) throw orgError;
+
+            // Cancelar suscripciones activas
+            await supabase
+                .from('user_subscriptions')
+                .update({ status: 'cancelled' })
+                .eq('organization_id', orgId)
+                .in('status', ['active', 'trialing', 'past_due']);
+
+            return { success: true };
+        } catch (err: any) {
+            console.error('[organizationService] suspendOrganization error:', err);
+            return { success: false, error: err.message || 'Error al suspender' };
+        }
+    },
+
+    /**
+     * AGENCY: Reactiva una organización suspendida
+     */
+    async reactivateOrganization(orgId: string): Promise<{ success: boolean; error?: string }> {
+        try {
+            const { error } = await supabase
+                .from('organizations')
+                .update({ status: 'active' })
+                .eq('id', orgId);
+
+            if (error) throw error;
+            return { success: true };
+        } catch (err: any) {
+            return { success: false, error: err.message };
+        }
+    },
 
 };

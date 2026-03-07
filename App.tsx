@@ -26,9 +26,24 @@ export type Page = 'live' | 'admin' | 'pricing';
 // --- PLATFORM (PROTECTED APP) ---
 const Platform: React.FC = () => {
   const { profile } = useAuth();
-  const { plan, isAdmin } = useSubscription();
+  const { plan, isAdmin, refreshSubscription } = useSubscription();
   const { isImpersonating } = useOrganization();
   const [currentPage, setCurrentPage] = React.useState<Page>('live');
+  const [paymentBanner, setPaymentBanner] = React.useState(false);
+
+  // Handler: ?payment=success después de pagar en Whop
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      setPaymentBanner(true);
+      refreshSubscription();
+      // Limpiar el parámetro de la URL
+      window.history.replaceState({}, '', window.location.pathname);
+      // Auto-ocultar después de 8 segundos
+      const timer = setTimeout(() => setPaymentBanner(false), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   const recap = useDailyRecap(
     plan.plan_name,
@@ -74,6 +89,14 @@ const Platform: React.FC = () => {
         onReopen: recap.reopen,
       }}
     >
+      {paymentBanner && (
+        <div className="mx-4 mt-4 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between animate-fade-in">
+          <p className="text-emerald-400 font-bold">¡Pago exitoso! Tu plan ha sido activado.</p>
+          <button onClick={() => setPaymentBanner(false)} className="text-emerald-400/60 hover:text-emerald-400 p-1">
+            ✕
+          </button>
+        </div>
+      )}
       {renderContent()}
       {recap.isVisible && recap.data && (
         <DailyRecapModal

@@ -51,6 +51,22 @@ export interface Organization {
     settings?: Record<string, any>;
 }
 
+export interface OrganizationWithDetails extends Organization {
+    is_agency?: boolean;
+    ownerEmail: string | null;
+    ownerName: string | null;
+    ownerUserId: string | null;
+    activePlanName: string | null;
+    activePlanDisplayName: string | null;
+    subscriptionStatus: string | null;
+    billingPeriod: string | null;
+    whopMembershipId: string | null;
+    subscriptionCreatedAt: string | null;
+    subscriptionRenewsAt: string | null;
+    subscriptionEndsAt: string | null;
+    planPriceCents: number | null;
+}
+
 export interface OrganizationMember {
     id: string;
     organization_id: string;

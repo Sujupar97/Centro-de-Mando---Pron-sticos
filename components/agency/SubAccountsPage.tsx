@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { organizationService } from '../../services/organizationService';
-import { getActivePlans, assignPlanToUser, SubscriptionPlan as PlanRecord } from '../../services/subscriptionService';
-import { Organization } from '../../types';
+import { OrganizationWithDetails } from '../../types';
 import { useOrganization } from '../../contexts/OrganizationContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useLanguage } from '../../contexts/LanguageContext';
 import {
     MagnifyingGlassIcon,
     BuildingOfficeIcon,
-    PhoneIcon,
-    MapPinIcon,
     ArrowRightOnRectangleIcon,
     EllipsisVerticalIcon
 } from '../icons/Icons';
@@ -18,6 +15,8 @@ interface SubAccountsPageProps {
     onCreateClick: () => void;
     onManageClick: (orgId: string) => void;
 }
+
+type PlanFilter = 'all' | 'with_plan' | 'free_only';
 
 const PLAN_COLORS: Record<string, string> = {
     free: 'bg-slate-500/20 text-slate-400 border-slate-500/20',
@@ -29,11 +28,10 @@ const PLAN_COLORS: Record<string, string> = {
 export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick, onManageClick }) => {
     const { t } = useLanguage();
     const { user } = useAuth();
-    const [orgs, setOrgs] = useState<Organization[]>([]);
-    const [plans, setPlans] = useState<PlanRecord[]>([]);
+    const [orgs, setOrgs] = useState<OrganizationWithDetails[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [changingPlan, setChangingPlan] = useState<string | null>(null);
+    const [planFilter, setPlanFilter] = useState<PlanFilter>('all');
     const { impersonateOrganization } = useOrganization();
 
     useEffect(() => {
@@ -42,12 +40,8 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
 
     const loadData = async () => {
         try {
-            const [orgsData, plansData] = await Promise.all([
-                organizationService.getAllOrganizations(),
-                getActivePlans(),
-            ]);
+            const orgsData = await organizationService.getOrganizationsWithDetails();
             setOrgs(orgsData);
-            setPlans(plansData);
         } catch (e) {
             console.error(e);
         } finally {
@@ -55,10 +49,24 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
         }
     };
 
-    const filteredOrgs = orgs.filter(org =>
-        org.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        org.id.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Filtrar: excluir org agencia, aplicar búsqueda y filtro de plan
+    const filteredOrgs = orgs
+        .filter(org => !org.is_agency)
+        .filter(org => {
+            const term = searchTerm.toLowerCase();
+            if (!term) return true;
+            return (
+                org.name.toLowerCase().includes(term) ||
+                (org.ownerEmail || '').toLowerCase().includes(term) ||
+                (org.ownerName || '').toLowerCase().includes(term) ||
+                org.id.toLowerCase().includes(term)
+            );
+        })
+        .filter(org => {
+            if (planFilter === 'with_plan') return org.activePlanName && org.activePlanName !== 'free';
+            if (planFilter === 'free_only') return !org.activePlanName || org.activePlanName === 'free';
+            return true;
+        });
 
     const handleImpersonate = async (orgId: string) => {
         if (confirm(t('confirm.impersonate'))) {
@@ -66,42 +74,16 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
         }
     };
 
-    const handlePlanChange = async (org: Organization, newPlanName: string) => {
-        const plan = plans.find(p => p.name === newPlanName);
-        if (!plan || newPlanName === org.subscription_plan) return;
+    const getPlanBadge = (org: OrganizationWithDetails) => {
+        const planName = org.activePlanName || 'free';
+        const displayName = org.activePlanDisplayName || 'Free';
+        const colors = PLAN_COLORS[planName] || PLAN_COLORS.free;
 
-        setChangingPlan(org.id);
-        try {
-            // Obtener owner del org para asignar el plan
-            const members = await organizationService.getOrganizationMembers(org.id);
-            const owner = members.find(m => m.role === 'owner') || members[0];
-            if (!owner) {
-                alert('No se encontró el dueño de esta cuenta.');
-                return;
-            }
-
-            const result = await assignPlanToUser(
-                owner.user_id,
-                org.id,
-                plan.id,
-                user?.id,
-                `Plan changed by agency admin`
-            );
-
-            if (result.success) {
-                // Actualizar el org local también
-                setOrgs(prev => prev.map(o =>
-                    o.id === org.id ? { ...o, subscription_plan: newPlanName as any } : o
-                ));
-            } else {
-                alert(`Error: ${result.error}`);
-            }
-        } catch (e: any) {
-            console.error('Error changing plan:', e);
-            alert(`Error: ${e.message}`);
-        } finally {
-            setChangingPlan(null);
-        }
+        return (
+            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border ${colors}`}>
+                {displayName}
+            </span>
+        );
     };
 
     if (loading) return (
@@ -118,7 +100,7 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
                 <div className="relative w-full sm:w-96">
                     <input
                         type="text"
-                        placeholder={t('page.search_ph')}
+                        placeholder="Buscar por nombre, email o ID..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full bg-slate-800 border-none rounded-lg py-2.5 pl-10 pr-4 text-white text-sm focus:ring-2 focus:ring-brand placeholder-slate-500"
@@ -126,8 +108,31 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
                     <MagnifyingGlassIcon className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 </div>
 
-                <div className="text-sm text-slate-400">
-                    {t('page.showing')} <span className="font-bold text-white">{filteredOrgs.length}</span> {t('page.items')}
+                <div className="flex items-center gap-3">
+                    {/* Filtro de plan */}
+                    <div className="flex bg-slate-800 rounded-lg p-0.5">
+                        {([
+                            { key: 'all', label: 'Todos' },
+                            { key: 'with_plan', label: 'Con Plan' },
+                            { key: 'free_only', label: 'Free' },
+                        ] as { key: PlanFilter; label: string }[]).map(f => (
+                            <button
+                                key={f.key}
+                                onClick={() => setPlanFilter(f.key)}
+                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                                    planFilter === f.key
+                                        ? 'bg-brand text-slate-900'
+                                        : 'text-slate-400 hover:text-white'
+                                }`}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="text-sm text-slate-400">
+                        <span className="font-bold text-white">{filteredOrgs.length}</span> cuentas
+                    </div>
                 </div>
             </div>
 
@@ -137,7 +142,7 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
                     <div key={org.id} className="bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl p-6 transition-all duration-200 group relative">
                         <div className="flex flex-col md:flex-row items-center gap-6">
 
-                            {/* Avatar / Logo */}
+                            {/* Avatar */}
                             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 flex items-center justify-center shrink-0 shadow-lg">
                                 <span className="text-2xl font-bold text-slate-300">{org.name.charAt(0).toUpperCase()}</span>
                             </div>
@@ -148,51 +153,26 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
                                     <h3 className="text-lg font-bold text-white truncate">{org.name}</h3>
                                     <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider
                                         ${org.status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/20 text-red-400 border border-red-500/20'}`}>
-                                        {org.status}
+                                        {org.status === 'active' ? 'Activa' : org.status === 'suspended' ? 'Suspendida' : org.status}
                                     </span>
                                 </div>
-                                <div className="flex flex-col md:flex-row items-center md:items-start gap-4 text-sm text-slate-400 mt-2">
-                                    {org.metadata?.address && (
-                                        <div className="flex items-center gap-1.5">
-                                            <MapPinIcon className="w-3.5 h-3.5" />
-                                            <span>{org.metadata.address}</span>
-                                        </div>
+                                <div className="flex flex-col md:flex-row items-center md:items-start gap-3 text-sm text-slate-400 mt-1">
+                                    {org.ownerEmail && (
+                                        <span className="text-slate-300">{org.ownerEmail}</span>
                                     )}
-                                    {org.metadata?.phone && (
-                                        <div className="flex items-center gap-1.5">
-                                            <PhoneIcon className="w-3.5 h-3.5" />
-                                            <span>{org.metadata.phone}</span>
-                                        </div>
+                                    {org.ownerName && (
+                                        <span className="text-slate-500">{org.ownerName}</span>
                                     )}
-                                    {!org.metadata?.address && !org.metadata?.phone && (
-                                        <span className="opacity-50 italic">{t('card.no_contact_data')}</span>
+                                    {!org.ownerEmail && !org.ownerName && (
+                                        <span className="opacity-50 italic">Sin datos de contacto</span>
                                     )}
                                 </div>
                             </div>
 
-                            {/* Plan selector */}
+                            {/* Plan badge */}
                             <div className="text-center md:text-right px-4 border-l border-white/5">
-                                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">{t('card.plan')}</p>
-                                <select
-                                    value={org.subscription_plan}
-                                    onChange={(e) => handlePlanChange(org, e.target.value)}
-                                    disabled={changingPlan === org.id}
-                                    className={`bg-slate-800 border rounded-lg px-3 py-1.5 text-sm font-bold capitalize cursor-pointer focus:ring-2 focus:ring-brand transition-all ${
-                                        changingPlan === org.id ? 'opacity-50 cursor-wait' : ''
-                                    } ${PLAN_COLORS[org.subscription_plan] || PLAN_COLORS.free}`}
-                                >
-                                    {plans.map(p => (
-                                        <option key={p.id} value={p.name} className="bg-slate-800 text-white">
-                                            {p.display_name}
-                                        </option>
-                                    ))}
-                                    {/* Fallback si el plan actual no esta en la lista */}
-                                    {!plans.find(p => p.name === org.subscription_plan) && (
-                                        <option value={org.subscription_plan} className="bg-slate-800 text-white">
-                                            {org.subscription_plan}
-                                        </option>
-                                    )}
-                                </select>
+                                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1.5">{t('card.plan')}</p>
+                                {getPlanBadge(org)}
                             </div>
 
                             <div className="text-center md:text-right px-4 border-l border-white/5 hidden md:block">
@@ -225,7 +205,6 @@ export const SubAccountsPage: React.FC<SubAccountsPageProps> = ({ onCreateClick,
                         <BuildingOfficeIcon className="w-12 h-12 text-slate-600 mx-auto mb-4" />
                         <h3 className="text-lg font-bold text-slate-400">{t('page.no_results')}</h3>
                         <p className="text-slate-500 mt-2">{t('page.no_results_sub')}</p>
-                        <button onClick={onCreateClick} className="mt-6 text-brand hover:underline font-bold text-sm">{t('btn.new_client')}</button>
                     </div>
                 )}
             </div>
