@@ -77,6 +77,16 @@ export interface DayAuditStatus {
     isAlreadyTrained: boolean;
 }
 
+export interface PlattMetrics {
+    A: number;
+    B: number;
+    samples: number;
+    brier_before: number;
+    brier_after: number;
+    ece_before: number;
+    ece_after: number;
+}
+
 export interface TrainingResult {
     success: boolean;
     daysProcessed: number;
@@ -86,6 +96,7 @@ export interface TrainingResult {
     patternsGenerated: number;
     summary: string;
     error?: string;
+    platt?: PlattMetrics;
 }
 
 // ── Training Status ──────────────────────────────────────────────────
@@ -363,6 +374,33 @@ export async function getParlayCalibration(): Promise<ParlayCalibration[]> {
         return [];
     }
     return data || [];
+}
+
+// ── Platt Scaling Parameters ─────────────────────────────────────────
+
+/** Get current Platt Scaling parameters (stored in ml_calibration_factors as dimension='platt') */
+export async function getPlattParameters(): Promise<{
+    hasPlatt: boolean;
+    A: number;
+    B: number;
+    sampleSize: number;
+} | null> {
+    const { data, error } = await supabase
+        .from('ml_calibration_factors')
+        .select('calibration_factor, confidence_adjustment, sample_size')
+        .eq('dimension', 'platt')
+        .eq('dimension_key', 'global')
+        .eq('status', 'active')
+        .single();
+
+    if (error || !data) return null;
+
+    return {
+        hasPlatt: true,
+        A: data.calibration_factor,
+        B: (data.confidence_adjustment || 0) / 1000, // B stored as B*1000
+        sampleSize: data.sample_size || 0,
+    };
 }
 
 // ── ML System Status ─────────────────────────────────────────────────

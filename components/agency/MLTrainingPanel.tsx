@@ -16,6 +16,7 @@ import {
     getTrainingHistory,
     getMLSystemStatus,
     getParlayCalibration,
+    getPlattParameters,
     triggerTraining,
     rollbackTraining,
     toggleCalibrationFactor,
@@ -28,6 +29,7 @@ import type {
     TrainingRun,
     TrainingResult,
     ParlayCalibration,
+    PlattMetrics,
 } from '../../services/mlService';
 
 type ActiveTab = 'audit' | 'calibration' | 'patterns' | 'parlays' | 'history';
@@ -64,6 +66,9 @@ const MLTrainingPanel: React.FC = () => {
         totalPicksTrained: number;
     } | null>(null);
 
+    // Platt state
+    const [plattParams, setPlattParams] = useState<{ hasPlatt: boolean; A: number; B: number; sampleSize: number } | null>(null);
+
     // Training state
     const [isTraining, setIsTraining] = useState(false);
     const [trainingResult, setTrainingResult] = useState<TrainingResult | null>(null);
@@ -94,9 +99,10 @@ const MLTrainingPanel: React.FC = () => {
                 setAuditDays(days);
                 setSystemStatus(status);
             } else if (activeTab === 'calibration') {
-                const [f, status] = await Promise.all([getCalibrationFactors(), statusPromise]);
+                const [f, status, pp] = await Promise.all([getCalibrationFactors(), statusPromise, getPlattParameters()]);
                 setFactors(f);
                 setSystemStatus(status);
+                setPlattParams(pp);
             } else if (activeTab === 'patterns') {
                 const [p, status] = await Promise.all([getLearnedPatterns(), statusPromise]);
                 setPatterns(p);
@@ -463,6 +469,14 @@ const MLTrainingPanel: React.FC = () => {
                                                         <p>{trainingResult.daysProcessed} dia{trainingResult.daysProcessed !== 1 ? 's' : ''} procesado{trainingResult.daysProcessed !== 1 ? 's' : ''}, {trainingResult.daysSkipped} omitido{trainingResult.daysSkipped !== 1 ? 's' : ''}</p>
                                                         <p>{trainingResult.totalPicksProcessed} picks analizados</p>
                                                         <p>{trainingResult.factorsUpdated} factores actualizados, {trainingResult.patternsGenerated} patrones generados</p>
+                                                        {trainingResult.platt && trainingResult.platt.samples > 0 && (
+                                                            <div className="mt-2 p-2 bg-slate-800/50 rounded border border-white/5">
+                                                                <p className="font-bold text-cyan-300 mb-1">Platt Scaling (ventana 60 dias)</p>
+                                                                <p>Parametros: A={trainingResult.platt.A.toFixed(4)}, B={trainingResult.platt.B.toFixed(4)} ({trainingResult.platt.samples} picks)</p>
+                                                                <p>Brier Score: {trainingResult.platt.brier_before.toFixed(4)} → {trainingResult.platt.brier_after.toFixed(4)} {trainingResult.platt.brier_after < trainingResult.platt.brier_before ? '(mejora)' : '(sin cambio)'}</p>
+                                                                <p>ECE: {(trainingResult.platt.ece_before * 100).toFixed(1)}% → {(trainingResult.platt.ece_after * 100).toFixed(1)}% {trainingResult.platt.ece_after < trainingResult.platt.ece_before ? '(mejora)' : '(sin cambio)'}</p>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <p className="text-xs text-red-400 mt-1">{trainingResult.error}</p>
@@ -478,6 +492,71 @@ const MLTrainingPanel: React.FC = () => {
                     {/* ═══ CALIBRATION TAB ═══ */}
                     {activeTab === 'calibration' && (
                         <div className="space-y-4">
+                            {/* Platt Scaling Card */}
+                            <div className="glass p-4 rounded-xl border border-white/5 bg-gradient-to-br from-cyan-950/30 to-slate-900">
+                                <h3 className="text-sm font-bold text-cyan-300 mb-3 flex items-center gap-2">
+                                    <ChartBarIcon className="w-4 h-4" />
+                                    Platt Scaling V4 (Calibracion Bidireccional)
+                                </h3>
+                                {plattParams ? (
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                        <div className="bg-slate-800/50 rounded-lg p-3 border border-white/5">
+                                            <p className="text-xs text-slate-500 uppercase">Param A</p>
+                                            <p className="text-lg font-bold text-white">{plattParams.A.toFixed(4)}</p>
+                                            <p className="text-xs text-slate-500">{plattParams.A > 1.05 ? 'Comprime probs' : plattParams.A < 0.95 ? 'Expande probs' : 'Neutro'}</p>
+                                        </div>
+                                        <div className="bg-slate-800/50 rounded-lg p-3 border border-white/5">
+                                            <p className="text-xs text-slate-500 uppercase">Param B</p>
+                                            <p className="text-lg font-bold text-white">{plattParams.B.toFixed(4)}</p>
+                                            <p className="text-xs text-slate-500">{plattParams.B > 0.05 ? 'Reduce todas' : plattParams.B < -0.05 ? 'Sube todas' : 'Neutro'}</p>
+                                        </div>
+                                        <div className="bg-slate-800/50 rounded-lg p-3 border border-white/5">
+                                            <p className="text-xs text-slate-500 uppercase">Picks en ventana</p>
+                                            <p className="text-lg font-bold text-cyan-400">{plattParams.sampleSize}</p>
+                                            <p className="text-xs text-slate-500">{plattParams.sampleSize >= 50 ? 'Platt ACTIVO' : `Faltan ${50 - plattParams.sampleSize} picks`}</p>
+                                        </div>
+                                        <div className="bg-slate-800/50 rounded-lg p-3 border border-white/5">
+                                            <p className="text-xs text-slate-500 uppercase">Estado</p>
+                                            <p className={`text-lg font-bold ${plattParams.sampleSize >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                                {plattParams.sampleSize >= 50 ? 'Activo' : 'Acumulando'}
+                                            </p>
+                                            <p className="text-xs text-slate-500">Ventana: 60 dias</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-slate-500 p-3 bg-slate-800/30 rounded-lg">
+                                        Sin parametros Platt. Ejecuta un entrenamiento con al menos 50 picks verificados para activar la calibracion bidireccional.
+                                    </div>
+                                )}
+
+                                {plattParams && plattParams.sampleSize >= 50 && (
+                                    <div className="mt-3 p-3 bg-slate-800/30 rounded-lg">
+                                        <p className="text-xs text-slate-400 mb-2 font-bold">Simulacion de impacto (Platt puro, sin dimensiones):</p>
+                                        <div className="flex flex-wrap gap-3">
+                                            {[75, 80, 83, 85, 88, 90, 95].map(prob => {
+                                                const epsilon = 1e-7;
+                                                const p = Math.max(epsilon, Math.min(1 - epsilon, prob / 100));
+                                                const logit = Math.log(p / (1 - p));
+                                                const expVal = Math.exp(Math.max(-50, Math.min(50, plattParams.A * logit + plattParams.B)));
+                                                const calibrated = Math.max(1, Math.min(99, (1 / (1 + expVal)) * 100));
+                                                const delta = calibrated - prob;
+                                                const cappedDelta = Math.max(-8, Math.min(8, delta));
+                                                const final_ = Math.round((prob + cappedDelta) * 10) / 10;
+                                                return (
+                                                    <div key={prob} className="text-center">
+                                                        <p className="text-xs text-slate-500">{prob}%</p>
+                                                        <p className={`text-sm font-bold ${cappedDelta > 0.3 ? 'text-emerald-400' : cappedDelta < -0.3 ? 'text-amber-400' : 'text-slate-300'}`}>
+                                                            {cappedDelta >= 0 ? '+' : ''}{cappedDelta.toFixed(1)}
+                                                        </p>
+                                                        <p className="text-xs text-white font-medium">{final_}%</p>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Dimension filter */}
                             <div className="flex gap-2 flex-wrap">
                                 <button
@@ -511,7 +590,8 @@ const MLTrainingPanel: React.FC = () => {
                                             <th className="text-center p-3 text-xs text-slate-400 uppercase">Muestra</th>
                                             <th className="text-center p-3 text-xs text-slate-400 uppercase">WR Real</th>
                                             <th className="text-center p-3 text-xs text-slate-400 uppercase">WR Predicho</th>
-                                            <th className="text-center p-3 text-xs text-slate-400 uppercase">Factor</th>
+                                            <th className="text-center p-3 text-xs text-slate-400 uppercase">Gap</th>
+                                            <th className="text-center p-3 text-xs text-slate-400 uppercase">Direccion</th>
                                             <th className="text-center p-3 text-xs text-slate-400 uppercase">ROI</th>
                                             <th className="text-center p-3 text-xs text-slate-400 uppercase">Estado</th>
                                         </tr>
@@ -519,19 +599,28 @@ const MLTrainingPanel: React.FC = () => {
                                     <tbody>
                                         {filteredFactors.length === 0 ? (
                                             <tr>
-                                                <td colSpan={8} className="p-8 text-center text-slate-500">
+                                                <td colSpan={9} className="p-8 text-center text-slate-500">
                                                     {factors.length === 0
                                                         ? 'No hay factores de calibracion. Ejecuta el primer entrenamiento para generarlos.'
                                                         : 'No hay factores en esta dimension.'}
                                                 </td>
                                             </tr>
                                         ) : (
-                                            filteredFactors.map(f => {
-                                                const gap = f.actual_wr - f.predicted_avg;
-                                                const gapColor = Math.abs(gap) < 5 ? 'text-emerald-400'
-                                                    : gap < -10 ? 'text-red-400'
-                                                    : gap < 0 ? 'text-amber-400'
-                                                    : 'text-blue-400';
+                                            filteredFactors.filter(f => f.dimension !== 'platt').map(f => {
+                                                const gap = f.predicted_avg - f.actual_wr;
+                                                const absGap = Math.abs(gap);
+                                                const isOverconfident = gap > 0;
+                                                const gapColor = absGap < 3 ? 'text-emerald-400'
+                                                    : absGap < 8 ? 'text-amber-400'
+                                                    : 'text-red-400';
+                                                // Direction: overconfident→will reduce, underconfident→will INCREASE
+                                                const dirLabel = absGap < 3 ? 'Neutro'
+                                                    : isOverconfident ? 'Reducira'
+                                                    : 'Subira';
+                                                const dirColor = absGap < 3 ? 'text-slate-400'
+                                                    : isOverconfident ? 'text-amber-400'
+                                                    : 'text-emerald-400';
+                                                const dirArrow = absGap < 3 ? '=' : isOverconfident ? '\u2193' : '\u2191';
                                                 return (
                                                     <tr key={f.id} className="border-b border-white/5 last:border-0 hover:bg-white/2">
                                                         <td className="p-3 text-slate-400 text-xs">{f.dimension}</td>
@@ -542,7 +631,10 @@ const MLTrainingPanel: React.FC = () => {
                                                         </td>
                                                         <td className="p-3 text-center text-slate-300">{f.predicted_avg.toFixed(1)}%</td>
                                                         <td className={`p-3 text-center font-bold ${gapColor}`}>
-                                                            {f.calibration_factor.toFixed(3)}
+                                                            {gap > 0 ? '+' : ''}{gap.toFixed(1)}pts
+                                                        </td>
+                                                        <td className={`p-3 text-center font-bold ${dirColor}`}>
+                                                            <span className="text-lg">{dirArrow}</span> <span className="text-xs">{dirLabel}</span>
                                                         </td>
                                                         <td className={`p-3 text-center font-medium ${(f.roi || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                                             {f.roi != null ? `${f.roi > 0 ? '+' : ''}${f.roi.toFixed(1)}%` : '-'}

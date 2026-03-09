@@ -298,16 +298,29 @@ async function applyCalibrationPostProcessing(
     }
 }
 
-// ── ML Post-Processing V3: Clean math-only calibration ──────────
-// V3 approach: Gemini assigns raw probs freely (no "lower your confidence" in prompt).
-// This function applies ONLY prob_band correction (the most reliable dimension).
-// Market/league factors are logged but NOT applied until sample sizes are large enough.
+// ── ML Post-Processing V4: Platt Scaling Bidireccional ──────────
+// V4 approach: Gemini assigns raw probs freely. This function applies:
+// 1. Global Platt Scaling (can INCREASE or DECREASE probs) — primary correction
+// 2. Per-dimension adjustments (prob_band, market, league) — secondary corrections
+// Both directions are symmetric. No more "death spiral".
+
+const MIN_GLOBAL_SAMPLES_FOR_PLATT = 50;  // Need ≥50 verified picks for Platt
+const MIN_DIM_SAMPLES = 30;               // Need ≥30 picks per dimension factor
+const MAX_CORRECTION_PTS = 8;             // Max ±8pts total correction
+
+function applyPlattScale(probPct: number, A: number, B: number): number {
+    const epsilon = 1e-7;
+    const prob = Math.max(epsilon, Math.min(1 - epsilon, probPct / 100));
+    const logit = Math.log(prob / (1 - prob));
+    const expVal = Math.exp(Math.max(-50, Math.min(50, A * logit + B)));
+    return Math.max(1, Math.min(99, (1 / (1 + expVal)) * 100));
+}
 
 async function applyCalibrationPostProcessingV3(
     picks: any[],
     leagueName: string,
     supabase: any,
-    minSamplesForCorrection: number = 20
+    _minSamplesForCorrection: number = 20
 ): Promise<{ adjustedPicks: any[]; adjustments: CalibrationAdjustment[] }> {
     const adjustments: CalibrationAdjustment[] = [];
 
@@ -318,14 +331,32 @@ async function applyCalibrationPostProcessingV3(
             .eq('status', 'active');
 
         if (!factors || factors.length === 0) {
-            console.log('[v3-ai-analyzer] ML V3 post-processing: No calibration factors found. NO-OP.');
+            console.log('[v3-ai-analyzer] ML V4: No calibration factors found. NO-OP.');
             return { adjustedPicks: picks, adjustments: [] };
         }
 
         // Build lookup maps
         const factorMap = new Map<string, any>();
+        let totalSamples = 0;
         for (const f of factors) {
             factorMap.set(`${f.dimension}|${f.dimension_key}`, f);
+            if (f.dimension === 'prob_band') totalSamples += (f.sample_size || 0);
+        }
+
+        // Check minimum data threshold
+        if (totalSamples < MIN_GLOBAL_SAMPLES_FOR_PLATT) {
+            console.log(`[v3-ai-analyzer] ML V4: Only ${totalSamples} total samples (need ${MIN_GLOBAL_SAMPLES_FOR_PLATT}). NO-OP.`);
+            return { adjustedPicks: picks, adjustments: [] };
+        }
+
+        // ── Read Platt parameters (stored by ml-train-calibration as dimension='platt', key='global') ──
+        const plattRow = factorMap.get('platt|global');
+        const hasPlatt = plattRow && plattRow.calibration_factor != null && plattRow.confidence_adjustment != null;
+        const plattA = hasPlatt ? plattRow.calibration_factor : 1.0;
+        const plattB = hasPlatt ? (plattRow.confidence_adjustment / 1000) : 0.0; // B stored as B*1000
+
+        if (hasPlatt) {
+            console.log(`[v3-ai-analyzer] ML V4: Platt params A=${plattA.toFixed(4)}, B=${(plattB).toFixed(4)}, totalSamples=${totalSamples}`);
         }
 
         const adjustedPicks = picks.map((pick: any) => {
@@ -336,36 +367,88 @@ async function applyCalibrationPostProcessingV3(
             let adjustedProb = originalProb;
             const appliedFactors: string[] = [];
 
-            // ── PRIMARY: Prob band correction (most reliable dimension) ──
+            // ── STEP 1: Global Platt Scaling (bidirectional — can INCREASE or DECREASE) ──
+            if (hasPlatt && (plattA !== 1.0 || plattB !== 0.0)) {
+                const plattProb = applyPlattScale(originalProb, plattA, plattB);
+                const plattDelta = plattProb - originalProb;
+                // Cap Platt correction at ±MAX_CORRECTION_PTS
+                const cappedDelta = Math.max(-MAX_CORRECTION_PTS, Math.min(MAX_CORRECTION_PTS, plattDelta));
+                adjustedProb = originalProb + cappedDelta;
+                const direction = cappedDelta >= 0 ? '+' : '';
+                appliedFactors.push(`platt:${direction}${cappedDelta.toFixed(1)}`);
+            }
+
+            // ── STEP 2: Per-dimension corrections (bidirectional) ──
+            // Apply prob_band, market, league — each contributes a small delta
+            const dimCorrections: { key: string; delta: number; weight: number }[] = [];
+
+            // Prob band
             const probFactor = factorMap.get(`prob_band|${probBandKey}`);
-            if (probFactor && probFactor.sample_size >= minSamplesForCorrection) {
+            if (probFactor && probFactor.sample_size >= MIN_DIM_SAMPLES) {
                 const gap = (probFactor.predicted_avg || originalProb) - (probFactor.actual_wr || originalProb);
-                if (gap > 10) {
-                    // Significant overconfidence — apply weighted reduction
-                    const sampleConfidence = Math.min(1.0, probFactor.sample_size / 100);
-                    const rawReduction = Math.min(gap * 0.4, 12); // Cap at 12pts (not 15)
-                    const weightedReduction = rawReduction * sampleConfidence;
-                    adjustedProb -= weightedReduction;
-                    appliedFactors.push(`prob_band:-${weightedReduction.toFixed(1)}(n=${probFactor.sample_size},gap=${gap.toFixed(0)})`);
+                if (Math.abs(gap) > 3) {
+                    const sign = gap > 0 ? -1 : 1; // overconfident→reduce, underconfident→increase
+                    const rawAdj = Math.min(Math.abs(gap) * 0.3, MAX_CORRECTION_PTS);
+                    const sampleWeight = Math.min(1.0, probFactor.sample_size / 100);
+                    dimCorrections.push({ key: `prob_band(${probBandKey})`, delta: sign * rawAdj, weight: sampleWeight });
                 }
             }
 
-            // ── INFORMATIONAL: Log market/league factors but don't apply yet ──
+            // Market
             const marketFactor = factorMap.get(`market|${market}`);
-            if (marketFactor && marketFactor.sample_size >= 10) {
-                console.log(`[v3-ai-analyzer] ML info: market "${market}" → WR ${marketFactor.actual_wr?.toFixed(1)}%, factor ${marketFactor.calibration_factor?.toFixed(3)}, n=${marketFactor.sample_size} (not applied)`);
-            }
-            const leagueFactor = factorMap.get(`league|${leagueName}`);
-            if (leagueFactor && leagueFactor.sample_size >= 10) {
-                console.log(`[v3-ai-analyzer] ML info: league "${leagueName}" → WR ${leagueFactor.actual_wr?.toFixed(1)}%, adj ${leagueFactor.confidence_adjustment}, n=${leagueFactor.sample_size} (not applied)`);
+            if (marketFactor && marketFactor.sample_size >= MIN_DIM_SAMPLES) {
+                const gap = (marketFactor.predicted_avg || originalProb) - (marketFactor.actual_wr || originalProb);
+                if (Math.abs(gap) > 5) {
+                    const sign = gap > 0 ? -1 : 1;
+                    const rawAdj = Math.min(Math.abs(gap) * 0.25, MAX_CORRECTION_PTS * 0.5); // Market: max ±4pts
+                    const sampleWeight = Math.min(1.0, marketFactor.sample_size / 100);
+                    dimCorrections.push({ key: `market(${market})`, delta: sign * rawAdj, weight: sampleWeight });
+                }
             }
 
-            // ── Safety caps ──
-            adjustedProb = Math.max(originalProb - 12, adjustedProb); // Never reduce more than 12pts
-            adjustedProb = Math.max(50, adjustedProb); // Floor at 50%
+            // League
+            const leagueFactor = factorMap.get(`league|${leagueName}`);
+            if (leagueFactor && leagueFactor.sample_size >= MIN_DIM_SAMPLES) {
+                const gap = (leagueFactor.predicted_avg || originalProb) - (leagueFactor.actual_wr || originalProb);
+                if (Math.abs(gap) > 5) {
+                    const sign = gap > 0 ? -1 : 1;
+                    const rawAdj = Math.min(Math.abs(gap) * 0.25, MAX_CORRECTION_PTS * 0.5); // League: max ±4pts
+                    const sampleWeight = Math.min(1.0, leagueFactor.sample_size / 100);
+                    dimCorrections.push({ key: `league(${leagueName})`, delta: sign * rawAdj, weight: sampleWeight });
+                }
+            }
+
+            // Combine dimension corrections (weighted average if multiple)
+            if (dimCorrections.length > 0) {
+                let totalWeight = 0;
+                let weightedSum = 0;
+                for (const dc of dimCorrections) {
+                    weightedSum += dc.delta * dc.weight;
+                    totalWeight += dc.weight;
+                }
+                const dimDelta = totalWeight > 0 ? weightedSum / totalWeight : 0;
+                // Cap total dimension correction at ±4pts (secondary to Platt)
+                const cappedDimDelta = Math.max(-4, Math.min(4, dimDelta));
+                if (Math.abs(cappedDimDelta) >= 0.3) {
+                    adjustedProb += cappedDimDelta;
+                    const dir = cappedDimDelta >= 0 ? '+' : '';
+                    for (const dc of dimCorrections) {
+                        const d = dc.delta >= 0 ? '+' : '';
+                        appliedFactors.push(`${dc.key}:${d}${dc.delta.toFixed(1)}×${dc.weight.toFixed(2)}`);
+                    }
+                    appliedFactors.push(`dim_combined:${dir}${cappedDimDelta.toFixed(1)}`);
+                }
+            }
+
+            // ── STEP 3: Safety caps (bidirectional) ──
+            const totalDelta = adjustedProb - originalProb;
+            if (Math.abs(totalDelta) > MAX_CORRECTION_PTS) {
+                adjustedProb = originalProb + (totalDelta > 0 ? MAX_CORRECTION_PTS : -MAX_CORRECTION_PTS);
+            }
+            adjustedProb = Math.max(50, Math.min(95, adjustedProb)); // Floor 50%, Ceiling 95%
             adjustedProb = Math.round(adjustedProb * 10) / 10;
 
-            if (appliedFactors.length > 0 && Math.abs(adjustedProb - originalProb) >= 0.5) {
+            if (appliedFactors.length > 0 && Math.abs(adjustedProb - originalProb) >= 0.3) {
                 adjustments.push({
                     market,
                     league: leagueName,
@@ -387,7 +470,7 @@ async function applyCalibrationPostProcessingV3(
 
         return { adjustedPicks, adjustments };
     } catch (err) {
-        console.error('[v3-ai-analyzer] ML V3 post-processing error (non-blocking):', err);
+        console.error('[v3-ai-analyzer] ML V4 post-processing error (non-blocking):', err);
         return { adjustedPicks: picks, adjustments: [] };
     }
 }
