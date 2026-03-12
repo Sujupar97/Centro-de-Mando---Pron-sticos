@@ -298,6 +298,9 @@ export const createAnalysisJob = async (apiFixtureId: number, timezone: string =
                 console.error(`[V3] Analyzer invocation error:`, analyzerErr);
             } else {
                 console.log(`[V3] ✅ Analyzer completó exitosamente para job ${responseData.job_id}`);
+                // Launch parlay analysis with delay (individual analysis, not batch)
+                // In batch mode, LiveFeed.tsx handles this via polling to avoid duplicates
+                launchParlayForFixture(apiFixtureId, 8000);
             }
         }).catch(err => {
             console.error(`[V3] Analyzer call failed:`, err.message);
@@ -309,6 +312,84 @@ export const createAnalysisJob = async (apiFixtureId: number, timezone: string =
         console.error("[V2] Error crítico:", err);
         throw new Error(err.message || "Error en el Motor V2. Intenta nuevamente.");
     }
+};
+
+/**
+ * Lanza el parlay analyzer para un fixture DESPUÉS de que el análisis estándar completó.
+ * Se ejecuta con un delay para evitar competir con Gemini API rate limits.
+ * Fire-and-forget desde el browser — no bloquea el batch.
+ */
+export const launchParlayForFixture = (fixtureId: number, delayMs: number = 8000): void => {
+    console.log(`[Parlay] Programando parlay analysis para fixture ${fixtureId} en ${delayMs/1000}s...`);
+    setTimeout(async () => {
+        try {
+            // Check if a parlay job already exists for this fixture today (avoid duplicates)
+            const today = new Date().toISOString().split('T')[0];
+            const { data: existingParlay } = await supabase
+                .from('analysis_jobs_v2')
+                .select('id')
+                .eq('fixture_id', fixtureId)
+                .eq('analysis_type', 'parlay')
+                .gte('created_at', today)
+                .limit(1);
+
+            if (existingParlay && existingParlay.length > 0) {
+                console.log(`[Parlay] Parlay job already exists for fixture ${fixtureId}. Skipping.`);
+                return;
+            }
+
+            // Buscar el job estándar para obtener el etl_context
+            const { data: standardJob } = await supabase
+                .from('analysis_jobs_v2')
+                .select('id, etl_context')
+                .eq('fixture_id', fixtureId)
+                .or('analysis_type.eq.standard,analysis_type.is.null')
+                .eq('status', 'done')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (!standardJob?.etl_context) {
+                console.warn(`[Parlay] No etl_context found for fixture ${fixtureId}. Skipping parlay.`);
+                return;
+            }
+
+            // Crear job de parlay en DB
+            const { data: parlayJob, error: parlayErr } = await supabase
+                .from('analysis_jobs_v2')
+                .insert({
+                    fixture_id: fixtureId,
+                    status: 'etl',
+                    current_motor: 'PARLAY-ANALYZER',
+                    engine_version: 'V8.2-STRATEGIC',
+                    analysis_type: 'parlay',
+                    etl_context: standardJob.etl_context
+                })
+                .select()
+                .single();
+
+            if (parlayErr || !parlayJob) {
+                console.warn(`[Parlay] Failed to create parlay job:`, parlayErr?.message);
+                return;
+            }
+
+            console.log(`[Parlay] Invocando v3-parlay-analyzer para job ${parlayJob.id}...`);
+            const { error: invokeErr } = await supabase.functions.invoke('v3-parlay-analyzer', {
+                body: {
+                    job_id: parlayJob.id,
+                    fixture_id: fixtureId
+                }
+            });
+
+            if (invokeErr) {
+                console.error(`[Parlay] Parlay analyzer error:`, invokeErr);
+            } else {
+                console.log(`[Parlay] ✅ Parlay analysis completado para fixture ${fixtureId}`);
+            }
+        } catch (err: any) {
+            console.warn(`[Parlay] Error (non-blocking):`, err.message);
+        }
+    }, delayMs);
 };
 
 /* ═══════════════════════════════════════════════════════════════

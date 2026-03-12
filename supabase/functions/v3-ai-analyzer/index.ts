@@ -1877,48 +1877,10 @@ Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si 
         const executionTime = Date.now() - startTime;
         console.log(`[V3-AI-ANALYZER] ✅ Analysis complete in ${executionTime}ms (${tokensUsed} tokens)`);
 
-        // ═══ SEQUENTIAL PARLAY ANALYSIS (fire-and-forget AFTER standard analysis succeeds) ═══
-        // This runs AFTER the standard analysis is done, avoiding dual Gemini calls
-        try {
-            const parlayPayload = payload; // Same ETL payload
-            const { data: parlayJob, error: parlayJobErr } = await supabase
-                .from('analysis_jobs_v2')
-                .insert({
-                    fixture_id: finalFixtureId,
-                    status: 'etl',
-                    current_motor: 'PARLAY-ANALYZER',
-                    engine_version: ENGINE_VERSION,
-                    analysis_type: 'parlay',
-                    etl_context: parlayPayload // Guardar payload en DB para que v3-parlay-analyzer lo lea
-                })
-                .select()
-                .single();
-
-            if (!parlayJobErr && parlayJob) {
-                console.log(`[V3-AI-ANALYZER] Launching parlay analyzer for job ${parlayJob.id} (sequential, after success)`);
-                const parlayUrl = `${sbUrl}/functions/v1/v3-parlay-analyzer`;
-                // Fire-and-forget — parlay runs independently after standard is done
-                fetch(parlayUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${sbKey}`
-                    },
-                    body: JSON.stringify({
-                        job_id: parlayJob.id,
-                        fixture_id: finalFixtureId
-                        // payload omitido — v3-parlay-analyzer lo lee de etl_context en la DB
-                    })
-                }).catch(err => console.warn(`[V3-AI-ANALYZER] Parlay fire-and-forget failed:`, err.message));
-            } else {
-                console.warn(`[V3-AI-ANALYZER] Parlay job creation skipped:`, parlayJobErr?.message);
-            }
-        } catch (parlayErr: any) {
-            console.warn(`[V3-AI-ANALYZER] Parlay sequential launch failed (non-blocking):`, parlayErr.message);
-        }
-
-        // Dar tiempo al Deno runtime para enviar el fire-and-forget del parlay analyzer
-        await new Promise(r => setTimeout(r, 500));
+        // ═══ PARLAY ANALYSIS — MOVED TO FRONTEND ═══
+        // Parlay analyzer is now triggered by the FRONTEND after confirming 'done' status,
+        // with a delay to avoid Gemini API rate limiting. This prevents the parlay call
+        // from competing with the next standard analysis in batch mode.
 
         // LIGHTWEIGHT RESPONSE — frontend reads full data from DB via polling
         // (analisis, reports_v2, value_picks_v2 tables)
