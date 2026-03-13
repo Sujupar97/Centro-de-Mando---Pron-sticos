@@ -293,9 +293,19 @@ export const createAnalysisJob = async (apiFixtureId: number, timezone: string =
                 job_id: responseData.job_id,
                 fixture_id: apiFixtureId
             }
-        }).then(({ error: analyzerErr }) => {
+        }).then(async ({ data: analyzerData, error: analyzerErr }) => {
             if (analyzerErr) {
-                console.error(`[V3] Analyzer invocation error:`, analyzerErr);
+                console.error(`🔴 [V3] Analyzer invocation error:`, analyzerErr);
+                // Try to read the error body for debugging
+                try {
+                    const ctx = (analyzerErr as any).context;
+                    if (ctx && typeof ctx.json === 'function') {
+                        const body = await ctx.json();
+                        console.error(`🔴 [V3] Analyzer error body:`, JSON.stringify(body));
+                    } else if (ctx) {
+                        console.error(`🔴 [V3] Analyzer error context:`, ctx);
+                    }
+                } catch (_e) { /* ignore body read errors */ }
             } else {
                 console.log(`[V3] ✅ Analyzer completó exitosamente para job ${responseData.job_id}`);
                 // Launch parlay analysis with delay (individual analysis, not batch)
