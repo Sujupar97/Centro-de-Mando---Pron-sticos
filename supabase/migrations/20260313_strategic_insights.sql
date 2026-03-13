@@ -76,9 +76,10 @@ DECLARE
     v_match RECORD;
     v_razonamiento TEXT;
 BEGIN
-    -- Solo picks que cambian a WON/LOST con p_model >= 0.83
+    -- Cualquier pick que tenga resultado WON/LOST con p_model >= 0.83
+    -- Incluye: primera verificación (PENDING→WON/LOST) y correcciones manuales (WON→LOST, LOST→WON)
+    -- ON CONFLICT actualiza el resultado si el pick ya estaba en el pool
     IF (NEW.result IN ('WON', 'LOST') AND
-        (OLD.result IS NULL OR OLD.result = 'PENDING') AND
         NEW.p_model IS NOT NULL AND NEW.p_model >= 0.83) THEN
 
         -- Datos del partido

@@ -121,8 +121,8 @@ REGLAS ESTRICTAS:
         console.log(`[ml-strategic-trainer] Extraction prompt: ${extractionPrompt.length} chars`);
 
         // 4. Call Gemini
-        const primaryModel = 'gemini-2.5-pro-preview-05-06';
-        const fallbackModel = 'gemini-2.0-flash';
+        const primaryModel = 'gemini-3.1-pro-preview';
+        const fallbackModel = 'gemini-3-pro-preview';
         let geminiResponse: any = null;
         let modelUsed = '';
 
