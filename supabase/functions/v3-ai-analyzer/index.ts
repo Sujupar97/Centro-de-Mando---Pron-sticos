@@ -199,11 +199,14 @@ async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock>
 async function buildStrategicInsightsBlock(supabase: any): Promise<string> {
     try {
         // Check if toggle is enabled
-        const { data: setting } = await supabase
+        console.log('[v3-ai-analyzer] [SI-1] Checking strategic insights toggle...');
+        const { data: setting, error: settingErr } = await supabase
             .from('system_settings')
             .select('value')
             .eq('key', 'ml_strategic_insights_enabled')
             .single();
+
+        console.log(`[v3-ai-analyzer] [SI-2] Toggle result: value=${JSON.stringify(setting?.value)}, error=${settingErr?.message || 'none'}`);
 
         if (!setting || setting.value !== true) {
             console.log('[v3-ai-analyzer] Strategic insights DISABLED');
@@ -211,6 +214,7 @@ async function buildStrategicInsightsBlock(supabase: any): Promise<string> {
         }
 
         // Fetch active insights
+        console.log('[v3-ai-analyzer] [SI-3] Fetching active insights...');
         const { data: insights, error: insErr } = await supabase
             .from('ml_strategic_insights')
             .select('insight_type, insight_text, based_on_picks, confidence_score')
@@ -218,17 +222,21 @@ async function buildStrategicInsightsBlock(supabase: any): Promise<string> {
             .order('confidence_score', { ascending: false })
             .limit(10);
 
+        console.log(`[v3-ai-analyzer] [SI-4] Insights result: count=${insights?.length || 0}, error=${insErr?.message || 'none'}`);
+
         if (insErr || !insights || insights.length === 0) {
             console.log('[v3-ai-analyzer] No active strategic insights found');
             return '';
         }
 
         // Get total picks analyzed across all batches
+        console.log('[v3-ai-analyzer] [SI-5] Fetching batch stats...');
         const { data: batches } = await supabase
             .from('ml_training_batches')
             .select('picks_analyzed')
             .eq('status', 'completed');
         const totalPicks = (batches || []).reduce((s: number, b: any) => s + (b.picks_analyzed || 0), 0);
+        console.log(`[v3-ai-analyzer] [SI-6] Total picks from batches: ${totalPicks}`);
 
         // Build the text block
         let text = `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
@@ -909,9 +917,11 @@ serve(async (req) => {
         console.log(`[v3-ai-analyzer] Using ${mlCalibration.source} calibration data (${mlCalibration.factorCount} factors)`);
 
         // ═══ STRATEGIC INSIGHTS: Qualitative learnings from verified picks ═══
+        console.log(`[v3-ai-analyzer] [DEBUG] About to call buildStrategicInsightsBlock...`);
         const strategicInsightsBlock = await buildStrategicInsightsBlock(supabase);
+        console.log(`[v3-ai-analyzer] [DEBUG] buildStrategicInsightsBlock returned: ${strategicInsightsBlock.length} chars`);
         if (strategicInsightsBlock) {
-            console.log(`[v3-ai-analyzer] Strategic insights block: ${strategicInsightsBlock.length} chars`);
+            console.log(`[v3-ai-analyzer] Strategic insights block injected into prompt`);
         }
 
         // CONSTRUIR EL SUPER-PROMPT V8 (MASTERMIND + EVENTS + CONTEXT)
@@ -1372,12 +1382,17 @@ ${strategicInsightsBlock}
             }
         };
 
-        // ═══ GEMINI CALL WITH MODEL FALLBACK ═══
+        // ═══ GEMINI CALL WITH DYNAMIC TIMEOUT & MODEL FALLBACK ═══
         // Supabase Edge Function wall clock limit: ~150s
-        // Strategy: Try primary model (60s) → if fails, try fallback model (60s)
-        // Budget: ~10s setup + 60s model1 + 2s pause + 60s model2 + ~10s save = ~142s
-        const GEMINI_TIMEOUT_MS = 60000; // 60s per attempt (2 models × 60s fits in 150s limit)
-        const FALLBACK_MODEL = 'gemini-3-pro-preview'; // Same family, used by v3-smart-parlays
+        // Strategy: Dynamic timeouts based on remaining wall clock time
+        // Reserve 15s for post-Gemini save operations (DB writes, cleanup)
+        const WALL_CLOCK_SAFE = 140000; // 140s safe limit (10s margin from 150s)
+        const SAVE_RESERVE_MS = 15000;  // Reserve 15s for DB save operations
+        const MAX_TIMEOUT_PER_MODEL = 90000; // Max 90s per attempt (up from 60s)
+        const MIN_TIMEOUT_FOR_ATTEMPT = 25000; // Don't attempt with <25s available
+        const remainingMs = () => WALL_CLOCK_SAFE - (Date.now() - startTime);
+
+        const FALLBACK_MODEL = 'gemini-3-pro-preview';
         const PRIMARY_MODEL = GEMINI_MODEL; // gemini-3.1-pro-preview (best quality)
         const models = [PRIMARY_MODEL, FALLBACK_MODEL];
         let genRes: Response | null = null;
@@ -1387,8 +1402,17 @@ ${strategicInsightsBlock}
             const currentUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${geminiKey}`;
             const attemptStart = Date.now();
 
+            // Dynamic timeout: use available time minus save reserve, capped at MAX
+            const available = remainingMs() - SAVE_RESERVE_MS;
+            if (available < MIN_TIMEOUT_FOR_ATTEMPT) {
+                console.warn(`[V3-AI-ANALYZER] Only ${Math.round(available / 1000)}s available, skipping ${currentModel}`);
+                break;
+            }
+            const dynamicTimeout = Math.min(available, MAX_TIMEOUT_PER_MODEL);
+            console.log(`[V3-AI-ANALYZER] Using dynamic timeout: ${Math.round(dynamicTimeout / 1000)}s for ${currentModel} (${Math.round(remainingMs() / 1000)}s remaining)`);
+
             const geminiController = new AbortController();
-            const geminiTimeout = setTimeout(() => geminiController.abort(), GEMINI_TIMEOUT_MS);
+            const geminiTimeoutId = setTimeout(() => geminiController.abort(), dynamicTimeout);
 
             try {
                 console.log(`[V3-AI-ANALYZER] Calling ${currentModel} (attempt ${modelIdx + 1}/${models.length})...`);
@@ -1398,7 +1422,7 @@ ${strategicInsightsBlock}
                     body: JSON.stringify(requestBody),
                     signal: geminiController.signal
                 });
-                clearTimeout(geminiTimeout);
+                clearTimeout(geminiTimeoutId);
 
                 if (genRes.ok) {
                     if (modelIdx > 0) console.log(`[V3-AI-ANALYZER] Fallback model ${currentModel} succeeded`);
@@ -1408,10 +1432,10 @@ ${strategicInsightsBlock}
                 const statusCode = genRes.status;
                 const elapsed = Date.now() - attemptStart;
                 const isRetryable = statusCode === 429 || statusCode === 503 || statusCode === 500;
-                const hasTimeBudget = (Date.now() - startTime) < 25000; // Only retry if <25s elapsed total
+                const hasTimeBudget = remainingMs() > (SAVE_RESERVE_MS + MIN_TIMEOUT_FOR_ATTEMPT); // Enough for another attempt + save
 
                 if (isRetryable && modelIdx < models.length - 1 && hasTimeBudget) {
-                    console.warn(`[V3-AI-ANALYZER] ${currentModel} returned ${statusCode} in ${elapsed}ms, trying fallback ${models[modelIdx + 1]}...`);
+                    console.warn(`[V3-AI-ANALYZER] ${currentModel} returned ${statusCode} in ${elapsed}ms, trying fallback ${models[modelIdx + 1]} (${Math.round(remainingMs() / 1000)}s remaining)...`);
                     await new Promise(r => setTimeout(r, 2000)); // 2s pause before fallback
                     continue;
                 }
@@ -1427,24 +1451,24 @@ ${strategicInsightsBlock}
                 }
 
             } catch (fetchErr: any) {
-                clearTimeout(geminiTimeout);
+                clearTimeout(geminiTimeoutId);
                 if (fetchErr.name === 'AbortError') {
-                    // Timeout — try fallback model if we have time budget
-                    const hasTimeBudgetForFallback = (Date.now() - startTime) < 80000; // <80s elapsed = room for 60s fallback
+                    // Timeout — try fallback model if we have enough time remaining
+                    const hasTimeBudgetForFallback = remainingMs() > (SAVE_RESERVE_MS + MIN_TIMEOUT_FOR_ATTEMPT);
                     if (modelIdx < models.length - 1 && hasTimeBudgetForFallback) {
-                        console.warn(`[V3-AI-ANALYZER] ${currentModel} timed out after ${GEMINI_TIMEOUT_MS / 1000}s, trying fallback ${models[modelIdx + 1]}...`);
+                        console.warn(`[V3-AI-ANALYZER] ${currentModel} timed out after ${Math.round(dynamicTimeout / 1000)}s, trying fallback ${models[modelIdx + 1]} (${Math.round(remainingMs() / 1000)}s remaining)...`);
                         continue;
                     }
-                    throw new Error(`GEMINI_TIMEOUT: ${currentModel} no respondió en ${GEMINI_TIMEOUT_MS / 1000}s. Intenta de nuevo.`);
+                    throw new Error(`GEMINI_TIMEOUT: ${currentModel} no respondió en ${Math.round(dynamicTimeout / 1000)}s. Intenta de nuevo.`);
                 }
                 // Re-throw user-facing errors
                 if (fetchErr.message?.startsWith('QUOTA_') || fetchErr.message?.startsWith('GEMINI_')) {
                     throw fetchErr;
                 }
                 // Network error — try fallback if budget allows
-                const hasTimeBudget = (Date.now() - startTime) < 25000;
+                const hasTimeBudget = remainingMs() > (SAVE_RESERVE_MS + MIN_TIMEOUT_FOR_ATTEMPT);
                 if (modelIdx < models.length - 1 && hasTimeBudget) {
-                    console.warn(`[V3-AI-ANALYZER] ${currentModel} fetch error: ${fetchErr.message}, trying fallback...`);
+                    console.warn(`[V3-AI-ANALYZER] ${currentModel} fetch error: ${fetchErr.message}, trying fallback (${Math.round(remainingMs() / 1000)}s remaining)...`);
                     continue;
                 }
                 throw fetchErr;

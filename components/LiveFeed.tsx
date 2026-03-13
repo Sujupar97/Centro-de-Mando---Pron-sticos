@@ -184,6 +184,8 @@ export const FixturesFeed: React.FC = () => {
     const isProcessingQueue = React.useRef(false); // Ref guard for sequential processing
     const pollErrorCount = React.useRef(0); // Consecutive poll errors before skipping
     const processingFixtureIdRef = React.useRef<number | null>(null); // Ref backup for closure access
+    const batchRetries = React.useRef<Set<number>>(new Set()); // Track retried fixtures (max 1 retry each)
+    const [batchCooldown, setBatchCooldown] = useState(false); // 5s cooldown between batch analyses
 
     // BATCH PROGRESS TRACKING
     const [batchProgress, setBatchProgress] = useState<{
@@ -407,8 +409,8 @@ export const FixturesFeed: React.FC = () => {
     // 2.1 Polling de Batch Jobs (COLA)
     useEffect(() => {
         const processQueue = async () => {
-            // Guard: If already processing a start request, or if there's an active job, or empty queue -> STOP
-            if (isProcessingQueue.current || activeBatchJobId || analysisQueue.length === 0) return;
+            // Guard: If already processing, active job, empty queue, or cooling down -> STOP
+            if (isProcessingQueue.current || activeBatchJobId || analysisQueue.length === 0 || batchCooldown) return;
 
             isProcessingQueue.current = true; // Lock
             const nextGame = analysisQueue[0];
@@ -440,7 +442,7 @@ export const FixturesFeed: React.FC = () => {
         };
 
         processQueue();
-    }, [activeBatchJobId, analysisQueue]);
+    }, [activeBatchJobId, analysisQueue, batchCooldown]);
 
     useEffect(() => {
         if (!activeBatchJobId) return;
@@ -449,6 +451,8 @@ export const FixturesFeed: React.FC = () => {
         const MAX_WAIT_MS = 300000; // 5 minutes max per job
 
         const advanceBatch = (fixtureId: number, result: 'done' | 'failed') => {
+            // 5s cooldown between batch analyses to avoid Gemini API overload
+            setBatchCooldown(true);
             setActiveBatchJobId(null);
             setProcessingFixtureId(null);
             processingFixtureIdRef.current = null;
@@ -463,6 +467,8 @@ export const FixturesFeed: React.FC = () => {
                 });
                 return remaining;
             });
+            console.log(`[Batch] 5s cooldown before next analysis...`);
+            setTimeout(() => setBatchCooldown(false), 5000);
         };
 
         const interval = setInterval(async () => {
@@ -496,11 +502,28 @@ export const FixturesFeed: React.FC = () => {
                     setGameJobStatus(prev => ({ ...prev, [updatedJob.api_fixture_id]: updatedJob.status }));
 
                     if (['done', 'failed', 'insufficient_data'].includes(updatedJob.status)) {
-                        console.log(`[Batch] Job finished: ${updatedJob.id} (${updatedJob.status}). Moving to next.`);
+                        console.log(`[Batch] Job finished: ${updatedJob.id} (${updatedJob.status}).`);
                         if (updatedJob.status === 'done') {
                             setReportsAvailable(prev => ({ ...prev, [updatedJob.api_fixture_id]: true }));
+                            advanceBatch(updatedJob.api_fixture_id, 'done');
+                        } else {
+                            // Failed — retry once before giving up
+                            const fid = updatedJob.api_fixture_id;
+                            if (!batchRetries.current.has(fid)) {
+                                batchRetries.current.add(fid);
+                                console.log(`[Batch] Retrying failed analysis for fixture ${fid} in 10s...`);
+                                // Clear active job but DON'T dequeue — retry same fixture
+                                setActiveBatchJobId(null);
+                                setProcessingFixtureId(null);
+                                processingFixtureIdRef.current = null;
+                                setGameJobStatus(prev => ({ ...prev, [fid]: 'queued' }));
+                                setBatchCooldown(true);
+                                setTimeout(() => setBatchCooldown(false), 10000); // 10s cooldown for retry
+                            } else {
+                                // Already retried once — skip to next
+                                advanceBatch(fid, 'failed');
+                            }
                         }
-                        advanceBatch(updatedJob.api_fixture_id, updatedJob.status === 'done' ? 'done' : 'failed');
                     }
                 } else {
                     console.warn(`[Batch] Job ${activeBatchJobId} not found. Skipping.`);
@@ -619,7 +642,8 @@ export const FixturesFeed: React.FC = () => {
             // Accumulate into existing batch if active, otherwise start fresh
             setBatchProgress(prev => {
                 if (!prev.isActive) {
-                    // Fresh batch — no active batch running
+                    // Fresh batch — clear retry tracking
+                    batchRetries.current.clear();
                     return {
                         total: addedCount,
                         completed: 0,
