@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../services/supabaseService';
 import { PlanSelector } from './PlanSelector';
@@ -19,6 +19,7 @@ export const SignUpFlow: React.FC = () => {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [checkoutLoading, setCheckoutLoading] = useState(false);
 
     const [signUpData, setSignUpData] = useState<SignUpData>({
         fullName: '',
@@ -31,6 +32,9 @@ export const SignUpFlow: React.FC = () => {
     const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>(
         (searchParams.get('billing') as 'monthly' | 'annual') || 'monthly'
     );
+
+    // Guardamos datos para el checkout de pago después de confirmar email
+    const signUpResultRef = useRef<{ userId: string } | null>(null);
 
     // Step 1: User Data
     const handleStep1Submit = (e: React.FormEvent) => {
@@ -93,91 +97,92 @@ export const SignUpFlow: React.FC = () => {
                 }
             }).catch(() => {}); // Silencioso — el registro no depende de esto
 
-            // 2. Si es plan gratuito, asignar directamente
-            if (selectedPlan.price_cents === 0) {
-                const { data: planData } = await supabase
-                    .from('subscription_plans')
-                    .select('id')
-                    .eq('name', 'free')
-                    .single();
+            // Guardar userId para posible checkout posterior
+            signUpResultRef.current = { userId: authData.user.id };
 
-                if (planData) {
-                    await supabase
-                        .from('user_subscriptions')
-                        .insert({
-                            user_id: authData.user.id,
-                            plan_id: planData.id,
-                            status: 'active',
-                            current_period_start: new Date().toISOString(),
-                            current_period_end: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
-                        });
-                }
+            // La suscripción free se crea automáticamente por el trigger handle_new_user()
+            // Para planes de pago, el usuario irá al checkout después de confirmar email
 
-                navigate('/app');
-            } else {
-                // 3. Plan de pago: detectar gateway (Whop → Lemon Squeezy)
+            // Mostrar pantalla de confirmación (Step 3)
+            setStep(3);
+            setLoading(false);
 
-                // Esperar a que el trigger handle_new_user() cree la org
-                await new Promise(r => setTimeout(r, 2000));
-
-                // Obtener orgId del usuario recien creado
-                const { data: memberData } = await supabase
-                    .from('organization_members')
-                    .select('organization_id')
-                    .eq('user_id', authData.user.id)
-                    .limit(1)
-                    .maybeSingle();
-
-                const orgId = memberData?.organization_id || authData.user.id;
-
-                // Detectar gateway: Whop primero, luego LS
-                const whopPlanId = billingPeriod === 'annual'
-                    ? (selectedPlan.whop_plan_id_annual || selectedPlan.whop_plan_id)
-                    : selectedPlan.whop_plan_id;
-
-                if (whopPlanId) {
-                    // Checkout via Whop (redirect)
-                    const { data, error: checkoutError } = await supabase.functions.invoke('whop-create-checkout', {
-                        body: {
-                            whopPlanId,
-                            planId: selectedPlan.id,
-                            userId: authData.user.id,
-                            orgId,
-                            billingPeriod,
-                            email: signUpData.email,
-                        }
-                    });
-
-                    if (checkoutError || !data?.purchase_url) {
-                        throw new Error(data?.error || 'Error al crear sesión de pago. Intenta de nuevo.');
-                    }
-
-                    window.location.href = data.purchase_url;
-                } else {
-                    // Fallback: Lemon Squeezy
-                    const variantId = getVariantId(selectedPlan, billingPeriod);
-                    if (!variantId) {
-                        setError('Plan no disponible. Contacta soporte.');
-                        setLoading(false);
-                        return;
-                    }
-
-                    await openCheckoutOverlay({
-                        variantId,
-                        userId: authData.user.id,
-                        userEmail: signUpData.email,
-                        userName: signUpData.fullName,
-                        orgId,
-                        billingPeriod,
-                    });
-
-                    setTimeout(() => navigate('/app'), 2000);
-                }
-            }
         } catch (err: any) {
             console.error('Error en registro:', err);
             setError(err.message || 'Ocurrió un error al crear la cuenta');
             setLoading(false);
+        }
+    };
+
+    // Redirigir a checkout de pago (para planes de pago, desde Step 3)
+    const handleGoToCheckout = async () => {
+        if (!selectedPlan || !signUpResultRef.current) return;
+
+        setCheckoutLoading(true);
+        setError('');
+
+        try {
+            const userId = signUpResultRef.current.userId;
+
+            // Esperar a que el trigger handle_new_user() cree la org
+            await new Promise(r => setTimeout(r, 2000));
+
+            // Obtener orgId del usuario recién creado
+            const { data: memberData } = await supabase
+                .from('organization_members')
+                .select('organization_id')
+                .eq('user_id', userId)
+                .limit(1)
+                .maybeSingle();
+
+            const orgId = memberData?.organization_id || userId;
+
+            // Detectar gateway: Whop primero, luego LS
+            const whopPlanId = billingPeriod === 'annual'
+                ? (selectedPlan.whop_plan_id_annual || selectedPlan.whop_plan_id)
+                : selectedPlan.whop_plan_id;
+
+            if (whopPlanId) {
+                const { data, error: checkoutError } = await supabase.functions.invoke('whop-create-checkout', {
+                    body: {
+                        whopPlanId,
+                        planId: selectedPlan.id,
+                        userId,
+                        orgId,
+                        billingPeriod,
+                        email: signUpData.email,
+                    }
+                });
+
+                if (checkoutError || !data?.purchase_url) {
+                    throw new Error(data?.error || 'Error al crear sesión de pago. Intenta de nuevo.');
+                }
+
+                window.location.href = data.purchase_url;
+            } else {
+                // Fallback: Lemon Squeezy
+                const variantId = getVariantId(selectedPlan, billingPeriod);
+                if (!variantId) {
+                    setError('Plan no disponible. Contacta soporte.');
+                    setCheckoutLoading(false);
+                    return;
+                }
+
+                await openCheckoutOverlay({
+                    variantId,
+                    userId,
+                    userEmail: signUpData.email,
+                    userName: signUpData.fullName,
+                    orgId,
+                    billingPeriod,
+                });
+
+                setTimeout(() => navigate('/app'), 2000);
+            }
+        } catch (err: any) {
+            console.error('Error al ir al pago:', err);
+            setError(err.message || 'Error al iniciar el pago');
+            setCheckoutLoading(false);
         }
     };
 
@@ -188,28 +193,121 @@ export const SignUpFlow: React.FC = () => {
                 <div className="mb-8">
                     <div className="flex items-center justify-center gap-2 sm:gap-4 mb-4">
                         <div className={`flex items-center gap-2 ${step >= 1 ? 'text-brand' : 'text-slate-600'}`}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 1 ? 'border-brand bg-brand/20' : 'border-slate-600'
-                                }`}>
-                                1
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 1 ? 'border-brand bg-brand/20' : 'border-slate-600'}`}>
+                                {step > 1 ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg> : '1'}
                             </div>
                             <span className="text-sm font-medium hidden sm:inline">Tus Datos</span>
                         </div>
 
-                        <div className={`h-0.5 w-8 sm:w-16 ${step >= 2 ? 'bg-brand' : 'bg-slate-700'}`}></div>
+                        <div className={`h-0.5 w-6 sm:w-12 ${step >= 2 ? 'bg-brand' : 'bg-slate-700'}`}></div>
 
                         <div className={`flex items-center gap-2 ${step >= 2 ? 'text-brand' : 'text-slate-600'}`}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 2 ? 'border-brand bg-brand/20' : 'border-slate-600'
-                                }`}>
-                                2
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 2 ? 'border-brand bg-brand/20' : 'border-slate-600'}`}>
+                                {step > 2 ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg> : '2'}
                             </div>
                             <span className="text-sm font-medium hidden sm:inline">Elige tu Plan</span>
+                        </div>
+
+                        <div className={`h-0.5 w-6 sm:w-12 ${step >= 3 ? 'bg-brand' : 'bg-slate-700'}`}></div>
+
+                        <div className={`flex items-center gap-2 ${step >= 3 ? 'text-brand' : 'text-slate-600'}`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 3 ? 'border-brand bg-brand/20' : 'border-slate-600'}`}>
+                                3
+                            </div>
+                            <span className="text-sm font-medium hidden sm:inline">Confirmar</span>
                         </div>
                     </div>
                 </div>
 
                 {/* Content */}
                 <div className="bg-slate-900 rounded-3xl border border-white/10 p-4 sm:p-6 md:p-8 lg:p-12">
-                    {step === 1 ? (
+                    {step === 3 ? (
+                        /* STEP 3: Email Confirmation */
+                        <div className="max-w-lg mx-auto text-center py-8">
+                            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-brand/20 border-2 border-brand flex items-center justify-center">
+                                <svg className="w-10 h-10 text-brand" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                                </svg>
+                            </div>
+
+                            <h2 className="text-2xl sm:text-3xl font-black text-white mb-3">
+                                Registro Exitoso
+                            </h2>
+
+                            <p className="text-slate-300 text-lg mb-2">
+                                Te hemos enviado un correo de confirmacion a:
+                            </p>
+                            <p className="text-brand font-bold text-lg mb-6">
+                                {signUpData.email}
+                            </p>
+
+                            <div className="bg-slate-800/50 border border-white/5 rounded-xl p-5 mb-8 text-left">
+                                <h3 className="text-white font-bold text-sm mb-3 flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-brand" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                                    </svg>
+                                    Pasos siguientes
+                                </h3>
+                                <ol className="space-y-2 text-sm text-slate-400">
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-brand font-bold mt-0.5">1.</span>
+                                        Abre tu bandeja de entrada y busca el correo de <strong className="text-slate-300">Derbix</strong>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-brand font-bold mt-0.5">2.</span>
+                                        Haz clic en el enlace de confirmacion del correo
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-brand font-bold mt-0.5">3.</span>
+                                        {selectedPlan && selectedPlan.price_cents > 0
+                                            ? 'Vuelve aqui para completar tu pago'
+                                            : 'Inicia sesion y comienza a ver oportunidades'
+                                        }
+                                    </li>
+                                </ol>
+                            </div>
+
+                            <p className="text-xs text-slate-500 mb-6">
+                                Si no encuentras el correo, revisa tu carpeta de <strong className="text-slate-400">spam</strong> o <strong className="text-slate-400">correo no deseado</strong>.
+                            </p>
+
+                            {error && (
+                                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+                                    <p className="text-red-400 text-sm">{error}</p>
+                                </div>
+                            )}
+
+                            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                                {selectedPlan && selectedPlan.price_cents > 0 ? (
+                                    <button
+                                        onClick={handleGoToCheckout}
+                                        disabled={checkoutLoading}
+                                        className="px-8 py-3 bg-gradient-to-r from-brand to-emerald-400 text-slate-900 font-bold rounded-xl hover:shadow-lg hover:shadow-brand/30 transition-all flex items-center gap-2 disabled:opacity-50"
+                                    >
+                                        {checkoutLoading ? (
+                                            <>
+                                                <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                                                Preparando pago...
+                                            </>
+                                        ) : (
+                                            <>
+                                                Ir al Pago
+                                                <ArrowRightIcon className="w-5 h-5" />
+                                            </>
+                                        )}
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => navigate('/login')}
+                                        className="px-8 py-3 bg-gradient-to-r from-brand to-emerald-400 text-slate-900 font-bold rounded-xl hover:shadow-lg hover:shadow-brand/30 transition-all flex items-center gap-2"
+                                    >
+                                        Ir al Login
+                                        <ArrowRightIcon className="w-5 h-5" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ) : step === 1 ? (
                         /* STEP 1: User Data */
                         <div className="max-w-md mx-auto">
                             <div className="text-center mb-8">

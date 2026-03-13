@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../services/supabaseService';
 
 export const AuthPage: React.FC = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
@@ -13,6 +14,8 @@ export const AuthPage: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
+
+    const paymentSuccess = searchParams.get('payment') === 'success';
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -87,6 +90,14 @@ export const AuthPage: React.FC = () => {
                                 : 'Crea una cuenta para comenzar'}
                     </p>
                 </div>
+
+                {paymentSuccess && (
+                    <div className="p-4 bg-brand/10 border border-brand/30 rounded-lg">
+                        <p className="text-brand text-sm font-medium text-center">
+                            Pago exitoso! Si aun no confirmas tu correo, revisa tu bandeja de entrada para activar tu cuenta.
+                        </p>
+                    </div>
+                )}
 
                 {isForgotPassword ? (
                     /* ── Forgot Password Form ── */
