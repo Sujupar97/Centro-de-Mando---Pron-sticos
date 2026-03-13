@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseService';
-import { SparklesIcon, ComputerDesktopIcon, BoltIcon, CheckCircleIcon, ChartBarIcon, EyeSlashIcon, BrainIcon } from '../icons/Icons';
+import { SparklesIcon, ComputerDesktopIcon, BoltIcon, CheckCircleIcon, ChartBarIcon, EyeSlashIcon, BrainIcon, LightBulbIcon } from '../icons/Icons';
 
 export const OperationsCenter: React.FC = () => {
     const [settings, setSettings] = useState<{ [key: string]: boolean }>({
         auto_analysis_enabled: true,
         auto_parlay_enabled: true,
         auto_verification_enabled: true,
+        ml_strategic_insights_enabled: false,
         presentation_mode: false,
     });
     const [loadingSettings, setLoadingSettings] = useState(true);
@@ -181,6 +182,31 @@ export const OperationsCenter: React.FC = () => {
                     <p className="text-xs text-gray-400 mt-1">Oculta resultados (GANADO/PERDIDO) y el tab de Resultados para demos y capturas de pantalla.</p>
                     {settings.presentation_mode && (
                         <p className="text-xs text-purple-400 mt-2 font-bold">ACTIVO — Los resultados están ocultos para todos los usuarios.</p>
+                    )}
+                </div>
+            </div>
+
+            {/* Aprendizajes Estratégicos */}
+            <div className="glass p-4 sm:p-6 rounded-xl border border-white/5 shadow-2xl bg-gradient-to-br from-slate-900 to-slate-800">
+                <div className={`p-4 rounded-xl border transition-all ${settings.ml_strategic_insights_enabled ? 'bg-violet-900/20 border-violet-500/30' : 'bg-slate-800/50 border-slate-700'}`}>
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="p-2 rounded-lg bg-violet-500/10">
+                            <LightBulbIcon className={`w-6 h-6 ${settings.ml_strategic_insights_enabled ? 'text-violet-400' : 'text-slate-500'}`} />
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={settings.ml_strategic_insights_enabled}
+                                onChange={() => toggleSetting('ml_strategic_insights_enabled')}
+                            />
+                            <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-violet-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
+                        </label>
+                    </div>
+                    <h3 className="font-bold text-gray-200">Aprendizajes Estratégicos</h3>
+                    <p className="text-xs text-gray-400 mt-1">Inyecta insights cualitativos (basados en picks verificados) al prompt de Gemini. OFF = Gemini puro.</p>
+                    {settings.ml_strategic_insights_enabled && (
+                        <p className="text-xs text-violet-400 mt-2 font-bold">ACTIVO — Los aprendizajes se inyectan al final del prompt.</p>
                     )}
                 </div>
             </div>

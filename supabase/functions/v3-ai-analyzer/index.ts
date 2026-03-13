@@ -194,6 +194,92 @@ async function buildCalibrationBlock(supabase: any): Promise<MLCalibrationBlock>
     }
 }
 
+// ── Strategic Insights: Qualitative learnings injected at end of prompt ──
+
+async function buildStrategicInsightsBlock(supabase: any): Promise<string> {
+    try {
+        // Check if toggle is enabled
+        const { data: setting } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'ml_strategic_insights_enabled')
+            .single();
+
+        if (!setting || setting.value !== true) {
+            console.log('[v3-ai-analyzer] Strategic insights DISABLED');
+            return '';
+        }
+
+        // Fetch active insights
+        const { data: insights, error: insErr } = await supabase
+            .from('ml_strategic_insights')
+            .select('insight_type, insight_text, based_on_picks, confidence_score')
+            .eq('active', true)
+            .order('confidence_score', { ascending: false })
+            .limit(10);
+
+        if (insErr || !insights || insights.length === 0) {
+            console.log('[v3-ai-analyzer] No active strategic insights found');
+            return '';
+        }
+
+        // Get total picks analyzed across all batches
+        const { data: batches } = await supabase
+            .from('ml_training_batches')
+            .select('picks_analyzed')
+            .eq('status', 'completed');
+        const totalPicks = (batches || []).reduce((s: number, b: any) => s + (b.picks_analyzed || 0), 0);
+
+        // Build the text block
+        let text = `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
+        text += `🧠 APRENDIZAJES ESTRATÉGICOS (basados en ${totalPicks} picks verificados)\n`;
+        text += `════════════════════════════════════════════════════════════════════════════════\n\n`;
+        text += `Los siguientes patrones fueron identificados analizando predicciones pasadas verificadas.\n`;
+        text += `Úsalos como GUÍA adicional. Tu análisis del partido actual tiene PRIORIDAD ABSOLUTA.\n\n`;
+
+        const winning = insights.filter((i: any) => i.insight_type === 'winning_pattern');
+        const losing = insights.filter((i: any) => i.insight_type === 'losing_pattern');
+        const method = insights.filter((i: any) => i.insight_type === 'methodology_insight');
+        const market = insights.filter((i: any) => i.insight_type === 'market_insight');
+        const league = insights.filter((i: any) => i.insight_type === 'league_insight');
+
+        if (winning.length > 0) {
+            text += `✅ PATRONES QUE FUNCIONAN (mayor correlación con aciertos):\n`;
+            for (const i of winning) text += `- ${i.insight_text}\n`;
+            text += `\n`;
+        }
+        if (method.length > 0) {
+            text += `🔧 MEJORAS METODOLÓGICAS:\n`;
+            for (const i of method) text += `- ${i.insight_text}\n`;
+            text += `\n`;
+        }
+        if (market.length > 0) {
+            text += `📊 INSIGHTS DE MERCADOS:\n`;
+            for (const i of market) text += `- ${i.insight_text}\n`;
+            text += `\n`;
+        }
+        if (league.length > 0) {
+            text += `🏆 INSIGHTS DE LIGAS:\n`;
+            for (const i of league) text += `- ${i.insight_text}\n`;
+            text += `\n`;
+        }
+        if (losing.length > 0) {
+            text += `⚠️ TRAMPAS ANALÍTICAS (correlación con fallos — ten cuidado):\n`;
+            for (const i of losing) text += `- ${i.insight_text}\n`;
+            text += `\n`;
+        }
+
+        text += `IMPORTANTE: Estos aprendizajes son COMPLEMENTARIOS. NO reemplazan tu criterio.\n`;
+        text += `Si un insight contradice la evidencia del partido actual, PRIORIZA la evidencia actual.\n`;
+
+        console.log(`[v3-ai-analyzer] Injecting ${insights.length} strategic insights (${totalPicks} picks base)`);
+        return text;
+    } catch (err) {
+        console.error('[v3-ai-analyzer] Error building strategic insights:', err);
+        return '';
+    }
+}
+
 // ── ML Post-Processing: Apply calibration factors to picks ──────────
 
 interface CalibrationAdjustment {
@@ -325,6 +411,19 @@ async function applyCalibrationPostProcessingV3(
     const adjustments: CalibrationAdjustment[] = [];
 
     try {
+        // If strategic insights are enabled, skip numerical calibration entirely
+        // (qualitative insights replace numerical adjustments)
+        const { data: insightsSetting } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'ml_strategic_insights_enabled')
+            .single();
+
+        if (insightsSetting?.value === true) {
+            console.log('[v3-ai-analyzer] ML V4: Strategic insights ON → skipping numerical calibration');
+            return { adjustedPicks: picks, adjustments: [] };
+        }
+
         const { data: factors } = await supabase
             .from('ml_calibration_factors')
             .select('dimension, dimension_key, calibration_factor, confidence_adjustment, actual_wr, predicted_avg, sample_size')
@@ -809,6 +908,12 @@ serve(async (req) => {
         const mlCalibration = await buildCalibrationBlock(supabase);
         console.log(`[v3-ai-analyzer] Using ${mlCalibration.source} calibration data (${mlCalibration.factorCount} factors)`);
 
+        // ═══ STRATEGIC INSIGHTS: Qualitative learnings from verified picks ═══
+        const strategicInsightsBlock = await buildStrategicInsightsBlock(supabase);
+        if (strategicInsightsBlock) {
+            console.log(`[v3-ai-analyzer] Strategic insights block: ${strategicInsightsBlock.length} chars`);
+        }
+
         // CONSTRUIR EL SUPER-PROMPT V8 (MASTERMIND + EVENTS + CONTEXT)
         // ═══════════════════════════════════════════════════════════════
         const prompt = `
@@ -1250,6 +1355,7 @@ Responde ÚNICAMENTE con un JSON válido que siga EXACTAMENTE esta estructura:
 
 RECORDATORIO FINAL: Intenta que la MAYORÍA de pronósticos sean de tipo "combo", "valor" o "standard" con cuota ≥1.40.
 Los picks tipo "banker" (cuota <1.40) deben ser MÁXIMO 1 por partido y solo si la confianza es ≥88%.
+${strategicInsightsBlock}
 `;
 
         // ═══════════════════════════════════════════════════════════════
