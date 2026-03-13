@@ -11,6 +11,7 @@ import { LandingPage } from './components/landing/LandingPage';
 import { AdminPage } from './components/Admin';
 import { PricingPage } from './components/pricing/PricingPage';
 import { PublicPricingPage } from './components/pricing/PublicPricingPage';
+import ResultadosPage from './components/ResultadosPage';
 import { SignUpFlow } from './components/auth/SignUpFlow';
 import { ResetPassword } from './components/auth/ResetPassword';
 import { TermsOfService } from './components/legal/TermsOfService';
@@ -22,7 +23,7 @@ import { useOrganization } from './contexts/OrganizationContext';
 import { useDailyRecap } from './hooks/useDailyRecap';
 import { DailyRecapModal } from './components/recap/DailyRecapModal';
 
-export type Page = 'live' | 'admin' | 'pricing';
+export type Page = 'live' | 'results' | 'admin' | 'pricing';
 
 // --- PLATFORM (PROTECTED APP) ---
 const Platform: React.FC = () => {
@@ -67,6 +68,8 @@ const Platform: React.FC = () => {
     switch (currentPage) {
       case 'live':
         return <FixturesFeed />;
+      case 'results':
+        return <ResultadosPage />;
       case 'admin':
         if (isAgencyRole(profile.role)) {
           return <AdminPage />;
@@ -105,7 +108,7 @@ const Platform: React.FC = () => {
           tier={recap.tier}
           onDismiss={recap.dismiss}
           onUpgrade={() => setCurrentPage('pricing')}
-          onViewResults={() => setCurrentPage('live')}
+          onViewResults={() => setCurrentPage('results')}
         />
       )}
     </Layout>

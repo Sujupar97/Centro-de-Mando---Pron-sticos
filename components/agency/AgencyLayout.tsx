@@ -11,6 +11,7 @@ import RevenueDashboard from './RevenueDashboard';
 import UserActivityMonitor from './UserActivityMonitor';
 import AuditLog from './AuditLog';
 import MLTrainingPanel from './MLTrainingPanel';
+import ResultadosPublic from '../live/ResultadosPublic';
 
 interface AgencyLayoutProps {
     onBack?: () => void;
@@ -32,6 +33,7 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
 
     const viewLabels: Record<string, string> = {
         dashboard: t('nav.dashboard'),
+        results: 'Resultados',
         revenue: 'Revenue',
         subaccounts: t('nav.clients'),
         activity: 'Actividad',
@@ -101,6 +103,12 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
                     <div className="max-w-7xl mx-auto animate-fade-in">
                         {activeView === 'dashboard' && (
                             <OperationsCenter />
+                        )}
+
+                        {activeView === 'results' && (
+                            <div className="glass p-6 rounded-xl border border-white/5">
+                                <ResultadosPublic />
+                            </div>
                         )}
 
                         {activeView === 'revenue' && (

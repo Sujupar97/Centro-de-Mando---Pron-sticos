@@ -21,6 +21,7 @@ export const AgencySidebar: React.FC<AgencySidebarProps> = ({ activeView, onView
 
     const menuItems = [
         { id: 'dashboard', label: t('nav.dashboard'), icon: <Squares2X2Icon className="w-5 h-5" /> },
+        { id: 'results', label: 'Resultados', icon: <TrophyIcon className="w-5 h-5" /> },
         { id: 'revenue', label: 'Revenue', icon: <ChartBarIcon className="w-5 h-5" /> },
         { id: 'subaccounts', label: t('nav.clients'), icon: <UsersIcon className="w-5 h-5" /> },
         { id: 'activity', label: 'Actividad', icon: <SignalIcon className="w-5 h-5" /> },

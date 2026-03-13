@@ -5,6 +5,7 @@ import { supabase } from './supabaseService';
 import type { PublicResultsData, ParlayResultData, AdvancedAnalyticsData, AdvancedAnalyticsFilters, PickResult, PlanPerformanceSummary, PerPlanComparisonData } from '../types';
 import type { PlanTier } from '../utils/planAccessUtils';
 import { PLAN_TIERS, PLAN_DISPLAY_NAMES, PLAN_PREDICTIONS_PERCENTAGES, getAllowedPickCount } from '../utils/planAccessUtils';
+import { DEFAULT_STAKING_CONFIG, getStakeUnits, getStakeAmount, getEffectiveOdds, calculateProfitLoss, calculateUnitProfit, calculateMaxDrawdown, normalizePModel, getFilterStakingLabel } from './stakingService';
 
 // Fecha de inicio del sistema de verificación
 const SYSTEM_START_DATE = '2026-02-17';
@@ -101,7 +102,7 @@ export async function getPublicResults(startDate: string, endDate: string, filte
         .select('id, fixture_id, market, selection, p_model, odds, result, verified_at, actual_score')
         .in('result', ['WON', 'LOST'])
         .gte('p_model', 0.83)
-        .gte('odds', 1.40)
+        .or('odds.gte.1.40,odds.is.null')
         .in('fixture_id', fixtureIdsInRange)
         .order('verified_at', { ascending: false });
 
@@ -116,7 +117,7 @@ export async function getPublicResults(startDate: string, endDate: string, filte
         .select('id', { count: 'exact', head: true })
         .in('fixture_id', fixtureIdsInRange)
         .gte('p_model', 0.83)
-        .gte('odds', 1.40)
+        .or('odds.gte.1.40,odds.is.null')
         .eq('result', 'PENDING');
 
     const results = picks || [];
@@ -150,15 +151,16 @@ export async function getPublicResults(startDate: string, endDate: string, filte
         }
     }
 
-    // Enrich with team names + match_date + profit/loss per pick
+    // Enrich with team names + match_date + profit/loss per pick (proportional staking)
     const baseBankroll = await fetchBaseBankroll();
-    const stakeAmount = baseBankroll * 0.04;
+    const config = DEFAULT_STAKING_CONFIG;
 
     const recentResults = results.map(p => {
         const match = matchMap.get(p.fixture_id);
-        const profitLoss = p.result === 'WON'
-            ? stakeAmount * ((p.odds || 1) - 1)
-            : -stakeAmount;
+        const units = getStakeUnits(config, 'single', p.p_model);
+        const stake = getStakeAmount(baseBankroll, units, config);
+        const effectiveOdds = getEffectiveOdds(p.odds, p.p_model);
+        const profitLoss = calculateProfitLoss(p.result, stake, effectiveOdds);
         return {
             id: p.id,
             home_team: match?.home_team || 'Equipo A',
@@ -173,6 +175,7 @@ export async function getPublicResults(startDate: string, endDate: string, filte
             league: match?.league_name,
             match_date: match?.match_date,
             profit_loss: profitLoss,
+            units,
         };
     });
 
@@ -180,8 +183,8 @@ export async function getPublicResults(startDate: string, endDate: string, filte
 
     // Bankroll — calculado desde value_picks_v2 (misma fuente de verdad que Analítica)
     // baseBankroll ya fue obtenido arriba para calcular stakeAmount
-    const { totalProfit: cumulativeProfit } = await calculateProfitFromPicks(baseBankroll, SYSTEM_START_DATE, new Date().toISOString().split('T')[0]);
-    const { totalProfit: periodProfit, totalStaked: periodStaked } = await calculateProfitFromPicks(baseBankroll, startDate, endDate);
+    const { totalProfit: cumulativeProfit, totalUnitsProfit: cumUnitsProfit, totalUnitsStaked: cumUnitsStaked } = await calculateProfitFromPicks(baseBankroll, SYSTEM_START_DATE, new Date().toISOString().split('T')[0]);
+    const { totalProfit: periodProfit, totalStaked: periodStaked, totalUnitsProfit: periodUnitsProfit, totalUnitsStaked: periodUnitsStaked } = await calculateProfitFromPicks(baseBankroll, startDate, endDate);
 
     // Fetch parlay results if filter includes parlays
     let parlaysData: PublicResultsData['parlays'] = undefined;
@@ -194,6 +197,41 @@ export async function getPublicResults(startDate: string, endDate: string, filte
         ? (await getParlayProfit(baseBankroll, PARLAY_START_DATE, new Date().toISOString().split('T')[0]))
         : 0;
     const combinedCumulativeProfit = cumulativeProfit + parlaysCumulativeProfit;
+
+    // Professional metrics: streaks, avg odds, max drawdown
+    let bestStreak = 0;
+    let worstStreak = 0;
+    let currentRun = 0;
+    let lastResult: string | null = null;
+    let oddsSum = 0;
+    let oddsCount = 0;
+    const bankrollHistory: number[] = [baseBankroll];
+    let runningBankroll = baseBankroll;
+
+    // Process all results chronologically (reverse since they come desc)
+    const chronological = [...results].reverse();
+    for (const pick of chronological) {
+        const pUnits = getStakeUnits(config, 'single', pick.p_model);
+        const pStake = getStakeAmount(baseBankroll, pUnits, config);
+        const pOdds = getEffectiveOdds(pick.odds, pick.p_model);
+        const pPnl = calculateProfitLoss(pick.result, pStake, pOdds);
+        runningBankroll += pPnl;
+        bankrollHistory.push(runningBankroll);
+
+        if (pick.odds && pick.odds > 1) { oddsSum += pick.odds; oddsCount++; }
+
+        if (pick.result === lastResult) {
+            currentRun++;
+        } else {
+            currentRun = 1;
+            lastResult = pick.result;
+        }
+        if (pick.result === 'WON' && currentRun > bestStreak) bestStreak = currentRun;
+        if (pick.result === 'LOST' && currentRun > worstStreak) worstStreak = currentRun;
+    }
+
+    const maxDrawdown = calculateMaxDrawdown(bankrollHistory);
+    const avgOdds = oddsCount > 0 ? Math.round((oddsSum / oddsCount) * 100) / 100 : 0;
 
     return {
         winRate: totalVerified > 0 ? (won.length / totalVerified) * 100 : 0,
@@ -213,6 +251,18 @@ export async function getPublicResults(startDate: string, endDate: string, filte
             periodROI: baseBankroll > 0 ? ((periodProfit + (parlaysData?.periodProfit ?? 0)) / baseBankroll) * 100 : 0,
             periodStaked: periodStaked + (parlaysData?.periodStaked ?? 0),
         },
+        units: {
+            totalUnitsStaked: cumUnitsStaked,
+            totalUnitsProfit: cumUnitsProfit,
+            yield: cumUnitsStaked > 0 ? (cumUnitsProfit / cumUnitsStaked) * 100 : 0,
+            periodUnitsStaked: periodUnitsStaked,
+            periodUnitsProfit: periodUnitsProfit,
+            periodYield: periodUnitsStaked > 0 ? (periodUnitsProfit / periodUnitsStaked) * 100 : 0,
+        },
+        maxDrawdown,
+        bestStreak,
+        worstStreak,
+        avgOdds,
         parlays: parlaysData,
     };
 }
@@ -261,12 +311,15 @@ async function getParlayResults(startDate: string, endDate: string, baseBankroll
     const wonParlays = parlays.filter(p => p.status === 'won');
     const lostParlays = parlays.filter(p => p.status === 'lost');
 
-    // Financial calc: 1% per parlay
-    const stakeAmount = baseBankroll * 0.01;
+    // Financial calc: proportional staking by leg count
+    const config = DEFAULT_STAKING_CONFIG;
     let periodProfit = 0;
     let periodStaked = 0;
 
     const recentResults: ParlayResultData[] = parlays.map(p => {
+        const legCount = (p.picks as any[] || []).length;
+        const units = getStakeUnits(config, 'parlay', undefined, legCount);
+        const stakeAmount = getStakeAmount(baseBankroll, units, config);
         periodStaked += stakeAmount;
         const profitLoss = p.status === 'won'
             ? stakeAmount * ((p.combined_odds || 1) - 1)
@@ -313,15 +366,18 @@ async function getParlayResults(startDate: string, endDate: string, baseBankroll
 async function getParlayProfit(baseBankroll: number, startDate: string, endDate: string): Promise<number> {
     const { data: parlays } = await supabase
         .from('parlay_combos_v2')
-        .select('combined_odds, status')
+        .select('combined_odds, status, picks')
         .gte('date', startDate)
         .lte('date', endDate)
         .in('status', ['won', 'lost']);
 
-    const stakeAmount = baseBankroll * 0.01;
+    const config = DEFAULT_STAKING_CONFIG;
     let totalProfit = 0;
 
     for (const p of (parlays || [])) {
+        const legCount = (p.picks as any[] || []).length;
+        const units = getStakeUnits(config, 'parlay', undefined, legCount);
+        const stakeAmount = getStakeAmount(baseBankroll, units, config);
         totalProfit += p.status === 'won'
             ? stakeAmount * ((p.combined_odds || 1) - 1)
             : -stakeAmount;
@@ -331,7 +387,7 @@ async function getParlayProfit(baseBankroll: number, startDate: string, endDate:
 }
 
 /**
- * Calculate profit directly from value_picks_v2 using flat staking (4%).
+ * Calculate profit from value_picks_v2 using proportional staking.
  * This is the single source of truth for financial calculations,
  * used by BOTH Resultados and Analítica Avanzada.
  * Uses dual date source (daily_matches + analysis_jobs_v2) to match Oportunidades.
@@ -339,29 +395,34 @@ async function getParlayProfit(baseBankroll: number, startDate: string, endDate:
 async function calculateProfitFromPicks(baseBankroll: number, startDate: string, endDate: string) {
     // Get fixture IDs using dual source
     const { fixtureIds } = await getFixtureIdsForDateRange(startDate, endDate);
-    if (fixtureIds.length === 0) return { totalProfit: 0, totalStaked: 0 };
+    if (fixtureIds.length === 0) return { totalProfit: 0, totalStaked: 0, totalUnitsProfit: 0, totalUnitsStaked: 0 };
 
-    // Get verified Oportunidades — ALIGNED with display (p_model >= 0.83 AND odds >= 1.40)
+    // Get verified Oportunidades — ALIGNED with display (p_model >= 0.83)
     const { data: picks } = await supabase
         .from('value_picks_v2')
-        .select('result, odds')
+        .select('result, odds, p_model')
         .in('fixture_id', fixtureIds)
         .gte('p_model', 0.83)
-        .gte('odds', 1.40)
+        .or('odds.gte.1.40,odds.is.null')
         .in('result', ['WON', 'LOST']);
 
-    const stakeAmount = baseBankroll * 0.04;
+    const config = DEFAULT_STAKING_CONFIG;
     let totalProfit = 0;
     let totalStaked = 0;
+    let totalUnitsProfit = 0;
+    let totalUnitsStaked = 0;
 
     for (const pick of (picks || [])) {
-        totalStaked += stakeAmount;
-        totalProfit += pick.result === 'WON'
-            ? stakeAmount * ((pick.odds || 1) - 1)
-            : -stakeAmount;
+        const units = getStakeUnits(config, 'single', pick.p_model);
+        const stake = getStakeAmount(baseBankroll, units, config);
+        const effectiveOdds = getEffectiveOdds(pick.odds, pick.p_model);
+        totalStaked += stake;
+        totalUnitsStaked += units;
+        totalProfit += calculateProfitLoss(pick.result, stake, effectiveOdds);
+        totalUnitsProfit += calculateUnitProfit(pick.result, units, effectiveOdds);
     }
 
-    return { totalProfit, totalStaked };
+    return { totalProfit, totalStaked, totalUnitsProfit, totalUnitsStaked };
 }
 
 function emptyResults(baseBankroll: number, current: number, profit: number): PublicResultsData {
@@ -500,16 +561,17 @@ export async function manualOverridePick(
 
     // Step 3: Update profitability_tracking (only for Oportunidades, skip VOID)
     if (newResult === 'VOID') return; // VOID = no profit/loss impact
-    const prob = pick.p_model > 1 ? pick.p_model / 100 : pick.p_model;
-    const isOportunidad = prob >= 0.83 && pick.odds && pick.odds >= 1.40;
+    const prob = normalizePModel(pick.p_model);
+    const isOportunidad = prob >= 0.83;
     if (!isOportunidad) return;
 
     const baseBankroll = await fetchBaseBankroll();
-    const stakePercent = 4;
-    const stakeAmount = baseBankroll * (stakePercent / 100);
-    const profitLoss = newResult === 'WON'
-        ? stakeAmount * (pick.odds - 1)
-        : -stakeAmount;
+    const config = DEFAULT_STAKING_CONFIG;
+    const units = getStakeUnits(config, 'single', prob);
+    const stakePercent = units * config.unit_value_percent;
+    const stakeAmount = getStakeAmount(baseBankroll, units, config);
+    const effectiveOdds = getEffectiveOdds(pick.odds, prob);
+    const profitLoss = calculateProfitLoss(newResult, stakeAmount, effectiveOdds);
 
     const { data: matchData } = await supabase
         .from('daily_matches')
@@ -628,8 +690,11 @@ export async function manualOverrideParlayLeg(
     // Step 5: Update profitability_tracking when parlay resolves (WON or LOST)
     if (parlayStatus === 'won' || parlayStatus === 'lost') {
         const baseBankroll = await fetchBaseBankroll();
-        const stakePercent = 1;
-        const stakeAmount = baseBankroll * (stakePercent / 100);
+        const config = DEFAULT_STAKING_CONFIG;
+        const legCount = picks.length;
+        const units = getStakeUnits(config, 'parlay', undefined, legCount);
+        const stakePercent = units * config.unit_value_percent;
+        const stakeAmount = getStakeAmount(baseBankroll, units, config);
         const profitLoss = parlayStatus === 'won'
             ? stakeAmount * ((parlay.combined_odds || 1) - 1)
             : -stakeAmount;
@@ -714,7 +779,7 @@ export async function recalculateResults(startDate: string, endDate: string): Pr
         .update({ result: 'PENDING', verified_at: null, actual_score: null })
         .in('fixture_id', fixtureIds)
         .gte('p_model', 0.83)
-        .gte('odds', 1.40)
+        .or('odds.gte.1.40,odds.is.null')
         .in('result', ['WON', 'LOST', 'VOID'])
         .select('id');
 
@@ -786,7 +851,7 @@ export async function getAdvancedAnalytics(filters: AdvancedAnalyticsFilters): P
         .select('id, fixture_id, market, selection, p_model, odds, result, verified_at, actual_score, created_at')
         .in('fixture_id', fixtureIds)
         .gte('p_model', 0.83)
-        .gte('odds', 1.40)
+        .or('odds.gte.1.40,odds.is.null')
         .in('result', ['WON', 'LOST', 'VOID'])
         .order('verified_at', { ascending: true });
 
@@ -803,7 +868,7 @@ export async function getAdvancedAnalytics(filters: AdvancedAnalyticsFilters): P
         .select('id', { count: 'exact', head: true })
         .in('fixture_id', fixtureIds)
         .gte('p_model', 0.83)
-        .gte('odds', 1.40)
+        .or('odds.gte.1.40,odds.is.null')
         .eq('result', 'PENDING');
 
     const verified = verifiedPicks || [];
@@ -811,25 +876,30 @@ export async function getAdvancedAnalytics(filters: AdvancedAnalyticsFilters): P
     const lost = verified.filter(p => p.result === 'LOST');
     const voided = verified.filter(p => p.result === 'VOID');
 
-    // Financial simulation (flat staking: 4% of bankroll)
+    // Financial simulation (proportional staking by confidence)
     const baseBankroll = filters.startingBankroll;
-    const stakeAmount = baseBankroll * 0.04;
+    const config = DEFAULT_STAKING_CONFIG;
 
     let bankroll = baseBankroll;
     const bankrollHistory: Array<{ date: string; bankroll: number; profit: number }> = [];
     let totalStaked = 0;
     let totalProfit = 0;
+    let totalUnitsStaked = 0;
+    let totalUnitsProfit = 0;
     let maxWinStreak = 0, maxLossStreak = 0, currentWinStreak = 0, currentLossStreak = 0;
 
     for (const pick of verified) {
         if (pick.result === 'VOID') continue;
 
-        const profitLoss = pick.result === 'WON'
-            ? stakeAmount * ((pick.odds || 1) - 1)
-            : -stakeAmount;
+        const units = getStakeUnits(config, 'single', pick.p_model);
+        const stakeAmount = getStakeAmount(baseBankroll, units, config);
+        const effectiveOdds = getEffectiveOdds(pick.odds, pick.p_model);
+        const profitLoss = calculateProfitLoss(pick.result, stakeAmount, effectiveOdds);
 
         totalStaked += stakeAmount;
+        totalUnitsStaked += units;
         totalProfit += profitLoss;
+        totalUnitsProfit += calculateUnitProfit(pick.result, units, effectiveOdds);
         bankroll += profitLoss;
 
         const match = matchMap.get(pick.fixture_id);
@@ -857,11 +927,12 @@ export async function getAdvancedAnalytics(filters: AdvancedAnalyticsFilters): P
         const market = pick.market || 'unknown';
         if (!byMarket[market]) byMarket[market] = { won: 0, lost: 0, profit: 0, staked: 0, accuracy: 0 };
 
-        const profitLoss = pick.result === 'WON'
-            ? stakeAmount * ((pick.odds || 1) - 1)
-            : -stakeAmount;
+        const mUnits = getStakeUnits(config, 'single', pick.p_model);
+        const mStake = getStakeAmount(baseBankroll, mUnits, config);
+        const mOdds = getEffectiveOdds(pick.odds, pick.p_model);
+        const profitLoss = calculateProfitLoss(pick.result, mStake, mOdds);
 
-        byMarket[market].staked += stakeAmount;
+        byMarket[market].staked += mStake;
         byMarket[market].profit += profitLoss;
         if (pick.result === 'WON') byMarket[market].won++;
         if (pick.result === 'LOST') byMarket[market].lost++;
@@ -892,6 +963,11 @@ export async function getAdvancedAnalytics(filters: AdvancedAnalyticsFilters): P
 
     // ROI = profit / capital inicial (misma fórmula que Resultados)
     const roi = baseBankroll > 0 ? (totalProfit / baseBankroll) * 100 : 0;
+    const maxDrawdown = calculateMaxDrawdown(bankrollHistory.map(h => h.bankroll));
+
+    // Average odds
+    const oddsSum = verified.filter(p => p.result !== 'VOID').reduce((s, p) => s + getEffectiveOdds(p.odds, p.p_model), 0);
+    const avgOdds = (won.length + lost.length) > 0 ? oddsSum / (won.length + lost.length) : 0;
 
     return {
         summary: {
@@ -907,19 +983,23 @@ export async function getAdvancedAnalytics(filters: AdvancedAnalyticsFilters): P
             roi,
             yield: totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0,
             current_bankroll: bankroll,
-            max_drawdown: 0,
+            max_drawdown: maxDrawdown,
             max_win_streak: maxWinStreak,
             max_loss_streak: maxLossStreak,
             current_streak: currentStreak,
+            units_staked: totalUnitsStaked,
+            units_profit: totalUnitsProfit,
+            avg_odds: Math.round(avgOdds * 100) / 100,
         },
         by_market: byMarket,
         by_league: byLeague,
         bankroll_history: bankrollHistory,
         picks: verified.map(p => {
             const match = matchMap.get(p.fixture_id);
-            const profitLoss = p.result === 'WON'
-                ? stakeAmount * ((p.odds || 1) - 1)
-                : p.result === 'LOST' ? -stakeAmount : 0;
+            const pUnits = getStakeUnits(config, 'single', p.p_model);
+            const pStake = getStakeAmount(baseBankroll, pUnits, config);
+            const pOdds = getEffectiveOdds(p.odds, p.p_model);
+            const profitLoss = p.result === 'VOID' ? 0 : calculateProfitLoss(p.result, pStake, pOdds);
             return {
                 id: p.id,
                 home_team: match?.home_team || '',
@@ -1095,7 +1175,7 @@ async function fetchPicksWithMatchDate(startDate: string, endDate: string): Prom
         .select('id, fixture_id, market, selection, p_model, odds, result, verified_at, actual_score, created_at')
         .in('fixture_id', fixtureIds)
         .gte('p_model', 0.83)
-        .gte('odds', 1.40);
+        .or('odds.gte.1.40,odds.is.null');
 
     const baseBankroll = await fetchBaseBankroll();
 
@@ -1161,19 +1241,24 @@ function calculatePlanMetrics(
     const won = verified.filter(p => p.result === 'WON');
     const lost = verified.filter(p => p.result === 'LOST');
 
-    const stakeAmount = baseBankroll * 0.04;
+    const config = DEFAULT_STAKING_CONFIG;
     let totalStaked = 0;
     let totalProfit = 0;
+    let unitsStaked = 0;
+    let unitsProfit = 0;
 
     for (const pick of verified) {
-        totalStaked += stakeAmount;
-        totalProfit += pick.result === 'WON'
-            ? stakeAmount * ((pick.odds || 1) - 1)
-            : -stakeAmount;
+        const units = getStakeUnits(config, 'single', pick.p_model);
+        const stake = getStakeAmount(baseBankroll, units, config);
+        const effectiveOdds = getEffectiveOdds(pick.odds, pick.p_model);
+        totalStaked += stake;
+        totalProfit += calculateProfitLoss(pick.result, stake, effectiveOdds);
+        unitsStaked += units;
+        unitsProfit += calculateUnitProfit(pick.result, units, effectiveOdds);
     }
 
     // Average odds
-    const oddsSum = verified.reduce((sum, p) => sum + (p.odds || 0), 0);
+    const oddsSum = verified.reduce((sum, p) => sum + getEffectiveOdds(p.odds, p.p_model), 0);
     const avgOdds = verified.length > 0 ? oddsSum / verified.length : 0;
 
     // Current streak (most recent first by verified_at)
@@ -1207,6 +1292,9 @@ function calculatePlanMetrics(
         roi: baseBankroll > 0 ? (totalProfit / baseBankroll) * 100 : 0,
         avgOdds: Math.round(avgOdds * 100) / 100,
         currentStreak: { type: streakType, count: streakCount },
+        unitsStaked,
+        unitsProfit,
+        yield: unitsStaked > 0 ? (unitsProfit / unitsStaked) * 100 : 0,
     };
 }
 
@@ -1234,37 +1322,46 @@ export async function getResultsByPlan(
     const won = verified.filter(p => p.result === 'WON');
     const lost = verified.filter(p => p.result === 'LOST');
 
-    const stakeAmount = baseBankroll * 0.04;
+    const config = DEFAULT_STAKING_CONFIG;
 
-    // Enrich with profit/loss
+    // Enrich with profit/loss (proportional staking)
     const recentResults = verified
         .sort((a, b) => (b.verified_at || '').localeCompare(a.verified_at || ''))
-        .map(p => ({
-            id: p.id,
-            home_team: p.home_team,
-            away_team: p.away_team,
-            market: p.market,
-            selection: p.selection,
-            result: p.result as PickResult,
-            odds: p.odds,
-            p_model: p.p_model,
-            actual_score: p.actual_score,
-            verified_at: p.verified_at || '',
-            league: p.league_name,
-            match_date: p.match_date,
-            profit_loss: p.result === 'WON'
-                ? stakeAmount * ((p.odds || 1) - 1)
-                : -stakeAmount,
-        }));
+        .map(p => {
+            const units = getStakeUnits(config, 'single', p.p_model);
+            const stake = getStakeAmount(baseBankroll, units, config);
+            const effectiveOdds = getEffectiveOdds(p.odds, p.p_model);
+            return {
+                id: p.id,
+                home_team: p.home_team,
+                away_team: p.away_team,
+                market: p.market,
+                selection: p.selection,
+                result: p.result as PickResult,
+                odds: p.odds,
+                p_model: p.p_model,
+                actual_score: p.actual_score,
+                verified_at: p.verified_at || '',
+                league: p.league_name,
+                match_date: p.match_date,
+                profit_loss: calculateProfitLoss(p.result, stake, effectiveOdds),
+                units,
+            };
+        });
 
     // Period profit for this plan's picks
     let periodProfit = 0;
     let periodStaked = 0;
+    let periodUnitsStaked = 0;
+    let periodUnitsProfit = 0;
     for (const pick of verified) {
-        periodStaked += stakeAmount;
-        periodProfit += pick.result === 'WON'
-            ? stakeAmount * ((pick.odds || 1) - 1)
-            : -stakeAmount;
+        const units = getStakeUnits(config, 'single', pick.p_model);
+        const stake = getStakeAmount(baseBankroll, units, config);
+        const effectiveOdds = getEffectiveOdds(pick.odds, pick.p_model);
+        periodStaked += stake;
+        periodProfit += calculateProfitLoss(pick.result, stake, effectiveOdds);
+        periodUnitsStaked += units;
+        periodUnitsProfit += calculateUnitProfit(pick.result, units, effectiveOdds);
     }
 
     // Cumulative profit for this plan (from system start)
@@ -1272,10 +1369,15 @@ export async function getResultsByPlan(
     const allTimePlanPicks = filterPicksByPlan(allTimePicks, planName)
         .filter(p => p.result === 'WON' || p.result === 'LOST');
     let cumulativeProfit = 0;
+    let cumUnitsStaked = 0;
+    let cumUnitsProfit = 0;
     for (const pick of allTimePlanPicks) {
-        cumulativeProfit += pick.result === 'WON'
-            ? stakeAmount * ((pick.odds || 1) - 1)
-            : -stakeAmount;
+        const units = getStakeUnits(config, 'single', pick.p_model);
+        const stake = getStakeAmount(baseBankroll, units, config);
+        const effectiveOdds = getEffectiveOdds(pick.odds, pick.p_model);
+        cumulativeProfit += calculateProfitLoss(pick.result, stake, effectiveOdds);
+        cumUnitsStaked += units;
+        cumUnitsProfit += calculateUnitProfit(pick.result, units, effectiveOdds);
     }
 
     // Last 7 days
@@ -1299,6 +1401,40 @@ export async function getResultsByPlan(
             break;
         }
     }
+
+    // Professional metrics: streaks, avg odds, max drawdown
+    let bestStreak = 0;
+    let worstStreak = 0;
+    let currentRun = 0;
+    let lastResult: string | null = null;
+    let oddsSum = 0;
+    let oddsCount = 0;
+    const bankrollHistory: number[] = [baseBankroll];
+    let runningBankroll = baseBankroll;
+
+    const chronological = [...recentResults].reverse();
+    for (const pick of chronological) {
+        const pUnits = getStakeUnits(config, 'single', pick.p_model);
+        const pStake = getStakeAmount(baseBankroll, pUnits, config);
+        const pOdds = getEffectiveOdds(pick.odds, pick.p_model);
+        const pPnl = calculateProfitLoss(pick.result, pStake, pOdds);
+        runningBankroll += pPnl;
+        bankrollHistory.push(runningBankroll);
+
+        if (pick.odds && pick.odds > 1) { oddsSum += pick.odds; oddsCount++; }
+
+        if (pick.result === lastResult) {
+            currentRun++;
+        } else {
+            currentRun = 1;
+            lastResult = pick.result;
+        }
+        if (pick.result === 'WON' && currentRun > bestStreak) bestStreak = currentRun;
+        if (pick.result === 'LOST' && currentRun > worstStreak) worstStreak = currentRun;
+    }
+
+    const maxDrawdown = calculateMaxDrawdown(bankrollHistory);
+    const avgOdds = oddsCount > 0 ? Math.round((oddsSum / oddsCount) * 100) / 100 : 0;
 
     // Parlays (included as-is, no plan filtering for now — plan filtering for parlays is Phase 6)
     let parlaysData: PublicResultsData['parlays'] = undefined;
@@ -1328,6 +1464,18 @@ export async function getResultsByPlan(
             periodROI: baseBankroll > 0 ? ((periodProfit + (parlaysData?.periodProfit ?? 0)) / baseBankroll) * 100 : 0,
             periodStaked: periodStaked + (parlaysData?.periodStaked ?? 0),
         },
+        units: {
+            totalUnitsStaked: cumUnitsStaked,
+            totalUnitsProfit: cumUnitsProfit,
+            yield: cumUnitsStaked > 0 ? (cumUnitsProfit / cumUnitsStaked) * 100 : 0,
+            periodUnitsStaked,
+            periodUnitsProfit,
+            periodYield: periodUnitsStaked > 0 ? (periodUnitsProfit / periodUnitsStaked) * 100 : 0,
+        },
+        maxDrawdown,
+        bestStreak,
+        worstStreak,
+        avgOdds,
         parlays: parlaysData,
     };
 }
@@ -1364,14 +1512,15 @@ export async function getPerPlanComparison(startDate: string, endDate: string): 
         const exclusiveWon = exclusiveVerified.filter(p => p.result === 'WON');
         const exclusiveLost = exclusiveVerified.filter(p => p.result === 'LOST');
 
-        const stakeAmount = baseBankroll * 0.04;
+        const excConfig = DEFAULT_STAKING_CONFIG;
         let exclusiveProfit = 0;
         let exclusiveStaked = 0;
         for (const pick of exclusiveVerified) {
-            exclusiveStaked += stakeAmount;
-            exclusiveProfit += pick.result === 'WON'
-                ? stakeAmount * ((pick.odds || 1) - 1)
-                : -stakeAmount;
+            const excUnits = getStakeUnits(excConfig, 'single', pick.p_model);
+            const excStake = getStakeAmount(baseBankroll, excUnits, excConfig);
+            const excOdds = getEffectiveOdds(pick.odds, pick.p_model);
+            exclusiveStaked += excStake;
+            exclusiveProfit += calculateProfitLoss(pick.result, excStake, excOdds);
         }
 
         plans[tier] = {

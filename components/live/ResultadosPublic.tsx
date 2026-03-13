@@ -10,8 +10,9 @@ import { ChartBarIcon, ArrowPathIcon, TrophyIcon } from '../icons/Icons';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { PLAN_DISPLAY_NAMES, PLAN_PREDICTIONS_PERCENTAGES, getRecommendedUpgradePlan } from '../../utils/planAccessUtils';
 import { getCurrentDateInBogota } from '../../utils/dateUtils';
+import { getFilterStakingLabel, getStakingLabel } from '../../services/stakingService';
 
-type PeriodKey = 'ayer' | 'hoy' | '7d' | '30d' | '90d';
+type PeriodKey = 'ayer' | 'hoy' | '7d' | '30d' | '90d' | 'all';
 type PeriodOption = { key: PeriodKey; label: string };
 type ResultFilter = 'all' | 'picks' | 'parlays';
 
@@ -21,6 +22,7 @@ const PERIODS: PeriodOption[] = [
     { key: '7d', label: '7 días' },
     { key: '30d', label: '30 días' },
     { key: '90d', label: '90 días' },
+    { key: 'all', label: 'Todo' },
 ];
 
 const RESULT_FILTERS: { key: ResultFilter; label: string }[] = [
@@ -64,6 +66,8 @@ function getDateRange(period: PeriodKey): { startDate: string; endDate: string }
             start.setDate(start.getDate() - 90);
             return { startDate: fmt(start), endDate: todayStr };
         }
+        case 'all':
+            return { startDate: '2026-02-17', endDate: todayStr };
     }
 }
 
@@ -85,7 +89,7 @@ const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigge
     const [data, setData] = useState<PublicResultsData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>('ayer');
+    const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>('7d');
     const [resultFilter, setResultFilter] = useState<ResultFilter>('all');
     const [viewMode, setViewMode] = useState<ViewMode>('plan');
 
@@ -94,20 +98,42 @@ const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigge
     const isUnlimited = planName === 'premium' || isAdmin;
     const effectiveViewMode = isUnlimited ? 'global' : viewMode;
 
-    const loadResults = async () => {
+    const loadResults = async (retryCount = 0) => {
         setLoading(true);
         setError(null);
+
+        // Check sessionStorage cache (TTL 5 min)
+        const cacheKey = `results_${selectedPeriod}_${resultFilter}_${effectiveViewMode}_${planName}`;
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached && retryCount === 0) {
+            try {
+                const { data: cachedData, ts } = JSON.parse(cached);
+                if (Date.now() - ts < 5 * 60 * 1000) {
+                    setData(cachedData);
+                    setLoading(false);
+                    return;
+                }
+            } catch { /* ignore corrupt cache */ }
+        }
+
         try {
             const { startDate, endDate } = getDateRange(selectedPeriod);
+            let results: PublicResultsData;
             if (effectiveViewMode === 'plan' && !isUnlimited) {
-                const results = await getResultsByPlan(startDate, endDate, planName, resultFilter);
-                setData(results);
+                results = await getResultsByPlan(startDate, endDate, planName, resultFilter);
             } else {
-                const results = await getPublicResults(startDate, endDate, resultFilter);
-                setData(results);
+                results = await getPublicResults(startDate, endDate, resultFilter);
             }
+            setData(results);
+            // Cache result
+            try { sessionStorage.setItem(cacheKey, JSON.stringify({ data: results, ts: Date.now() })); } catch { /* quota exceeded */ }
         } catch (err: any) {
             console.error('[ResultadosPublic] Error:', err);
+            // Auto-retry once on network error
+            if (retryCount === 0) {
+                console.log('[ResultadosPublic] Retrying...');
+                return loadResults(1);
+            }
             setError(err.message || 'Error al cargar resultados');
         } finally {
             setLoading(false);
@@ -183,7 +209,7 @@ const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigge
     const displayTotal = displayWon + displayLost;
     const displayWinRate = displayTotal > 0 ? (displayWon / displayTotal) * 100 : 0;
     const displayPending = resultFilter === 'parlays' ? (pl?.totalPending ?? 0) : resultFilter === 'picks' ? s.totalPending : s.totalPending + (pl?.totalPending ?? 0);
-    const stakingLabel = resultFilter === 'parlays' ? '1% por parlay' : resultFilter === 'picks' ? '4% por pronóstico' : '4% picks + 1% parlays';
+    const stakingLabel = getFilterStakingLabel(resultFilter);
 
     return (
         <div className="space-y-6">
@@ -286,6 +312,54 @@ const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigge
                 )}
             </div>
 
+            {/* Professional Metrics Row */}
+            {(s.units || s.maxDrawdown !== undefined || s.avgOdds) && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                    {s.units && (
+                        <div className="bg-slate-800/50 border border-white/5 rounded-lg p-3 text-center">
+                            <div className={`text-lg font-bold ${s.units.periodYield >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {s.units.periodYield >= 0 ? '+' : ''}{s.units.periodYield.toFixed(1)}%
+                            </div>
+                            <span className="text-[10px] text-slate-500 uppercase">Yield</span>
+                        </div>
+                    )}
+                    {s.units && (
+                        <div className="bg-slate-800/50 border border-white/5 rounded-lg p-3 text-center">
+                            <div className={`text-lg font-bold ${s.units.periodUnitsProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {s.units.periodUnitsProfit >= 0 ? '+' : ''}{s.units.periodUnitsProfit.toFixed(1)}u
+                            </div>
+                            <span className="text-[10px] text-slate-500 uppercase">Profit (u)</span>
+                        </div>
+                    )}
+                    {s.maxDrawdown !== undefined && (
+                        <div className="bg-slate-800/50 border border-white/5 rounded-lg p-3 text-center">
+                            <div className={`text-lg font-bold ${s.maxDrawdown > 10 ? 'text-red-400' : s.maxDrawdown > 5 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                -{s.maxDrawdown.toFixed(1)}%
+                            </div>
+                            <span className="text-[10px] text-slate-500 uppercase">Max Drawdown</span>
+                        </div>
+                    )}
+                    {(s.bestStreak || s.worstStreak) && (
+                        <div className="bg-slate-800/50 border border-white/5 rounded-lg p-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                                <span className="text-emerald-400 font-bold text-lg">{s.bestStreak || 0}</span>
+                                <span className="text-slate-600">/</span>
+                                <span className="text-red-400 font-bold text-lg">{s.worstStreak || 0}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-500 uppercase">Rachas W/L</span>
+                        </div>
+                    )}
+                    {s.avgOdds !== undefined && s.avgOdds > 0 && (
+                        <div className="bg-slate-800/50 border border-white/5 rounded-lg p-3 text-center">
+                            <div className="text-lg font-bold text-amber-400">
+                                @{s.avgOdds.toFixed(2)}
+                            </div>
+                            <span className="text-[10px] text-slate-500 uppercase">Odds Prom</span>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Acumulado Banner */}
             {br && (
                 <div className="bg-gradient-to-r from-slate-900 to-slate-800 border border-white/10 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
@@ -332,11 +406,9 @@ const ResultadosPublic: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigge
                                     <span className={`font-bold text-sm block ${pick.profit_loss >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                         {pick.profit_loss >= 0 ? '+' : ''}${pick.profit_loss.toFixed(0)}
                                     </span>
-                                    {pick.odds && (
-                                        <span className="text-amber-400/70 text-[10px]">
-                                            @{pick.odds.toFixed(2)}
-                                        </span>
-                                    )}
+                                    <span className="text-slate-500 text-[10px]">
+                                        {pick.units ? `${pick.units}u` : ''}{pick.odds ? ` @${pick.odds.toFixed(2)}` : ''}
+                                    </span>
                                 </div>
                             </div>
                         ))}
@@ -499,7 +571,7 @@ const ParlayResultsSection: React.FC<{ parlays?: PublicResultsData['parlays']; b
             <div className="bg-slate-900 border border-white/10 rounded-xl overflow-hidden">
                 <div className="p-4 border-b border-white/5 flex items-center justify-between">
                     <h4 className="text-white font-bold">Rendimiento Parlays</h4>
-                    <span className="text-xs text-slate-500">1% del bankroll por parlay</span>
+                    <span className="text-xs text-slate-500">0.25-1u por parlay</span>
                 </div>
                 <div className="p-4 space-y-3">
                     {/* Net Result - Hero Number */}

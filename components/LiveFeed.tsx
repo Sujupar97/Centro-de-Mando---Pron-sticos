@@ -13,7 +13,7 @@ import MatchDetailModal from './live/MatchDetailModal';
 import HighProbPicks from './ai/HighProbPicks';
 import SmartParlays from './ai/SmartParlays';
 import BatchProgressBanner from './ai/BatchProgressBanner';
-import ResultadosPublic from './live/ResultadosPublic';
+// ResultadosPublic moved to standalone ResultadosPage (sidebar section)
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../services/supabaseService';
 import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
@@ -158,19 +158,14 @@ export const FixturesFeed: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [selectedDate, setSelectedDate] = useState(getCurrentDateInBogota());
-    const [viewMode, setViewMode] = useState<'fixtures' | 'top-picks' | 'parlays' | 'profitability'>('top-picks');
+    const [viewMode, setViewMode] = useState<'fixtures' | 'top-picks' | 'parlays'>('top-picks');
     const [resultsRefreshKey, setResultsRefreshKey] = useState(0);
     const handlePickOverridden = useCallback(() => setResultsRefreshKey(k => k + 1), []);
     const [showLiveOnly, setShowLiveOnly] = useState(false);
     const [detailGame, setDetailGame] = useState<Game | null>(null);
     const handleOpenDetail = useCallback((game: Game) => setDetailGame(game), []);
 
-    // Si presentationMode se activa y estamos en tab Resultados, redirigir
-    useEffect(() => {
-        if (presentationMode && viewMode === 'profitability') {
-            setViewMode('top-picks');
-        }
-    }, [presentationMode, viewMode]);
+    // (Resultados tab moved to standalone page)
 
     // GESTIÓN DE JOBS
     const [activeJobs, setActiveJobs] = useState<Record<number, string>>({});
@@ -766,15 +761,7 @@ export const FixturesFeed: React.FC = () => {
                                     EN VIVO
                                 </button>
                             )}
-                            {!presentationMode && (
-                                <button
-                                    onClick={() => setViewMode('profitability')}
-                                    className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${viewMode === 'profitability' ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-400 hover:text-white'
-                                        }`}
-                                >
-                                    <ChartBarIcon className="w-5 h-5 sm:mr-2" /> <span className="hidden sm:inline">Resultados</span>
-                                </button>
-                            )}
+                            {/* Resultados tab moved to standalone sidebar section */}
                         </div>
                     </div>
                 </div>
@@ -790,10 +777,6 @@ export const FixturesFeed: React.FC = () => {
                 ) : viewMode === 'parlays' ? (
                     <div className="animate-fade-in">
                         <SmartParlays date={selectedDate} />
-                    </div>
-                ) : viewMode === 'profitability' ? (
-                    <div className="glass rounded-2xl p-3 sm:p-4 md:p-6 min-h-[500px] animate-fade-in border border-white/5">
-                        <ResultadosPublic refreshTrigger={resultsRefreshKey} />
                     </div>
                 ) : (
                     <>

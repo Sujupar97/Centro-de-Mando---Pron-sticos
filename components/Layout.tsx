@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { CalendarDaysIcon, UsersIcon, ArrowLeftOnRectangleIcon, CreditCardIcon } from './icons/Icons';
+import { CalendarDaysIcon, UsersIcon, ArrowLeftOnRectangleIcon, CreditCardIcon, TrophyIcon } from './icons/Icons';
 import { useAuth } from '../hooks/useAuth';
 import { OrganizationSwitcher } from './OrganizationSwitcher';
 import { Page } from '../App';
 import { CreateSubAccountModal } from './agency/CreateSubAccountModal';
 import { isAgencyRole } from '../utils/roles';
 import { useOrganization } from '../contexts/OrganizationContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
 import { RecapBadge } from './recap/RecapBadge';
 
 interface LayoutProps {
@@ -22,6 +23,7 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurrentPage, recapBadge }) => {
   const { profile, signOut } = useAuth();
   const { isImpersonating, stopImpersonation, currentOrg } = useOrganization();
+  const { plan } = useSubscription();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // Roles: agency (full access) vs client (view only per plan)
@@ -33,9 +35,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
   const navItems = [
     // Opciones para TODOS los usuarios
     { id: 'live', label: 'Jornadas', icon: <CalendarDaysIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: true },
-
-    // Opciones para ADMINS de cuenta y superiores
-    { id: 'pricing', label: 'Planes', icon: <CreditCardIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: false },
+    { id: 'results', label: 'Resultados', icon: <TrophyIcon className="w-5 h-5" />, forAgency: true, forAccount: true, forUser: true },
 
     // Opciones SOLO para SUPERADMIN de AGENCIA (platform_owner, agency_admin)
     { id: 'admin', label: 'Admin', icon: <UsersIcon className="w-5 h-5" />, forAgency: true, forAccount: false, forUser: false },
@@ -109,6 +109,16 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
               </p>
             </div>
           </div>
+          <button
+            onClick={() => setCurrentPage('pricing')}
+            className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-800/50 hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-400 transition-colors text-xs font-medium border border-white/5 mb-2"
+          >
+            <span className="flex items-center gap-1.5">
+              <CreditCardIcon className="w-3.5 h-3.5" />
+              Mi Plan
+            </span>
+            <span className="text-emerald-400 font-bold">{plan.display_name || 'Free'}</span>
+          </button>
           <button
             onClick={signOut}
             className="w-full flex items-center justify-center space-x-2 p-2 rounded-lg bg-slate-800 hover:bg-red-500/10 hover:text-red-400 text-slate-400 transition-colors text-xs font-medium border border-white/5"

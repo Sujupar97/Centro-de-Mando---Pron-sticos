@@ -597,6 +597,7 @@ export interface PublicResultsData {
         league?: string;
         match_date?: string;
         profit_loss: number;
+        units?: number;
     }>;
     bankroll?: {
         base: number;
@@ -607,6 +608,18 @@ export interface PublicResultsData {
         periodROI?: number;
         periodStaked?: number;
     };
+    units?: {
+        totalUnitsStaked: number;
+        totalUnitsProfit: number;
+        yield: number;
+        periodUnitsStaked: number;
+        periodUnitsProfit: number;
+        periodYield: number;
+    };
+    maxDrawdown?: number;
+    bestStreak?: number;
+    worstStreak?: number;
+    avgOdds?: number;
     parlays?: {
         totalVerified: number;
         totalPending: number;
@@ -656,6 +669,9 @@ export interface PlanPerformanceSummary {
     roi: number;
     avgOdds: number;
     currentStreak: { type: 'win' | 'loss'; count: number };
+    unitsStaked: number;
+    unitsProfit: number;
+    yield: number;
     exclusivePicks: number;
     exclusiveWon: number;
     exclusiveLost: number;

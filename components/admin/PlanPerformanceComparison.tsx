@@ -230,6 +230,18 @@ const PlanCard: React.FC<{ plan: PlanPerformanceSummary; isBest: boolean }> = ({
                     </div>
                     <span className="text-[10px] text-slate-500">ROI</span>
                 </div>
+                <div>
+                    <div className={`font-bold text-sm ${plan.unitsProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {plan.picksCount > 0 ? `${plan.unitsProfit >= 0 ? '+' : ''}${plan.unitsProfit.toFixed(1)}u` : '—'}
+                    </div>
+                    <span className="text-[10px] text-slate-500">Units</span>
+                </div>
+                <div>
+                    <div className={`font-bold text-sm ${plan.yield >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {plan.picksCount > 0 ? `${plan.yield >= 0 ? '+' : ''}${plan.yield.toFixed(1)}%` : '—'}
+                    </div>
+                    <span className="text-[10px] text-slate-500">Yield</span>
+                </div>
             </div>
 
             {/* Footer */}
