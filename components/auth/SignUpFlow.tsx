@@ -81,6 +81,18 @@ export const SignUpFlow: React.FC = () => {
             if (authError) throw authError;
             if (!authData.user) throw new Error('No se pudo crear el usuario');
 
+            // Notificar admin del nuevo registro (fire-and-forget, no bloquea el flujo)
+            supabase.functions.invoke('send-admin-notification', {
+                body: {
+                    type: 'new_registration',
+                    data: {
+                        name: signUpData.fullName,
+                        email: signUpData.email,
+                        created_at: new Date().toISOString()
+                    }
+                }
+            }).catch(() => {}); // Silencioso — el registro no depende de esto
+
             // 2. Si es plan gratuito, asignar directamente
             if (selectedPlan.price_cents === 0) {
                 const { data: planData } = await supabase
