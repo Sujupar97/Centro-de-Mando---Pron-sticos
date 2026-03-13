@@ -108,6 +108,11 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
 
     const hiddenParlayCount = parlays.length - visibleParlays.length;
 
+    // --- Guard: parlays solo visibles para agencia (Fase 1) ---
+    if (!isAgency && !isAdmin) {
+        return null;
+    }
+
     // --- Plan Free sin acceso a parlays del dia actual ---
     if (!parlayAccess && !isAdmin) {
         return (
