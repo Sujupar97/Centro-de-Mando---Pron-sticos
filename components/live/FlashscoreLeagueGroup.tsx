@@ -8,6 +8,7 @@ interface FlashscoreLeagueGroupProps {
     league: League;
     gameJobStatus: Record<number, AnalysisJob['status']>;
     reportsAvailable: Record<number, boolean>;
+    accessibleReports?: Set<number>;
     userRole?: string;
     onOpenDetail: (game: Game) => void;
     onAnalyzeGame: (game: Game) => void;
@@ -16,7 +17,7 @@ interface FlashscoreLeagueGroupProps {
 }
 
 const FlashscoreLeagueGroup: React.FC<FlashscoreLeagueGroupProps> = ({
-    league, gameJobStatus, reportsAvailable, userRole,
+    league, gameJobStatus, reportsAvailable, accessibleReports, userRole,
     onOpenDetail, onAnalyzeGame, onAnalyzeLeague, onViewReport
 }) => {
     const [isExpanded, setIsExpanded] = useState(true);
@@ -65,17 +66,23 @@ const FlashscoreLeagueGroup: React.FC<FlashscoreLeagueGroupProps> = ({
             {/* Match Rows */}
             {isExpanded && (
                 <div>
-                    {league.games.map((game) => (
-                        <FlashscoreMatchRow
-                            key={game.fixture.id}
-                            game={game}
-                            hasReport={!!reportsAvailable[game.fixture.id]}
-                            jobStatus={gameJobStatus[game.fixture.id]}
-                            userRole={userRole}
-                            onOpenDetail={onOpenDetail}
-                            onAnalyze={onAnalyzeGame}
-                        />
-                    ))}
+                    {league.games.map((game) => {
+                        const fid = game.fixture.id;
+                        const hasReport = !!reportsAvailable[fid];
+                        const isLocked = hasReport && accessibleReports ? !accessibleReports.has(fid) : false;
+                        return (
+                            <FlashscoreMatchRow
+                                key={fid}
+                                game={game}
+                                hasReport={hasReport}
+                                isReportLocked={isLocked}
+                                jobStatus={gameJobStatus[fid]}
+                                userRole={userRole}
+                                onOpenDetail={onOpenDetail}
+                                onAnalyze={onAnalyzeGame}
+                            />
+                        );
+                    })}
                 </div>
             )}
         </div>

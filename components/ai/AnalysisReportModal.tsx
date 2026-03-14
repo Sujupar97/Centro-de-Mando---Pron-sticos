@@ -2,11 +2,15 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { VisualAnalysisResult, DashboardAnalysisJSON, TablaComparativaData, AnalisisSeccion, DetallePrediccion, GraficoSugerido, PredictionDB } from '../../types';
-import { XMarkIcon, TrophyIcon, ChartBarIcon, ListBulletIcon, LightBulbIcon, ExclamationTriangleIcon, LinkIcon, EyeIcon, SparklesIcon } from '../icons/Icons';
+import { XMarkIcon, TrophyIcon, ChartBarIcon, ListBulletIcon, LightBulbIcon, ExclamationTriangleIcon, LinkIcon, EyeIcon, SparklesIcon, LockClosedIcon } from '../icons/Icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../services/supabaseService';
 import { mapLeagueToSportKey, fastBatchOddsCheck, findPriceInEvent } from '../../services/oddsService';
 import { useState, useEffect } from 'react';
+import { useAuth } from '../../hooks/useAuth';
+import { useSubscription } from '../../contexts/SubscriptionContext';
+import { isAgencyRole } from '../../utils/roles';
+import { filterPicksForPlan, PLAN_PREDICTIONS_PERCENTAGES, PlanTier, PLAN_DISPLAY_NAMES } from '../../utils/planAccessUtils';
 
 // --- COMPONENTES AUXILIARES DEL DASHBOARD ---
 
@@ -33,7 +37,7 @@ import { ArrowDownTrayIcon, ClipboardDocumentCheckIcon } from '../icons/Icons';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-const PostMatchSection: React.FC<{ analysis: PostMatchAnalysis | string; outcome?: MatchOutcome; headerData: any }> = ({ analysis, outcome, headerData }) => {
+const PostMatchSection: React.FC<{ analysis: PostMatchAnalysis | string; outcome?: MatchOutcome; headerData: any; showPdfButton?: boolean }> = ({ analysis, outcome, headerData, showPdfButton = false }) => {
     if (!analysis) return null;
 
     const handleDownloadFinalPDF = () => {
@@ -100,13 +104,15 @@ const PostMatchSection: React.FC<{ analysis: PostMatchAnalysis | string; outcome
                         <p className="text-blue-300 text-sm">Evaluación final y feedback del sistema</p>
                     </div>
                 </div>
-                <button
-                    onClick={handleDownloadFinalPDF}
-                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold transition-all shadow-lg hover:shadow-blue-500/20"
-                >
-                    <ArrowDownTrayIcon className="w-5 h-5" />
-                    Descargar Informe Final
-                </button>
+                {showPdfButton && (
+                    <button
+                        onClick={handleDownloadFinalPDF}
+                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold transition-all shadow-lg hover:shadow-blue-500/20"
+                    >
+                        <ArrowDownTrayIcon className="w-5 h-5" />
+                        Descargar Informe Final
+                    </button>
+                )}
             </div>
 
             {outcome && (
@@ -265,22 +271,29 @@ const VisualChart: React.FC<{ data: GraficoSugerido }> = ({ data }) => {
     );
 };
 
+const OPPORTUNITY_THRESHOLD = 83;
+
 const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
     const prob = pred.probabilidad_estimado_porcentaje;
+    const isOpportunity = prob >= OPPORTUNITY_THRESHOLD;
     const color = prob >= 70 ? 'text-green-accent' : prob >= 55 ? 'text-yellow-400' : 'text-gray-300';
-    const border = prob >= 70 ? 'border-green-accent' : 'border-gray-600';
+    const border = isOpportunity ? 'border-emerald-500' : prob >= 70 ? 'border-green-accent' : 'border-gray-600';
 
-    // V2 ahora viene mapeado a estructura V1, así que usamos justificacion_detallada
     const justif = pred.justificacion_detallada;
-    const edge = (pred as any).edge; // Ya es porcentaje entero (31, no 0.31)
+    const edge = (pred as any).edge;
 
-    // Extraer datos con fallbacks seguros
     const baseStats = justif?.base_estadistica || ['Análisis cuantitativo aplicado'];
     const context = justif?.contexto_competitivo?.[0] || (edge ? `Ventaja de +${edge}% sobre las cuotas` : 'Factor táctico evaluado');
     const conclusion = justif?.conclusion || 'Recomendación basada en el modelo de análisis';
 
     return (
-        <div className={`bg-gray-800 rounded-xl overflow-hidden border-l-4 ${border} shadow-lg mb-6`}>
+        <div className={`bg-gray-800 rounded-xl overflow-hidden border-l-4 ${border} shadow-lg mb-6 ${isOpportunity ? 'ring-1 ring-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : ''}`}>
+            {isOpportunity && (
+                <div className="bg-gradient-to-r from-emerald-600/20 to-emerald-500/10 px-5 py-2 flex items-center gap-2 border-b border-emerald-500/20">
+                    <span className="text-emerald-400 text-sm">⚡</span>
+                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Oportunidad de Valor</span>
+                </div>
+            )}
             <div className="p-5 border-b border-gray-700 flex justify-between items-center bg-gray-700/20">
                 <div>
                     <span className="text-xs uppercase font-bold text-gray-400 tracking-wider">{pred.mercado}</span>
@@ -289,16 +302,14 @@ const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
                 <div className="flex flex-col items-center justify-center bg-gray-900 rounded-lg p-2 min-w-[80px]">
                     <span className={`text-2xl font-bold ${color}`}>{prob}%</span>
                     <span className="text-[10px] text-gray-500 uppercase">Prob.</span>
-                    {/* Odds Badge */}
                     {pred.odds && (
                         <div className="mt-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-3 py-1 rounded-md text-sm font-black shadow-[0_0_10px_rgba(59,130,246,0.5)] animate-pulse-slow border border-blue-400">
                             @{pred.odds.toFixed(2)}
                         </div>
                     )}
-                    {/* Edge Badge - Ya es porcentaje, NO multiplicar */}
                     {edge && edge > 0 && (
                         <div className="mt-2 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white px-3 py-1 rounded-md text-xs font-bold">
-                            Edge: +{edge}%
+                            Ventaja: +{edge}%
                         </div>
                     )}
                 </div>
@@ -324,6 +335,82 @@ const PredictionCard: React.FC<{ pred: DetallePrediccion }> = ({ pred }) => {
                     {conclusion}
                 </div>
             </div>
+        </div>
+    );
+};
+
+// --- LOCKED SECTION COMPONENT (Plan-based content gating) ---
+const LockedSection: React.FC<{
+    title: string;
+    planRequired: string;
+    children?: React.ReactNode;
+}> = ({ title, planRequired, children }) => (
+    <div className="relative rounded-xl overflow-hidden">
+        {children && (
+            <div className="filter blur-sm pointer-events-none select-none" aria-hidden="true">
+                {children}
+            </div>
+        )}
+        <div className={`${children ? 'absolute inset-0' : ''} backdrop-blur-md bg-slate-900/70 z-10 flex flex-col items-center justify-center py-12 px-6 rounded-xl border border-white/10`}>
+            <LockClosedIcon className="w-10 h-10 text-slate-400 mb-3" />
+            <p className="text-white font-bold text-lg mb-1">{title}</p>
+            <p className="text-slate-400 text-sm mb-4">Disponible desde el plan <span className="text-emerald-400 font-bold">{planRequired}</span></p>
+            <a
+                href="/pricing"
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-emerald-500/20"
+            >
+                Ver Planes
+            </a>
+        </div>
+    </div>
+);
+
+// --- DUAL SCORES COMPONENT ---
+const DualScoresSection: React.FC<{ scores: any }> = ({ scores }) => {
+    const [showExplanation, setShowExplanation] = useState(false);
+    return (
+        <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-6 rounded-xl border border-white/10 mb-2">
+            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                <ChartBarIcon className="w-5 h-5 text-blue-400" />
+                Transparencia del Modelo
+            </h3>
+            <p className="text-gray-400 text-sm mb-4">Cómo nuestro sistema evalúa este partido desde dos ángulos independientes.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-black/30 p-4 rounded-lg text-center border border-blue-500/20">
+                    <span className="text-2xl sm:text-3xl font-black text-blue-400">{scores.score_estadistico}</span>
+                    <span className="block text-xs text-blue-300 font-bold uppercase mt-1">Score Estadístico</span>
+                    <span className="block text-[10px] text-gray-500 mt-1 leading-tight">Datos puros: forma, xG, goles, corners</span>
+                </div>
+                <div className="bg-black/30 p-4 rounded-lg text-center border border-purple-500/20">
+                    <span className="text-2xl sm:text-3xl font-black text-purple-400">{scores.score_inteligencia_partido}</span>
+                    <span className="block text-xs text-purple-300 font-bold uppercase mt-1">Score de Contexto</span>
+                    <span className="block text-[10px] text-gray-500 mt-1 leading-tight">Contexto: presión, psicología, noticias</span>
+                </div>
+                <div className="bg-black/30 p-5 rounded-lg text-center border-2 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+                    <span className="text-3xl sm:text-4xl font-black text-emerald-400">{scores.confianza_final_calculada}%</span>
+                    <span className="block text-xs text-emerald-300 font-bold uppercase mt-1">Confianza Final</span>
+                    <span className="block text-[10px] text-gray-500 mt-1 leading-tight">Combinación ponderada 50/50</span>
+                </div>
+            </div>
+            {scores.justificacion_balance && (
+                <p className="text-gray-400 text-sm mt-3 italic border-l-2 border-emerald-500/50 pl-3">
+                    {scores.justificacion_balance}
+                </p>
+            )}
+            <button
+                onClick={() => setShowExplanation(!showExplanation)}
+                className="mt-3 text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+            >
+                <svg className={`w-3 h-3 transition-transform ${showExplanation ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                ¿Cómo se calculan estos scores?
+            </button>
+            {showExplanation && (
+                <div className="mt-2 bg-black/20 p-4 rounded-lg text-sm text-gray-400 leading-relaxed border border-white/5 animate-fade-in">
+                    <p className="mb-2"><strong className="text-blue-400">Score Estadístico</strong> analiza datos cuantitativos: forma reciente de ambos equipos, goles esperados (xG), corners, posesión, rendimiento local/visitante y tendencias históricas.</p>
+                    <p className="mb-2"><strong className="text-purple-400">Score de Contexto</strong> evalúa factores cualitativos: presión competitiva (necesidad de puntos), bajas y lesiones, factor cancha, historial directo y situación psicológica.</p>
+                    <p><strong className="text-emerald-400">Confianza Final</strong> es una combinación ponderada 50/50 de ambos scores, representando la seguridad global del modelo en su análisis.</p>
+                </div>
+            )}
         </div>
     );
 };
@@ -597,18 +684,21 @@ const OddsOverviewSection: React.FC<{ odds: any }> = ({ odds }) => {
 // --- COMPONENTE PRINCIPAL ---
 
 export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | null; onClose: () => void }> = ({ analysis, onClose }) => {
-    // Local state to handle real-time updates (like odds) without mutating props directly (though standard React props are read-only)
-    // We wrap the analysis data in state to trigger re-renders when odds are fetched.
     const [currentAnalysis, setCurrentAnalysis] = useState<VisualAnalysisResult | null>(analysis);
+    const { profile } = useAuth();
+    const { plan, isAdmin: isSubAdmin } = useSubscription();
+    const isAgency = isAgencyRole(profile?.role);
+    const hasFullAccess = isAgency || isSubAdmin;
+    const userPlan = (plan.plan_name || 'free') as PlanTier;
 
-    // EFFECT: Sync state with prop (CRITICAL for opening modal when data arrives)
     useEffect(() => {
         setCurrentAnalysis(analysis);
     }, [analysis]);
     const [showFullReport, setShowFullReport] = useState(false);
+    const [showPdfDialog, setShowPdfDialog] = useState(false);
     const [realOdds, setRealOdds] = useState<any | null>(null);
     const [showDebug, setShowDebug] = useState(false);
-    const [debugTab, setDebugTab] = useState<'ai' | 'payload'>('ai'); // Toggle for Debug View
+    const [debugTab, setDebugTab] = useState<'ai' | 'payload'>('ai');
 
     // EFFECT: Fetch Real Odds for High Confidence Predictions
     useEffect(() => {
@@ -761,22 +851,23 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
     const hasVerdict = !!data.veredicto_analista;
     const showVerdictView = isStructured && hasVerdict && !showFullReport;
 
-    // Nueva lógica de descarga para el reporte completo
-    const handleDownloadReport = () => {
+    // Descarga PDF con opciones del diálogo
+    const handleDownloadReport = (pdfOptions?: { isPromo: boolean; onlyOpportunities: boolean }) => {
         import('../../services/pdf/pdfGenerator').then(({ generateMatchAnalysisPDF }) => {
-            // Preparamos los datos completos para el generador
             const pdfData = {
                 report_pre_jsonb: {
                     ...data,
-                    // Aseguramos que header_partido esté presente (es clave para el título)
                     header_partido: data.header_partido || { titulo: "Informe de Análisis", subtitulo: new Date().toLocaleDateString() }
                 }
             };
 
             generateMatchAnalysisPDF(pdfData, {
-                fileName: `Derbix_Analisis_${(data.header_partido?.titulo || 'Reporte').replace(/[^a-z0-9]/gi, '_')}.pdf`
+                fileName: `Derbix_Analisis_${(data.header_partido?.titulo || 'Reporte').replace(/[^a-z0-9]/gi, '_')}.pdf`,
+                isPromo: pdfOptions?.isPromo || false,
+                onlyOpportunities: pdfOptions?.onlyOpportunities || false,
             });
         });
+        setShowPdfDialog(false);
     };
 
     return createPortal(
@@ -866,14 +957,16 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                                     </svg>
                                 </button>
+                                {isAgency && (
                                 <button
-                                    onClick={handleDownloadReport}
+                                    onClick={() => setShowPdfDialog(true)}
                                     className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all group border border-white/10 hover:border-brand/50"
                                     title="Descargar PDF Premium"
                                 >
                                     <ArrowDownTrayIcon className="w-4 h-4 text-slate-400 group-hover:text-brand transition-colors" />
                                     <span className="hidden md:inline">Descargar PDF</span>
                                 </button>
+                                )}
                                 <div className="h-6 w-px bg-white/10 mx-1"></div>
                                 <button
                                     onClick={onClose}
@@ -902,6 +995,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                     analysis={currentAnalysis.analysisRun?.post_match_analysis as any}
                                     outcome={currentAnalysis.analysisRun?.actual_outcome as any}
                                     headerData={data.header_partido}
+                                    showPdfButton={isAgency}
                                 />
 
                                 {/* 1. Resumen Ejecutivo */}
@@ -910,7 +1004,10 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                 {/* 2. Grid de Tablas y Visuales */}
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                     <div className="space-y-6">
-                                        <h3 className="text-xl font-bold text-white flex items-center"><ChartBarIcon className="w-5 h-5 mr-2 text-green-accent" /> Datos Clave</h3>
+                                        <div>
+                                            <h3 className="text-xl font-bold text-white flex items-center"><ChartBarIcon className="w-5 h-5 mr-2 text-green-accent" /> Datos Clave</h3>
+                                            <p className="text-gray-500 text-xs mt-1">Estadísticas comparativas entre ambos equipos basadas en los últimos partidos.</p>
+                                        </div>
                                         {data.tablas_comparativas && Object.values(data.tablas_comparativas).map((tabla, idx) => (
                                             <DynamicTable key={idx} data={tabla} />
                                         ))}
@@ -926,7 +1023,8 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                 {/* 3. Análisis Táctico y Escenarios */}
                                 {data.analisis_detallado && (
                                     <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-                                        <h3 className="text-2xl font-bold text-white mb-6 border-b border-gray-700 pb-2">Análisis Profundo</h3>
+                                        <h3 className="text-2xl font-bold text-white mb-2 border-b border-gray-700 pb-2">Análisis Profundo</h3>
+                                        <p className="text-gray-500 text-sm mb-6">Factores tácticos, psicológicos y contextuales que influyen en el resultado.</p>
 
                                         {/* 1. Razonamiento Central (Tesis de Inversión) - NUEVO */}
                                         {(data.analisis_detallado as any).razonamiento_central && (
@@ -980,33 +1078,9 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                     </div>
                                 )}
 
-                                {/* V8: Dual Scores Transparency */}
+                                {/* V8: Scores Duales — Transparencia del Modelo */}
                                 {(data as any).scores_duales && (
-                                    <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-6 rounded-xl border border-white/10 mb-2">
-                                        <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                                            <ChartBarIcon className="w-5 h-5 text-blue-400" />
-                                            Scores Duales (50/50)
-                                        </h3>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                            <div className="bg-black/30 p-4 rounded-lg text-center border border-blue-500/20">
-                                                <span className="text-2xl sm:text-3xl font-black text-blue-400">{(data as any).scores_duales.score_estadistico}</span>
-                                                <span className="block text-xs text-gray-400 uppercase mt-1">Stats Score</span>
-                                            </div>
-                                            <div className="bg-black/30 p-4 rounded-lg text-center border border-purple-500/20">
-                                                <span className="text-2xl sm:text-3xl font-black text-purple-400">{(data as any).scores_duales.score_inteligencia_partido}</span>
-                                                <span className="block text-xs text-gray-400 uppercase mt-1">Context Score</span>
-                                            </div>
-                                            <div className="bg-black/30 p-4 rounded-lg text-center border border-emerald-500/20">
-                                                <span className="text-2xl sm:text-3xl font-black text-emerald-400">{(data as any).scores_duales.confianza_final_calculada}%</span>
-                                                <span className="block text-xs text-gray-400 uppercase mt-1">Confianza Final</span>
-                                            </div>
-                                        </div>
-                                        {(data as any).scores_duales.justificacion_balance && (
-                                            <p className="text-gray-400 text-sm mt-3 italic border-l-2 border-gray-600 pl-3">
-                                                {(data as any).scores_duales.justificacion_balance}
-                                            </p>
-                                        )}
-                                    </div>
+                                    <DualScoresSection scores={(data as any).scores_duales} />
                                 )}
 
                                 {/* V8: Patrones Detectados */}
@@ -1068,11 +1142,11 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                                     <h4 className="text-red-400 text-xs font-bold uppercase mb-2">Disciplina</h4>
                                                     <div className="space-y-1 text-sm">
                                                         <div className="flex justify-between text-gray-300">
-                                                            <span>Local Avg Tarjetas</span>
+                                                            <span>Prom. Tarjetas Local</span>
                                                             <span className="font-bold text-white">{(data as any).patrones_detectados.disciplina.home_avg_tarjetas}</span>
                                                         </div>
                                                         <div className="flex justify-between text-gray-300">
-                                                            <span>Visita Avg Tarjetas</span>
+                                                            <span>Prom. Tarjetas Visitante</span>
                                                             <span className="font-bold text-white">{(data as any).patrones_detectados.disciplina.away_avg_tarjetas}</span>
                                                         </div>
                                                     </div>
@@ -1096,34 +1170,71 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                     </div>
                                 )}
 
-                                {/* 4. Predicciones Finales */}
-                                {data.predicciones_finales && data.predicciones_finales.detalle && (
-                                    <div>
-                                        <h3 className="text-2xl font-bold text-white mb-6 flex items-center">
-                                            <TrophyIcon className="w-8 h-8 text-green-accent mr-3" />
-                                            Predicciones del Modelo
-                                        </h3>
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                            {data.predicciones_finales.detalle.map((pred, idx) => (
-                                                <PredictionCard key={pred.id || idx} pred={pred} />
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
+                                {/* 4. Predicciones Finales — Gating por plan */}
+                                {data.predicciones_finales && data.predicciones_finales.detalle && (() => {
+                                    const allPreds = data.predicciones_finales.detalle;
+                                    const canSeePredictions = hasFullAccess || userPlan !== 'free';
+                                    const visiblePreds = hasFullAccess
+                                        ? allPreds
+                                        : filterPicksForPlan(allPreds, userPlan);
+                                    const lockedCount = allPreds.length - visiblePreds.length;
 
-                                {/* 4.5 NUEVO: Análisis de Mercados Calculados (60+) */}
-                                {(data as any).analisis_mercados_calculados && (
+                                    if (!canSeePredictions) {
+                                        return (
+                                            <LockedSection title="Predicciones del Modelo" planRequired={PLAN_DISPLAY_NAMES.starter}>
+                                                <div>
+                                                    <h3 className="text-2xl font-bold text-white mb-2 flex items-center">
+                                                        <TrophyIcon className="w-8 h-8 text-green-accent mr-3" />
+                                                        Predicciones del Modelo
+                                                    </h3>
+                                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                        {allPreds.slice(0, 4).map((pred, idx) => (
+                                                            <PredictionCard key={pred.id || idx} pred={pred} />
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </LockedSection>
+                                        );
+                                    }
+
+                                    return (
+                                        <div>
+                                            <h3 className="text-2xl font-bold text-white mb-2 flex items-center">
+                                                <TrophyIcon className="w-8 h-8 text-green-accent mr-3" />
+                                                Predicciones del Modelo
+                                            </h3>
+                                            <p className="text-gray-500 text-sm mb-6">Pronósticos generados por IA. Las predicciones con {'>'}= 83% de probabilidad son oportunidades de valor confirmadas.</p>
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                {visiblePreds.map((pred, idx) => (
+                                                    <PredictionCard key={pred.id || idx} pred={pred} />
+                                                ))}
+                                            </div>
+                                            {lockedCount > 0 && (
+                                                <div className="mt-4 text-center py-4 bg-slate-800/50 rounded-xl border border-white/5">
+                                                    <p className="text-slate-400 text-sm">
+                                                        <LockClosedIcon className="w-4 h-4 inline mr-1" />
+                                                        {lockedCount} predicción{lockedCount > 1 ? 'es' : ''} adicional{lockedCount > 1 ? 'es' : ''} disponible{lockedCount > 1 ? 's' : ''} en planes superiores
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* 4.5: Análisis de Mercados Calculados (60+) — Gating: pro+ */}
+                                {(data as any).analisis_mercados_calculados && (() => {
+                                    const canSeeMarkets = hasFullAccess || userPlan === 'pro' || userPlan === 'premium';
+                                    const marketsContent = (
                                     <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 p-6 rounded-xl border border-purple-500/30">
-                                        <h3 className="text-2xl font-bold text-white mb-4 flex items-center">
+                                        <h3 className="text-2xl font-bold text-white mb-2 flex items-center">
                                             <ChartBarIcon className="w-8 h-8 text-purple-400 mr-3" />
                                             Análisis de 60+ Mercados
                                             <span className="ml-3 bg-purple-500/20 text-purple-300 px-3 py-1 rounded-full text-xs font-bold">
                                                 {(data as any).analisis_mercados_calculados.mercados_con_valor} oportunidades detectadas
                                             </span>
                                         </h3>
-
-                                        {/* Ranking de Oportunidades */}
-                                        <h4 className="text-lg font-bold text-purple-300 mb-3">🔥 Top Oportunidades por Value</h4>
+                                        <p className="text-gray-500 text-sm mb-4">Ranking de mercados donde el modelo detecta mayor discrepancia entre probabilidad real y cuotas.</p>
+                                        <h4 className="text-lg font-bold text-purple-300 mb-3">Top Oportunidades por Valor</h4>
                                         <div className="space-y-3">
                                             {((data as any).analisis_mercados_calculados.top_oportunidades || []).slice(0, 5).map((opp: any, idx: number) => (
                                                 <div key={idx} className={`flex items-center justify-between p-4 rounded-lg border-l-4 ${opp.confianza === 'ALTA' ? 'border-green-500 bg-green-900/20' :
@@ -1157,7 +1268,16 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                             ))}
                                         </div>
                                     </div>
-                                )}
+                                    );
+                                    if (!canSeeMarkets) {
+                                        return (
+                                            <LockedSection title="Análisis de 60+ Mercados" planRequired={PLAN_DISPLAY_NAMES.pro}>
+                                                {marketsContent}
+                                            </LockedSection>
+                                        );
+                                    }
+                                    return marketsContent;
+                                })()}
 
                                 {/* 5. Advertencias */}
                                 {data.advertencias && data.advertencias.bullets && data.advertencias.bullets.length > 0 && (
@@ -1186,7 +1306,79 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                     </div>
                 )}
             </div>
+
+            {/* PDF Download Dialog */}
+            {showPdfDialog && (
+                <PdfDownloadDialog
+                    onClose={() => setShowPdfDialog(false)}
+                    onGenerate={(opts) => handleDownloadReport(opts)}
+                    matchTitle={data?.header_partido?.titulo || 'Reporte'}
+                />
+            )}
         </div>,
         document.body
+    );
+};
+
+// --- PDF DOWNLOAD DIALOG ---
+const PdfDownloadDialog: React.FC<{
+    onClose: () => void;
+    onGenerate: (options: { isPromo: boolean; onlyOpportunities: boolean }) => void;
+    matchTitle: string;
+}> = ({ onClose, onGenerate, matchTitle }) => {
+    const [isPromo, setIsPromo] = useState(false);
+    const [onlyOpportunities, setOnlyOpportunities] = useState(false);
+
+    return (
+        <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4 animate-fade-in" onClick={(e) => e.target === e.currentTarget && onClose()}>
+            <div className="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md border border-white/10 p-6" onClick={(e) => e.stopPropagation()}>
+                <h3 className="text-lg font-bold text-white mb-1">Configurar Descarga PDF</h3>
+                <p className="text-slate-400 text-sm mb-6">{matchTitle}</p>
+
+                {/* Toggle: Pronóstico Gratuito */}
+                <label className="flex items-start gap-3 p-4 bg-slate-900/50 rounded-xl border border-white/5 mb-3 cursor-pointer hover:border-white/10 transition-colors">
+                    <input
+                        type="checkbox"
+                        checked={isPromo}
+                        onChange={(e) => setIsPromo(e.target.checked)}
+                        className="mt-0.5 w-5 h-5 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+                    />
+                    <div>
+                        <span className="text-white font-semibold block text-sm">Pronóstico Gratuito (Telegram)</span>
+                        <span className="text-slate-400 text-xs">Oculta la selección/pronóstico del informe. Muestra mercado y cuota pero no la predicción. Agrega CTAs a Derbix.</span>
+                    </div>
+                </label>
+
+                {/* Toggle: Solo Oportunidades */}
+                <label className="flex items-start gap-3 p-4 bg-slate-900/50 rounded-xl border border-white/5 mb-6 cursor-pointer hover:border-white/10 transition-colors">
+                    <input
+                        type="checkbox"
+                        checked={onlyOpportunities}
+                        onChange={(e) => setOnlyOpportunities(e.target.checked)}
+                        className="mt-0.5 w-5 h-5 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+                    />
+                    <div>
+                        <span className="text-white font-semibold block text-sm">Solo Oportunidades de Valor</span>
+                        <span className="text-slate-400 text-xs">Incluye únicamente predicciones con {'>'}= 83% de probabilidad.</span>
+                    </div>
+                </label>
+
+                {/* Actions */}
+                <div className="flex gap-3 justify-end">
+                    <button
+                        onClick={onClose}
+                        className="px-5 py-2.5 text-slate-400 hover:text-white bg-slate-700 hover:bg-slate-600 rounded-xl text-sm font-medium transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        onClick={() => onGenerate({ isPromo, onlyOpportunities })}
+                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition-colors shadow-lg shadow-emerald-500/20"
+                    >
+                        Generar PDF
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 };

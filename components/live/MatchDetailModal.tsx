@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Game, GameDetails, VisualAnalysisResult } from '../../types';
 import { fetchGameDetails } from '../../services/liveDataService';
 import { getAnalysisResultByFixtureId } from '../../services/analysisService';
-import { XMarkIcon, ArrowPathIcon, ChartBarIcon, ClockIcon, UsersGroupIcon, UsersIcon, ListBulletIcon, TrophyIcon, SparklesIcon, CheckCircleIcon } from '../icons/Icons';
+import { XMarkIcon, ArrowPathIcon, ChartBarIcon, ClockIcon, UsersGroupIcon, UsersIcon, ListBulletIcon, TrophyIcon, SparklesIcon, CheckCircleIcon, LockClosedIcon } from '../icons/Icons';
 import { StatisticsTab } from './StatisticsTab';
 import { EventsTab } from './EventsTab';
 import { LineupsTab } from './LineupsTab';
@@ -20,6 +20,7 @@ interface MatchDetailModalProps {
     game: Game;
     onClose: () => void;
     hasReport: boolean;
+    isReportLocked?: boolean;
     onViewReport: () => void;
     onAnalyze: () => void;
     userRole?: string;
@@ -47,7 +48,7 @@ const getTeamForm = (matches: Game[] | null, teamId: number): ('W' | 'D' | 'L')[
 };
 
 const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
-    game, onClose, hasReport, onViewReport, onAnalyze, userRole
+    game, onClose, hasReport, isReportLocked, onViewReport, onAnalyze, userRole
 }) => {
     const [details, setDetails] = useState<GameDetails | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -183,6 +184,23 @@ const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                                     Generar Análisis
                                 </button>
                             )}
+                        </div>
+                    );
+                }
+                if (isReportLocked) {
+                    return (
+                        <div className="flex flex-col items-center justify-center py-16 px-6">
+                            <LockClosedIcon className="w-14 h-14 text-slate-500 mb-4" />
+                            <p className="text-white font-bold text-lg mb-1">Informe Bloqueado</p>
+                            <p className="text-slate-400 text-sm text-center mb-6 max-w-xs">
+                                Tu plan actual no incluye acceso a este informe. Actualiza para desbloquear todos los análisis.
+                            </p>
+                            <a
+                                href="/pricing"
+                                className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-emerald-500/20"
+                            >
+                                Ver Planes
+                            </a>
                         </div>
                     );
                 }

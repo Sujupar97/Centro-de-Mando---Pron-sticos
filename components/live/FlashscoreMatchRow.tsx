@@ -1,11 +1,12 @@
 import React from 'react';
 import { Game, AnalysisJob } from '../../types';
-import { CheckCircleIcon, SparklesIcon } from '../icons/Icons';
+import { CheckCircleIcon, SparklesIcon, LockClosedIcon } from '../icons/Icons';
 import { isAgencyRole } from '../../utils/roles';
 
 interface FlashscoreMatchRowProps {
     game: Game;
     hasReport: boolean;
+    isReportLocked?: boolean;
     jobStatus?: AnalysisJob['status'];
     userRole?: string;
     onOpenDetail: (game: Game) => void;
@@ -13,7 +14,7 @@ interface FlashscoreMatchRowProps {
 }
 
 const FlashscoreMatchRow: React.FC<FlashscoreMatchRowProps> = ({
-    game, hasReport, jobStatus, userRole, onOpenDetail, onAnalyze
+    game, hasReport, isReportLocked, jobStatus, userRole, onOpenDetail, onAnalyze
 }) => {
     const isAdmin = isAgencyRole(userRole);
     const scoreAvailable = game.goals.home !== null && game.goals.away !== null;
@@ -87,7 +88,9 @@ const FlashscoreMatchRow: React.FC<FlashscoreMatchRowProps> = ({
                 )}
 
                 {hasReport && (
-                    <CheckCircleIcon className="w-4 h-4 text-brand" />
+                    isReportLocked
+                        ? <LockClosedIcon className="w-4 h-4 text-amber-500/60" />
+                        : <CheckCircleIcon className="w-4 h-4 text-brand" />
                 )}
 
                 {isAdmin && !hasReport && !isProcessing && (

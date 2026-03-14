@@ -20,7 +20,7 @@ import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
 import { UpgradePlanModal } from './pricing/UpgradePlanModal';
 import { incrementUsage } from '../services/subscriptionService';
 import { useOrganization } from '../contexts/OrganizationContext';
-import { isHistoricalDate } from '../utils/planAccessUtils';
+import { isHistoricalDate, getAccessibleReportFixtureIds, PlanTier } from '../utils/planAccessUtils';
 import { usePresentationMode } from '../hooks/usePresentationMode';
 import { isAgencyRole } from '../utils/roles';
 
@@ -667,14 +667,41 @@ export const FixturesFeed: React.FC = () => {
         });
     };
 
-    // Gating Helper — Transparencia historica: dias anteriores visibles para TODOS
-    const verifyReportAccess = async (): Promise<boolean> => {
-        // Regla de transparencia: datos historicos son accesibles para todos los planes
-        if (isHistoricalDate(selectedDate)) {
-            return true;
+    // Calcular Set de reportes accesibles segun plan
+    const accessibleReportsSet = React.useMemo<Set<number>>(() => {
+        const isAgency = isAgencyRole(isImpersonating ? 'user' : profile?.role);
+        if (isAgency) {
+            // Agency ve todos los reportes
+            return new Set(Object.keys(reportsAvailable).filter(k => reportsAvailable[Number(k)]).map(Number));
         }
 
-        // Para el dia actual: verificar limites del plan
+        const allReportIds = Object.keys(reportsAvailable)
+            .filter(k => reportsAvailable[Number(k)])
+            .map(Number);
+
+        if (allReportIds.length === 0) return new Set<number>();
+
+        const planName = (subscription?.planName || 'free') as PlanTier;
+        const historical = isHistoricalDate(selectedDate);
+
+        return getAccessibleReportFixtureIds(allReportIds, planName, historical);
+    }, [reportsAvailable, profile?.role, subscription?.planName, selectedDate, isImpersonating]);
+
+    // Gating Helper — Verifica acceso a un reporte especifico
+    const verifyReportAccess = async (fixtureId?: number): Promise<boolean> => {
+        if (isHistoricalDate(selectedDate)) return true;
+
+        const isAgency = isAgencyRole(isImpersonating ? 'user' : profile?.role);
+        if (isAgency) return true;
+
+        // Si tenemos fixtureId, verificar contra el set de reportes accesibles
+        if (fixtureId && !accessibleReportsSet.has(fixtureId)) {
+            setUpgradeReason('Actualiza tu plan para acceder a este informe de análisis.');
+            setIsUpgradeModalOpen(true);
+            return false;
+        }
+
+        // Fallback: verificar limites generales de análisis
         const accessCheck = await checkAnalysisAccess();
         if (!accessCheck.allowed) {
             setUpgradeReason(accessCheck.message || 'Actualiza tu plan para acceder a los análisis de IA.');
@@ -687,8 +714,11 @@ export const FixturesFeed: React.FC = () => {
 
     // 4. Ver Reporte (con persistencia en URL)
     const handleViewReport = async (jobIdOrGameId: string | number, gameIdIfAvailable?: number) => {
-        // Enforce Limits
-        const allowed = await verifyReportAccess();
+        // Determinar fixtureId para gating
+        const gatingFixtureId = gameIdIfAvailable || (typeof jobIdOrGameId === 'number' ? jobIdOrGameId : undefined);
+
+        // Enforce Limits (con fixture-specific check)
+        const allowed = await verifyReportAccess(gatingFixtureId);
         if (!allowed) return;
 
         let jobId = typeof jobIdOrGameId === 'string' ? jobIdOrGameId : activeJobs[jobIdOrGameId];
@@ -867,6 +897,7 @@ export const FixturesFeed: React.FC = () => {
                                                     league={league}
                                                     gameJobStatus={gameJobStatus}
                                                     reportsAvailable={reportsAvailable}
+                                                    accessibleReports={accessibleReportsSet}
                                                     userRole={isImpersonating ? 'user' : profile?.role}
                                                     onOpenDetail={handleOpenDetail}
                                                     onAnalyzeGame={handleAnalyzeGame}
@@ -892,6 +923,7 @@ export const FixturesFeed: React.FC = () => {
                     game={detailGame}
                     onClose={() => setDetailGame(null)}
                     hasReport={!!reportsAvailable[detailGame.fixture.id]}
+                    isReportLocked={!!reportsAvailable[detailGame.fixture.id] && !accessibleReportsSet.has(detailGame.fixture.id)}
                     onViewReport={() => {
                         setDetailGame(null);
                         handleViewReport(detailGame.fixture.id);

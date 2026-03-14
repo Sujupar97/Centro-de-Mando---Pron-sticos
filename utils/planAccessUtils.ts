@@ -198,3 +198,60 @@ export const filterPicksForPlan = <T>(
     );
     return picks.slice(0, allowedCount);
 };
+
+// --- REPORT ACCESS GATING ---
+
+export const PLAN_REPORT_PERCENTAGES: Record<PlanTier, number> = {
+    free: 1,      // 1 informe (el de su pick gratuito)
+    starter: 35,
+    pro: 80,
+    premium: 100,
+};
+
+/**
+ * Calcula cuantos informes puede ver el usuario segun su plan.
+ */
+export const getAllowedReportCount = (
+    totalReports: number,
+    reportPercentage: number,
+    isHistorical: boolean
+): number => {
+    if (isHistorical) return totalReports;
+    if (reportPercentage >= 100) return totalReports;
+    if (reportPercentage <= 1) return Math.min(1, totalReports); // Free: 1 report
+    return Math.ceil(totalReports * (reportPercentage / 100));
+};
+
+/**
+ * Dado un arreglo de fixture IDs con reporte (ordenados por p_model DESC),
+ * retorna un Set de los fixture IDs accesibles para el plan del usuario.
+ *
+ * Para free: el fixture accesible es freePickFixtureId (su pick gratuito).
+ * Para otros: top N% por p_model.
+ * Historicos: todos accesibles.
+ */
+export const getAccessibleReportFixtureIds = (
+    allReportFixtureIds: number[],
+    planName: PlanTier,
+    isHistorical: boolean,
+    freePickFixtureId?: number
+): Set<number> => {
+    if (isHistorical) return new Set(allReportFixtureIds);
+
+    const percentage = PLAN_REPORT_PERCENTAGES[planName];
+
+    if (percentage >= 100) return new Set(allReportFixtureIds);
+
+    // Free: solo el fixture de su pick gratuito
+    if (percentage <= 1) {
+        if (freePickFixtureId && allReportFixtureIds.includes(freePickFixtureId)) {
+            return new Set([freePickFixtureId]);
+        }
+        // Si no hay freePickFixtureId, dar el primero (top p_model)
+        return allReportFixtureIds.length > 0 ? new Set([allReportFixtureIds[0]]) : new Set();
+    }
+
+    // Starter/Pro: top N%
+    const allowedCount = Math.ceil(allReportFixtureIds.length * (percentage / 100));
+    return new Set(allReportFixtureIds.slice(0, allowedCount));
+};
