@@ -360,8 +360,8 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
                                                 </div>
                                             </div>
 
-                                            {/* Admin per-leg override buttons */}
-                                            {isAdmin && (
+                                            {/* Admin per-leg override buttons (agency role, not plan-based) */}
+                                            {isAgency && (
                                                 <LegOverrideButtons
                                                     parlayId={combo.id}
                                                     legIndex={pickIndex}
