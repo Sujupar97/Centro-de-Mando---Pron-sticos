@@ -108,9 +108,25 @@ const SmartParlays: React.FC<SmartParlaysProps> = ({ date }) => {
 
     const hiddenParlayCount = parlays.length - visibleParlays.length;
 
-    // --- Guard: parlays solo visibles para agencia (Fase 1) ---
+    // --- Guard: usuarios no-agencia ven mensaje "Próximamente" ---
     if (!isAgency && !isAdmin) {
-        return null;
+        return (
+            <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-purple-500/20 p-6">
+                <div className="text-center py-12">
+                    <div className="text-5xl mb-4">🚀</div>
+                    <h3 className="text-xl font-bold text-white mb-2">
+                        Parlays Inteligentes — Muy Pronto
+                    </h3>
+                    <p className="text-gray-400 mb-4 max-w-md mx-auto">
+                        Estamos perfeccionando nuestro sistema de Parlays inteligentes.
+                        Muy pronto podrás acceder a combinaciones de alto valor de múltiples partidos.
+                    </p>
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-purple-500/10 border border-purple-500/20 rounded-lg text-purple-300 text-sm">
+                        <span>✨</span> En desarrollo activo
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     // --- Plan Free sin acceso a parlays del dia actual ---

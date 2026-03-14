@@ -165,13 +165,6 @@ export const FixturesFeed: React.FC = () => {
     const [detailGame, setDetailGame] = useState<Game | null>(null);
     const handleOpenDetail = useCallback((game: Game) => setDetailGame(game), []);
 
-    // Parlays solo visibles para agencia — safety net si viewMode queda en 'parlays' para un cliente
-    useEffect(() => {
-        if (viewMode === 'parlays' && !isAgencyRole(profile?.role)) {
-            setViewMode('top-picks');
-        }
-    }, [viewMode, profile?.role]);
-
     // (Resultados tab moved to standalone page)
 
     // GESTIÓN DE JOBS
@@ -770,7 +763,6 @@ export const FixturesFeed: React.FC = () => {
                             >
                                 <TrophyIcon className="w-5 h-5 sm:mr-2" /> <span className="hidden sm:inline">Oportunidades</span>
                             </button>
-                            {isAgencyRole(profile?.role) && (
                             <button
                                 onClick={() => setViewMode('parlays')}
                                 data-onboarding="tab-parlays"
@@ -779,7 +771,6 @@ export const FixturesFeed: React.FC = () => {
                             >
                                 <SparklesIcon className="w-5 h-5 sm:mr-2" /> <span className="hidden sm:inline">Parlays</span>
                             </button>
-                            )}
                             <button
                                 onClick={() => setViewMode('fixtures')}
                                 className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'fixtures' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'

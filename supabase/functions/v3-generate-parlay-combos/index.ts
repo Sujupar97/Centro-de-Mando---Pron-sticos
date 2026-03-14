@@ -238,8 +238,22 @@ serve(async (req) => {
             picksByFixture.get(p.fixture_id)!.push(p);
         });
 
-        const fixtureGroups = Array.from(picksByFixture.entries());
+        let fixtureGroups = Array.from(picksByFixture.entries());
         log(`[PARLAY-COMBOS] Picks distributed across ${fixtureGroups.length} different fixtures`);
+
+        // Cap fixture groups to top 20 by avg p_model to prevent combinatorial explosion
+        // C(20,3) × 8 = 9,120 combos — safe within 150s Supabase limit
+        // Without this cap: C(100,3) × 8 = 1.3M+ combos → timeout (error 546)
+        if (fixtureGroups.length > 20) {
+            const originalCount = fixtureGroups.length;
+            fixtureGroups.sort((a, b) => {
+                const avgA = a[1].reduce((s, p) => s + p.p_model, 0) / a[1].length;
+                const avgB = b[1].reduce((s, p) => s + p.p_model, 0) / b[1].length;
+                return avgB - avgA;
+            });
+            fixtureGroups = fixtureGroups.slice(0, 20);
+            log(`[PARLAY-COMBOS] Capped to top 20 fixtures by avg probability (was ${originalCount})`);
+        }
 
         if (fixtureGroups.length < 3) {
             return new Response(JSON.stringify({
@@ -379,7 +393,7 @@ serve(async (req) => {
                 combinations_evaluated: combos.length,
                 combos_saved: topCombos.length
             },
-            combos: topCombos,
+            combos: topCombos.map(c => ({ risk_tier: c.risk_tier, combined_odds: c.combined_odds, pick_count: c.picks.length })),
             logs
         }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
