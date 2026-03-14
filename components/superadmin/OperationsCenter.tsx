@@ -1,6 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../services/supabaseService';
-import { SparklesIcon, ComputerDesktopIcon, BoltIcon, CheckCircleIcon, ChartBarIcon, EyeSlashIcon, BrainIcon, LightBulbIcon } from '../icons/Icons';
+import { SparklesIcon, ComputerDesktopIcon, BoltIcon, CheckCircleIcon, ChartBarIcon, EyeSlashIcon, BrainIcon, LightBulbIcon, PaperAirplaneIcon, CalendarDaysIcon } from '../icons/Icons';
+
+interface BatchMatch {
+    fixture_id: number;
+    home: string;
+    away: string;
+    league: string;
+    standard_done: boolean;
+    parlay_done: boolean;
+    standard_error: string | null;
+    parlay_error: string | null;
+}
+
+interface BatchState {
+    active: boolean;
+    target_date: string;
+    total_matches: number;
+    processed_count: number;
+    current_phase: string;
+    current_match_name: string;
+    current_match_index: number;
+    matches: BatchMatch[];
+    started_at: string;
+    updated_at: string;
+    triggered_by: string;
+    errors: string[];
+}
 
 export const OperationsCenter: React.FC = () => {
     const [settings, setSettings] = useState<{ [key: string]: boolean }>({
@@ -9,15 +35,65 @@ export const OperationsCenter: React.FC = () => {
         auto_verification_enabled: true,
         ml_strategic_insights_enabled: false,
         presentation_mode: false,
+        whatsapp_notifications_enabled: true,
     });
     const [loadingSettings, setLoadingSettings] = useState(true);
     const [displayBankroll, setDisplayBankroll] = useState<number>(100);
     const [bankrollInput, setBankrollInput] = useState<string>('100');
     const [bankrollSaved, setBankrollSaved] = useState(false);
 
+    // Análisis por Fecha
+    const [selectedDate, setSelectedDate] = useState<string>(() => {
+        const now = new Date();
+        const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }));
+        bogota.setDate(bogota.getDate() + 1);
+        return bogota.toISOString().split('T')[0];
+    });
+    const [batchState, setBatchState] = useState<BatchState | null>(null);
+    const [isTriggering, setIsTriggering] = useState(false);
+    const [dateMatchCount, setDateMatchCount] = useState<number | null>(null);
+    const [triggerError, setTriggerError] = useState<string | null>(null);
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
     useEffect(() => {
         loadSettings();
     }, []);
+
+    // Polling del batch state cada 5s
+    useEffect(() => {
+        const pollBatchState = async () => {
+            try {
+                const { data } = await supabase
+                    .from('system_settings')
+                    .select('value')
+                    .eq('key', 'auto_analysis_state')
+                    .single();
+
+                setBatchState(data?.value || null);
+            } catch {
+                // Ignorar — key puede no existir todavía
+            }
+        };
+
+        pollBatchState();
+        pollRef.current = setInterval(pollBatchState, 5000);
+        return () => {
+            if (pollRef.current) clearInterval(pollRef.current);
+        };
+    }, []);
+
+    // Consultar partidos para la fecha seleccionada
+    useEffect(() => {
+        const checkDate = async () => {
+            setDateMatchCount(null);
+            const { count } = await supabase
+                .from('daily_matches')
+                .select('*', { count: 'exact', head: true })
+                .eq('match_date', selectedDate);
+            setDateMatchCount(count || 0);
+        };
+        checkDate();
+    }, [selectedDate]);
 
     const loadSettings = async () => {
         try {
@@ -70,6 +146,66 @@ export const OperationsCenter: React.FC = () => {
         }
     };
 
+    const triggerAnalysis = async () => {
+        setIsTriggering(true);
+        setTriggerError(null);
+        try {
+            const { data, error } = await supabase.functions.invoke('daily-analysis-generator', {
+                body: { action: 'start', target_date: selectedDate }
+            });
+
+            if (error) throw error;
+
+            const responseData = typeof data === 'string' ? JSON.parse(data) : data;
+            if (!responseData?.success) {
+                throw new Error(responseData?.error || 'Error al iniciar batch');
+            }
+        } catch (e: any) {
+            console.error('Error triggering analysis:', e);
+            setTriggerError(e.message || 'Error desconocido');
+        } finally {
+            setIsTriggering(false);
+        }
+    };
+
+    const cancelBatch = async () => {
+        if (!batchState) return;
+        try {
+            await supabase
+                .from('system_settings')
+                .update({
+                    value: { ...batchState, active: false, current_phase: 'cancelled' },
+                    updated_at: new Date().toISOString()
+                })
+                .eq('key', 'auto_analysis_state');
+        } catch (e) {
+            console.error('Error cancelling batch:', e);
+        }
+    };
+
+    const getElapsedMinutes = (): number => {
+        if (!batchState?.started_at) return 0;
+        return Math.round((Date.now() - new Date(batchState.started_at).getTime()) / 60000);
+    };
+
+    const getProgressPercent = (): number => {
+        if (!batchState || batchState.total_matches === 0) return 0;
+        return Math.round((batchState.processed_count / batchState.total_matches) * 100);
+    };
+
+    const getPhaseLabel = (phase: string): string => {
+        switch (phase) {
+            case 'starting': return 'Iniciando';
+            case 'standard': return 'Analizando';
+            case 'parlay': return 'Parlay';
+            case 'generating_combos': return 'Generando Smart Parlays';
+            case 'completed': return 'Completado';
+            case 'cancelled': return 'Cancelado';
+            case 'failed': return 'Error';
+            default: return phase;
+        }
+    };
+
     return (
         <div className="space-y-8 animate-fade-in">
             <div className="glass p-4 sm:p-6 rounded-xl border border-white/5 shadow-2xl bg-gradient-to-br from-slate-900 to-slate-800">
@@ -78,7 +214,7 @@ export const OperationsCenter: React.FC = () => {
                     Control de Automatización del Sistema
                 </h2>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                     {/* Switch 1: Auto Analysis */}
                     <div className={`p-4 rounded-xl border transition-all ${settings.auto_analysis_enabled ? 'bg-blue-900/20 border-blue-500/30' : 'bg-slate-800/50 border-slate-700'}`}>
                         <div className="flex justify-between items-start mb-2">
@@ -96,7 +232,7 @@ export const OperationsCenter: React.FC = () => {
                             </label>
                         </div>
                         <h3 className="font-bold text-gray-200">Análisis Diario</h3>
-                        <p className="text-xs text-gray-400 mt-1">Genera automáticamente análisis para partidos del día siguiente (2:00 AM).</p>
+                        <p className="text-xs text-gray-400 mt-1">Analiza automáticamente los partidos del día siguiente a las 12:30 AM.</p>
                     </div>
 
                     {/* Switch 2: Auto Parlay */}
@@ -158,7 +294,152 @@ export const OperationsCenter: React.FC = () => {
                         <h3 className="font-bold text-gray-200">Verificador de Resultados</h3>
                         <p className="text-xs text-gray-400 mt-1">Verifica resultados cada hora vía SportMonks y actualiza picks WON/LOST.</p>
                     </div>
+
+                    {/* Switch 5: WhatsApp Notifications */}
+                    <div className={`p-4 rounded-xl border transition-all ${settings.whatsapp_notifications_enabled ? 'bg-teal-900/20 border-teal-500/30' : 'bg-slate-800/50 border-slate-700'}`}>
+                        <div className="flex justify-between items-start mb-2">
+                            <div className="p-2 rounded-lg bg-teal-500/10">
+                                <PaperAirplaneIcon className={`w-6 h-6 ${settings.whatsapp_notifications_enabled ? 'text-teal-400' : 'text-slate-500'}`} />
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={settings.whatsapp_notifications_enabled}
+                                    onChange={() => toggleSetting('whatsapp_notifications_enabled')}
+                                />
+                                <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-teal-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
+                            </label>
+                        </div>
+                        <h3 className="font-bold text-gray-200">Notificaciones WhatsApp</h3>
+                        <p className="text-xs text-gray-400 mt-1">Envia alertas de pronósticos y resultados a usuarios con WhatsApp registrado.</p>
+                        {settings.whatsapp_notifications_enabled && (
+                            <p className="text-xs text-teal-400 mt-2 font-bold">ACTIVO — Notificaciones automáticas habilitadas.</p>
+                        )}
+                    </div>
                 </div>
+            </div>
+
+            {/* Análisis por Fecha */}
+            <div className="glass p-4 sm:p-6 rounded-xl border border-white/5 shadow-2xl bg-gradient-to-br from-slate-900 to-slate-800">
+                <h2 className="text-xl font-display font-bold text-white mb-6 flex items-center gap-3">
+                    <CalendarDaysIcon className="w-6 h-6 text-indigo-400" />
+                    Análisis por Fecha
+                </h2>
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4 mb-4">
+                    <div>
+                        <label className="text-sm text-slate-400 mb-1 block">Fecha objetivo</label>
+                        <input
+                            type="date"
+                            value={selectedDate}
+                            onChange={e => setSelectedDate(e.target.value)}
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+                        />
+                    </div>
+                    {dateMatchCount !== null && (
+                        <span className="text-sm text-slate-400 pb-2">
+                            {dateMatchCount} partidos registrados
+                        </span>
+                    )}
+                    <button
+                        onClick={triggerAnalysis}
+                        disabled={isTriggering || batchState?.active}
+                        className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                    >
+                        {isTriggering ? (
+                            <>
+                                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                                Iniciando...
+                            </>
+                        ) : (
+                            <>
+                                <BoltIcon className="w-4 h-4" />
+                                Analizar Fecha
+                            </>
+                        )}
+                    </button>
+                </div>
+
+                {triggerError && (
+                    <div className="mb-4 p-3 rounded-lg bg-red-900/20 border border-red-500/30">
+                        <span className="text-sm text-red-300">{triggerError}</span>
+                    </div>
+                )}
+
+                {/* Progreso del batch activo */}
+                {batchState?.active && (
+                    <div className="p-4 rounded-xl bg-indigo-900/20 border border-indigo-500/30">
+                        <div className="flex justify-between items-center mb-3">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                                <span className="text-sm font-bold text-indigo-300">
+                                    {getPhaseLabel(batchState.current_phase)}: {batchState.current_match_name || '...'}
+                                </span>
+                            </div>
+                            <span className="text-sm text-slate-400 font-mono">
+                                {batchState.processed_count}/{batchState.total_matches}
+                            </span>
+                        </div>
+
+                        <div className="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
+                            <div
+                                className="bg-indigo-500 h-3 rounded-full transition-all duration-700 ease-out"
+                                style={{ width: `${getProgressPercent()}%` }}
+                            />
+                        </div>
+
+                        <div className="flex justify-between mt-2">
+                            <span className="text-xs text-slate-400">
+                                {getProgressPercent()}% completado
+                            </span>
+                            <span className="text-xs text-slate-400">
+                                {getElapsedMinutes()} min transcurridos
+                            </span>
+                        </div>
+
+                        {batchState.errors.length > 0 && (
+                            <div className="mt-3 p-2 rounded bg-red-900/20 border border-red-500/20">
+                                <p className="text-xs text-red-400 font-bold mb-1">{batchState.errors.length} error(es):</p>
+                                {batchState.errors.slice(-3).map((err, i) => (
+                                    <p key={i} className="text-xs text-red-300/80 truncate">{err}</p>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="mt-3 flex items-center gap-3">
+                            <button
+                                onClick={cancelBatch}
+                                className="text-sm text-red-400 hover:text-red-300 transition-colors"
+                            >
+                                Cancelar batch
+                            </button>
+                            <span className="text-xs text-slate-500">
+                                Fecha: {batchState.target_date} | Via: {batchState.triggered_by}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Estado completado */}
+                {!batchState?.active && batchState?.current_phase === 'completed' && (
+                    <div className="p-3 rounded-lg bg-emerald-900/20 border border-emerald-500/30 flex items-center gap-2">
+                        <CheckCircleIcon className="w-5 h-5 text-emerald-400" />
+                        <span className="text-sm text-emerald-300">
+                            Último batch: {batchState.processed_count}/{batchState.total_matches} partidos ({batchState.target_date})
+                            {batchState.errors.length > 0 && ` — ${batchState.errors.length} errores`}
+                        </span>
+                    </div>
+                )}
+
+                {/* Estado cancelado */}
+                {!batchState?.active && batchState?.current_phase === 'cancelled' && (
+                    <div className="p-3 rounded-lg bg-amber-900/20 border border-amber-500/30">
+                        <span className="text-sm text-amber-300">
+                            Batch cancelado — {batchState.processed_count}/{batchState.total_matches} partidos procesados ({batchState.target_date})
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* Modo Presentación */}

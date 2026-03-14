@@ -1,7 +1,8 @@
 -- =====================================================
--- CRON JOBS COMPLETOS PARA AUTOMATIZACIÓN DIARIA
--- Sistema de análisis y parlays automáticos
+-- CRON JOBS COMPLETOS PARA AUTOMATIZACIÓN DIARIA V2
+-- Sistema de análisis automático con self-chaining
 -- Zona horaria: Colombia (UTC-5)
+-- Última actualización: 2026-03-13
 -- =====================================================
 
 -- =====================================================
@@ -9,6 +10,7 @@
 -- =====================================================
 DO $$ BEGIN PERFORM cron.unschedule('daily-match-scanner'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 DO $$ BEGIN PERFORM cron.unschedule('daily-analysis-generator'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN PERFORM cron.unschedule('daily-analysis-heartbeat'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 DO $$ BEGIN PERFORM cron.unschedule('daily-parlay-generator'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 DO $$ BEGIN PERFORM cron.unschedule('daily-results-verifier'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 DO $$ BEGIN PERFORM cron.unschedule('daily-results-verifier-cron'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
@@ -16,41 +18,52 @@ DO $$ BEGIN PERFORM cron.unschedule('daily-results-verifier-schedule'); EXCEPTIO
 DO $$ BEGIN PERFORM cron.unschedule('hourly-results-verifier'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- =====================================================
+-- PASO 1.5: Asegurar que auto_analysis_state existe
+-- =====================================================
+INSERT INTO system_settings (key, value, description)
+VALUES ('auto_analysis_state', 'null'::jsonb, 'Estado del batch de análisis automático')
+ON CONFLICT (key) DO NOTHING;
+
+-- =====================================================
 -- PASO 2: Configurar nuevos cron jobs
 -- =====================================================
 
--- 1. SCANNER DE PARTIDOS - 1:00 AM Colombia (6:00 AM UTC)
--- Ejecuta UNA VEZ al día para escanear partidos del día siguiente
-SELECT cron.schedule(
-    'daily-match-scanner',
-    '0 6 * * *',  -- 6:00 AM UTC = 1:00 AM Colombia
-    $$
-    SELECT
-      net.http_post(
-          url:='https://nokejmhlpsaoerhddcyc.supabase.co/functions/v1/daily-match-scanner',
-          headers:='{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5va2VqbWhscHNhb2VyaGRkY3ljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTgxNjAwNywiZXhwIjoyMDgxMzkyMDA3fQ.cMBnVvWGmxyTBqLqQQtPcymKdXMqF0Xr1_EI_Y1G3ZU"}'::jsonb,
-          body:='{}'::jsonb
-      ) as request_id;
-    $$
-);
-
--- 2. ANALIZADOR DE PARTIDOS - Cada 5 minutos entre 2:00-3:55 AM Colombia (7:00-8:55 AM UTC)
--- Procesa 3 partidos por ejecución hasta completar todos
+-- 1. ANALIZADOR AUTOMÁTICO - START - 12:30 AM Colombia (5:30 AM UTC)
+-- Inicia el batch de análisis para los partidos del DÍA SIGUIENTE
+-- Popula daily_matches, filtra amistosos, procesa secuencialmente
+-- Incluye: análisis estándar + parlay por partido + combos al final
 SELECT cron.schedule(
     'daily-analysis-generator',
-    '*/5 7-8 * * *',  -- Cada 5 minutos entre 7:00-8:59 AM UTC (2:00-3:59 AM Colombia)
+    '30 5 * * *',  -- 5:30 AM UTC = 12:30 AM Colombia
     $$
     SELECT
       net.http_post(
           url:='https://nokejmhlpsaoerhddcyc.supabase.co/functions/v1/daily-analysis-generator',
           headers:='{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5va2VqbWhscHNhb2VyaGRkY3ljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTgxNjAwNywiZXhwIjoyMDgxMzkyMDA3fQ.cMBnVvWGmxyTBqLqQQtPcymKdXMqF0Xr1_EI_Y1G3ZU"}'::jsonb,
-          body:='{}'::jsonb
+          body:='{"action":"start","auto":true}'::jsonb
       ) as request_id;
     $$
 );
 
--- 3. GENERADOR DE PARLAYS - 4:00 AM Colombia (9:00 AM UTC)
--- Ejecuta DESPUÉS de que el analizador haya terminado
+-- 2. HEARTBEAT - Cada 5 minutos (24/7)
+-- Detecta batches estancados (>10 min sin update) y reinicia la cadena
+-- Si no hay batch activo, sale inmediatamente (< 1s de ejecución)
+SELECT cron.schedule(
+    'daily-analysis-heartbeat',
+    '*/5 * * * *',  -- Cada 5 minutos
+    $$
+    SELECT
+      net.http_post(
+          url:='https://nokejmhlpsaoerhddcyc.supabase.co/functions/v1/daily-analysis-generator',
+          headers:='{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5va2VqbWhscHNhb2VyaGRkY3ljIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTgxNjAwNywiZXhwIjoyMDgxMzkyMDA3fQ.cMBnVvWGmxyTBqLqQQtPcymKdXMqF0Xr1_EI_Y1G3ZU"}'::jsonb,
+          body:='{"action":"heartbeat"}'::jsonb
+      ) as request_id;
+    $$
+);
+
+-- 3. GENERADOR DE PARLAYS (BACKUP) - 4:00 AM Colombia (9:00 AM UTC)
+-- Safety net: el batch ya genera parlays al completar, pero este CRON
+-- actúa como respaldo en caso de que el batch falle antes de llegar a parlays
 SELECT cron.schedule(
     'daily-parlay-generator',
     '0 9 * * *',  -- 9:00 AM UTC = 4:00 AM Colombia
@@ -64,7 +77,7 @@ SELECT cron.schedule(
     $$
 );
 
--- 4. VERIFICADOR DE RESULTADOS - Cada hora (usa SportMonks API + Gemini fallback)
+-- 4. VERIFICADOR DE RESULTADOS - Cada hora (SportMonks API + Gemini fallback)
 -- Reemplaza daily-results-verifier (legacy, API-Football) con hourly-results-verifier (V3)
 -- Incluye: catch-up pass global, sync reports_v2→value_picks_v2, threshold 0.83
 SELECT cron.schedule(
@@ -83,22 +96,26 @@ SELECT cron.schedule(
 -- =====================================================
 -- PASO 3: Verificar configuración
 -- =====================================================
-SELECT 
+SELECT
     jobname,
     schedule,
     active,
     jobid
-FROM cron.job 
+FROM cron.job
 ORDER BY jobname;
 
 -- =====================================================
--- RESUMEN DEL FLUJO DIARIO:
+-- RESUMEN DEL FLUJO DIARIO V2:
 -- =====================================================
--- 1:00 AM → Scanner escanea partidos del siguiente día
--- 2:00 AM → Analyzer empieza (3 partidos cada 5 min)
--- 2:05 AM → Analyzer continúa (3 partidos)
--- 2:10 AM → Analyzer continúa (3 partidos)
--- ... (cada 5 minutos hasta ~3:55 AM)
--- 4:00 AM → Parlay Generator crea parlays automáticos
--- 11:00 PM → Verifier actualiza resultados de partidos finalizados
+-- 12:30 AM → daily-analysis-generator START: Popula daily_matches para mañana,
+--            filtra amistosos, inicia batch secuencial (1 partido a la vez)
+--            Cada partido: ETL → Analyzer → Parlay Analyzer → siguiente
+-- ~2:30 AM → Batch típicamente completado (~30 partidos × 4 min/partido)
+--            Al terminar, dispara daily-parlay-generator para generar combos
+-- */5 min  → Heartbeat: detecta batches estancados y reinicia la cadena
+-- 4:00 AM  → Parlay Generator backup (por si el batch no llegó a generar combos)
+-- Cada hora → hourly-results-verifier verifica resultados de partidos finalizados
+-- =====================================================
+-- NOTA: daily-match-scanner fue ELIMINADO — daily-analysis-generator
+-- ahora invoca v2-list-fixtures-sportmonks directamente en el paso START
 -- =====================================================
