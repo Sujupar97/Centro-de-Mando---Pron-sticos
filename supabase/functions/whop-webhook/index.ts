@@ -126,6 +126,24 @@ async function assignFreePlan(supabase: any, userId: string, orgId: string) {
 }
 
 // ==========================================
+// Helper: Notificar al equipo admin (fire-and-forget)
+// ==========================================
+
+function notifyAdmin(sbUrl: string, sbKey: string, type: string, notifData: any) {
+    const url = `${sbUrl}/functions/v1/send-admin-notification`;
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sbKey}`
+        },
+        body: JSON.stringify({ type, data: notifData })
+    }).catch(err => {
+        console.error('[whop-webhook] Admin notification error (non-blocking):', err);
+    });
+}
+
+// ==========================================
 // Event: membership.went_valid
 // ==========================================
 
@@ -202,6 +220,37 @@ async function handleMembershipValid(supabase: any, data: any) {
         console.error('[whop-webhook] Error upserting subscription:', error);
     } else {
         console.log(`[whop-webhook] Membership activated: user=${userId}, plan=${planId}, membership=${membershipId}`);
+
+        // Notificar al equipo admin (fire-and-forget, no bloquea)
+        try {
+            const sbUrl = Deno.env.get('SUPABASE_URL')!;
+            const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+            // Obtener nombre del plan
+            const { data: planData } = await supabase
+                .from('subscription_plans')
+                .select('display_name, name')
+                .eq('id', planId)
+                .single();
+
+            // Obtener perfil del usuario
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('full_name, email')
+                .eq('id', userId)
+                .single();
+
+            notifyAdmin(sbUrl, sbKey, 'new_subscription', {
+                name: profile?.full_name || userEmail || 'Sin nombre',
+                email: profile?.email || userEmail || 'Sin email',
+                plan: planData?.display_name || planData?.name || 'Desconocido',
+                amount: data.amount ? Math.round(data.amount * 100) : null,
+                billingPeriod,
+                processor: 'Whop'
+            });
+        } catch (notifErr) {
+            console.error('[whop-webhook] Notification prep error (non-blocking):', notifErr);
+        }
     }
 }
 

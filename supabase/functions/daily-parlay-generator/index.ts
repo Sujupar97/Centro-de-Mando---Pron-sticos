@@ -76,6 +76,29 @@ serve(async (req) => {
         log(`[AutoParlayGen] Source: ${comboResult.source || 'unknown'}`);
         log(`[AutoParlayGen] Stats: ${JSON.stringify(comboResult.stats || {})}`);
 
+        // === TRIGGER WHATSAPP: Pronósticos listos ===
+        try {
+            log(`[AutoParlayGen] Triggering WhatsApp notifications...`);
+            fetch(`${supabaseUrl}/functions/v1/send-whatsapp-notification`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify({
+                    notification_type: 'predictions_ready',
+                    data: {
+                        date: targetDate,
+                        combos_count: comboResult.stats?.combos_saved || 0,
+                        source: comboResult.source
+                    }
+                }),
+            }).catch(() => {}); // Fire-and-forget
+            log(`[AutoParlayGen] WhatsApp trigger sent`);
+        } catch (waErr: any) {
+            log(`[AutoParlayGen] WhatsApp trigger error (non-blocking): ${waErr.message}`);
+        }
+
         return new Response(JSON.stringify({
             success: true,
             date: targetDate,

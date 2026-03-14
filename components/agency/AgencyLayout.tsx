@@ -11,6 +11,7 @@ import RevenueDashboard from './RevenueDashboard';
 import UserActivityMonitor from './UserActivityMonitor';
 import AuditLog from './AuditLog';
 import MLTrainingPanel from './MLTrainingPanel';
+import { NotificationAnalytics } from './NotificationAnalytics';
 import ResultadosPublic from '../live/ResultadosPublic';
 
 interface AgencyLayoutProps {
@@ -141,6 +142,10 @@ export const AgencyLayout: React.FC<AgencyLayoutProps> = ({ onBack }) => {
                             <div className="glass p-6 rounded-xl border border-white/5">
                                 <AnaliticaAvanzada />
                             </div>
+                        )}
+
+                        {activeView === 'notifications' && (
+                            <NotificationAnalytics />
                         )}
 
                         {activeView === 'ml-training' && (

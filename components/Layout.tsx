@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CalendarDaysIcon, UsersIcon, ArrowLeftOnRectangleIcon, CreditCardIcon, TrophyIcon } from './icons/Icons';
+import { CalendarDaysIcon, UsersIcon, ArrowLeftOnRectangleIcon, CreditCardIcon, TrophyIcon, PaperAirplaneIcon, XMarkIcon } from './icons/Icons';
 import { useAuth } from '../hooks/useAuth';
 import { OrganizationSwitcher } from './OrganizationSwitcher';
 import { Page } from '../App';
@@ -8,6 +8,9 @@ import { isAgencyRole } from '../utils/roles';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { RecapBadge } from './recap/RecapBadge';
+import { NotificationPreferences } from './settings/NotificationPreferences';
+import { PremiumBadge, getAvatarRingClass, getPlanBadgeClass, getPlanNameColor } from './premium/PremiumBadge';
+import { SupportWidget } from './support/SupportWidget';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -25,6 +28,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
   const { isImpersonating, stopImpersonation, currentOrg } = useOrganization();
   const { plan } = useSubscription();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isNotifPrefsOpen, setIsNotifPrefsOpen] = useState(false);
 
   // Roles: agency (full access) vs client (view only per plan)
   const isAgencySuperadmin = isAgencyRole(profile?.role);
@@ -69,6 +73,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
               <button
                 key={item.id}
                 onClick={() => setCurrentPage(item.id as Page)}
+                data-onboarding={item.id === 'results' ? 'results' : undefined}
                 className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-300 ease-out group active:scale-[0.98] ${isActive
                   ? 'bg-gradient-to-r from-brand/20 to-transparent text-brand border-l-2 border-brand shadow-[0_0_15px_rgba(16,185,129,0.1)]'
                   : 'text-slate-400 hover:bg-white/5 hover:text-slate-100 hover:pl-5 active:bg-white/10'
@@ -97,11 +102,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
 
         <div className="p-4 border-t border-white/5 bg-slate-900/40">
           <div className="flex items-center space-x-3 mb-4 px-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-brand to-blue-500 flex items-center justify-center text-xs font-bold text-white shadow-lg">
+            <div className={`w-8 h-8 rounded-full bg-gradient-to-tr from-brand to-blue-500 flex items-center justify-center text-xs font-bold text-white shadow-lg ${getAvatarRingClass(plan.plan_name)}`}>
               {profile?.full_name?.charAt(0) || 'U'}
             </div>
             <div className="flex-1 overflow-hidden">
-              <p className="text-sm font-medium text-white truncate">{profile?.full_name || 'Usuario'}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium text-white truncate">{profile?.full_name || 'Usuario'}</p>
+                <PremiumBadge planName={plan.plan_name} />
+              </div>
               <p className="text-xs text-slate-400 truncate">
                 {profile?.role === 'platform_owner' ? 'Owner' :
                  profile?.role === 'agency_admin' ? 'Agencia' :
@@ -111,13 +119,26 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
           </div>
           <button
             onClick={() => setCurrentPage('pricing')}
-            className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-800/50 hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-400 transition-colors text-xs font-medium border border-white/5 mb-2"
+            data-onboarding="plan-badge"
+            className={`w-full flex items-center justify-between p-2 rounded-lg text-slate-400 transition-all text-xs font-medium border mb-2 ${getPlanBadgeClass(plan.plan_name)}`}
           >
             <span className="flex items-center gap-1.5">
               <CreditCardIcon className="w-3.5 h-3.5" />
               Mi Plan
             </span>
-            <span className="text-emerald-400 font-bold">{plan.display_name || 'Free'}</span>
+            <span className={`font-bold ${getPlanNameColor(plan.plan_name)}`}>{plan.display_name || 'Free'}</span>
+          </button>
+          <button
+            onClick={() => setIsNotifPrefsOpen(true)}
+            className="w-full flex items-center justify-between p-2 rounded-lg text-slate-400 hover:bg-teal-500/10 hover:text-teal-400 transition-all text-xs font-medium border border-white/5 mb-2"
+          >
+            <span className="flex items-center gap-1.5">
+              <PaperAirplaneIcon className="w-3.5 h-3.5" />
+              WhatsApp
+            </span>
+            <span className={`font-bold ${profile?.phone_number ? 'text-teal-400' : 'text-slate-500'}`}>
+              {profile?.phone_number ? 'Activo' : 'Configurar'}
+            </span>
           </button>
           <button
             onClick={signOut}
@@ -195,6 +216,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurren
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={() => setIsCreateModalOpen(false)}
       />
+
+      <SupportWidget currentPage={currentPage} />
+
+      {/* WhatsApp Notification Preferences Modal */}
+      {isNotifPrefsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setIsNotifPrefsOpen(false)}>
+          <div className="w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <NotificationPreferences onClose={() => setIsNotifPrefsOpen(false)} />
+          </div>
+        </div>
+      )}
 
     </div>
   );

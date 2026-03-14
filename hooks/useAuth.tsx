@@ -7,6 +7,7 @@ interface Profile {
   id: string;
   full_name: string;
   role: PlatformRole;
+  phone_number?: string;
 }
 
 interface AuthContextType {
@@ -55,7 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user) {
       supabase
         .from('profiles')
-        .select('id, full_name, role')
+        .select('id, full_name, role, phone_number')
         .eq('id', user.id)
         .single()
         .then(({ data, error }) => {

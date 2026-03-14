@@ -101,6 +101,8 @@ export interface UserProfile {
     avatar_url?: string;
     organization_id?: string;
     is_org_owner?: boolean;
+    phone_number?: string;
+    phone_country_code?: string;
 }
 
 export type JobStatus = 'queued' | 'ingesting' | 'data_ready' | 'analyzing' | 'done' | 'insufficient_data' | 'failed';
@@ -814,4 +816,55 @@ export interface DailyRecapData {
 
     // Calibration insight (premium)
     calibrationInsight?: string;
+}
+
+// --- NOTIFICATION TYPES ---
+
+export type NotificationChannel = 'whatsapp' | 'email' | 'push';
+export type NotificationType = 'predictions_ready' | 'daily_results' | 'special_offers';
+export type NotificationStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
+
+export interface NotificationPreference {
+    id: string;
+    user_id: string;
+    channel: NotificationChannel;
+    notification_type: NotificationType;
+    enabled: boolean;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface NotificationLogEntry {
+    id: string;
+    user_id: string;
+    phone_number: string;
+    notification_type: NotificationType;
+    channel: NotificationChannel;
+    template_name: string;
+    whatsapp_message_id?: string;
+    status: NotificationStatus;
+    error_message?: string;
+    short_url?: string;
+    click_count: number;
+    metadata?: Record<string, any>;
+    sent_at?: string;
+    delivered_at?: string;
+    read_at?: string;
+    created_at: string;
+}
+
+export interface NotificationAnalytics {
+    totalSent: number;
+    delivered: number;
+    read: number;
+    failed: number;
+    deliveryRate: number;
+    readRate: number;
+    clickRate: number;
+    byType: Record<NotificationType, {
+        sent: number;
+        delivered: number;
+        clicked: number;
+    }>;
+    recentLogs: NotificationLogEntry[];
 }

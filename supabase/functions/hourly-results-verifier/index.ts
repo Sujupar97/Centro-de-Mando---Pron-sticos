@@ -1713,6 +1713,33 @@ serve(async (req) => {
 
         log(`[Verifier] ═══ DONE: ${totalFixturesChecked} fixtures checked, ${totalPicksVerified} picks verified, ${totalParlaysVerified} parlays verified, ${totalGeminiCalls} Gemini calls ═══`);
 
+        // === TRIGGER WHATSAPP: Resultados del día ===
+        if (finalStatus === 'success' && totalPicksVerified > 0) {
+            try {
+                const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+                const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+                log(`[Verifier] Triggering WhatsApp results notification...`);
+                fetch(`${supabaseUrl}/functions/v1/send-whatsapp-notification`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${supabaseServiceKey}`,
+                    },
+                    body: JSON.stringify({
+                        notification_type: 'daily_results',
+                        data: {
+                            date: today,
+                            picks_verified: totalPicksVerified,
+                            parlays_verified: totalParlaysVerified,
+                        }
+                    }),
+                }).catch(() => {}); // Fire-and-forget
+                log(`[Verifier] WhatsApp trigger sent`);
+            } catch (waErr: any) {
+                log(`[Verifier] WhatsApp trigger error (non-blocking): ${waErr.message}`);
+            }
+        }
+
         return new Response(JSON.stringify({
             success: true,
             fixtures_checked: totalFixturesChecked,

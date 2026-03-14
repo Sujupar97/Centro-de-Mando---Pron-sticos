@@ -11,6 +11,8 @@ interface SignUpData {
     email: string;
     password: string;
     confirmPassword: string;
+    phoneNumber: string;
+    phoneCountryCode: string;
 }
 
 export const SignUpFlow: React.FC = () => {
@@ -25,7 +27,9 @@ export const SignUpFlow: React.FC = () => {
         fullName: '',
         email: '',
         password: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        phoneNumber: '',
+        phoneCountryCode: '+57'
     });
 
     const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
@@ -96,6 +100,20 @@ export const SignUpFlow: React.FC = () => {
                     }
                 }
             }).catch(() => {}); // Silencioso — el registro no depende de esto
+
+            // Guardar teléfono WhatsApp si fue proporcionado (fire-and-forget)
+            if (signUpData.phoneNumber) {
+                const fullPhone = `${signUpData.phoneCountryCode}${signUpData.phoneNumber}`;
+                supabase
+                    .from('profiles')
+                    .update({
+                        phone_number: fullPhone,
+                        phone_country_code: signUpData.phoneCountryCode
+                    })
+                    .eq('id', authData.user.id)
+                    .then(() => {})
+                    .catch(() => {});
+            }
 
             // Guardar userId para posible checkout posterior
             signUpResultRef.current = { userId: authData.user.id };
@@ -376,6 +394,42 @@ export const SignUpFlow: React.FC = () => {
                                         required
                                         minLength={6}
                                     />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                        WhatsApp <span className="text-slate-500 font-normal">(opcional)</span>
+                                    </label>
+                                    <div className="flex gap-2">
+                                        <select
+                                            value={signUpData.phoneCountryCode}
+                                            onChange={(e) => setSignUpData({ ...signUpData, phoneCountryCode: e.target.value })}
+                                            className="w-28 px-3 py-3 bg-slate-800 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-brand transition-colors"
+                                        >
+                                            <option value="+57">+57 CO</option>
+                                            <option value="+52">+52 MX</option>
+                                            <option value="+54">+54 AR</option>
+                                            <option value="+56">+56 CL</option>
+                                            <option value="+51">+51 PE</option>
+                                            <option value="+593">+593 EC</option>
+                                            <option value="+58">+58 VE</option>
+                                            <option value="+34">+34 ES</option>
+                                            <option value="+1">+1 US</option>
+                                        </select>
+                                        <input
+                                            type="tel"
+                                            value={signUpData.phoneNumber}
+                                            onChange={(e) => setSignUpData({
+                                                ...signUpData,
+                                                phoneNumber: e.target.value.replace(/[^0-9]/g, '')
+                                            })}
+                                            className="flex-1 px-4 py-3 bg-slate-800 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand transition-colors"
+                                            placeholder="300 123 4567"
+                                        />
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        Recibe alertas de oportunidades y resultados por WhatsApp
+                                    </p>
                                 </div>
 
                                 {error && (

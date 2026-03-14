@@ -80,6 +80,24 @@ async function assignFreePlan(supabase: any, userId: string, orgId: string) {
 }
 
 // ==========================================
+// Helper: Notificar al equipo admin (fire-and-forget)
+// ==========================================
+
+function notifyAdmin(sbUrl: string, sbKey: string, type: string, notifData: any) {
+    const url = `${sbUrl}/functions/v1/send-admin-notification`;
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sbKey}`
+        },
+        body: JSON.stringify({ type, data: notifData })
+    }).catch(err => {
+        console.error('[ls-webhook] Admin notification error (non-blocking):', err);
+    });
+}
+
+// ==========================================
 // Event Handlers
 // ==========================================
 
@@ -142,6 +160,37 @@ async function handleSubscriptionCreated(supabase: any, attrs: any, customData: 
         console.error('[ls-webhook] Error upserting subscription:', error);
     } else {
         console.log(`[ls-webhook] Subscription created: user=${userId}, plan=${planId}, period=${billingPeriod}`);
+
+        // Notificar al equipo admin (fire-and-forget, no bloquea)
+        try {
+            const sbUrl = Deno.env.get('SUPABASE_URL')!;
+            const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+            // Obtener nombre del plan
+            const { data: planData } = await supabase
+                .from('subscription_plans')
+                .select('display_name, name')
+                .eq('id', planId)
+                .single();
+
+            // Obtener perfil del usuario
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('full_name, email')
+                .eq('id', userId)
+                .single();
+
+            notifyAdmin(sbUrl, sbKey, 'new_subscription', {
+                name: profile?.full_name || 'Sin nombre',
+                email: profile?.email || attrs.user_email || 'Sin email',
+                plan: planData?.display_name || planData?.name || 'Desconocido',
+                amount: attrs.subtotal || null,
+                billingPeriod,
+                processor: 'Lemon Squeezy'
+            });
+        } catch (notifErr) {
+            console.error('[ls-webhook] Notification prep error (non-blocking):', notifErr);
+        }
     }
 }
 

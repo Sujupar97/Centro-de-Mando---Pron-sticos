@@ -7,7 +7,8 @@ import {
     ChartBarIcon,
     SignalIcon,
     ListBulletIcon,
-    BrainIcon
+    BrainIcon,
+    PaperAirplaneIcon
 } from '../icons/Icons';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -27,6 +28,7 @@ export const AgencySidebar: React.FC<AgencySidebarProps> = ({ activeView, onView
         { id: 'activity', label: 'Actividad', icon: <SignalIcon className="w-5 h-5" /> },
         { id: 'plan-performance', label: 'Por Plan', icon: <ChartBarIcon className="w-5 h-5" /> },
         { id: 'advanced-analytics', label: 'Analítica', icon: <TrophyIcon className="w-5 h-5" /> },
+        { id: 'notifications', label: 'Notificaciones', icon: <PaperAirplaneIcon className="w-5 h-5" /> },
         { id: 'ml-training', label: 'ML Training', icon: <BrainIcon className="w-5 h-5" /> },
         { id: 'audit-log', label: 'Audit Log', icon: <ListBulletIcon className="w-5 h-5" /> },
     ];

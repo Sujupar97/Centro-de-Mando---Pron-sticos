@@ -5,11 +5,13 @@ import { AgencyLayout } from './agency/AgencyLayout';
 import { SubscriptionManagement } from './superadmin/SubscriptionManagement';
 import { SparklesIcon, CreditCardIcon } from './icons/Icons';
 import { isAgencyRole } from '../utils/roles';
+import { SupportDashboard } from './admin/SupportDashboard';
 
 export const AdminPage: React.FC = () => {
     const { profile } = useAuth();
     const [showAgencySuite, setShowAgencySuite] = useState(false);
     const [showSubscriptions, setShowSubscriptions] = useState(false);
+    const [showSupport, setShowSupport] = useState(false);
 
     // Si el usuario activa la suite de agencia
     if (showAgencySuite) {
@@ -31,6 +33,11 @@ export const AdminPage: React.FC = () => {
         );
     }
 
+    // Si el usuario activa soporte
+    if (showSupport) {
+        return <SupportDashboard onBack={() => setShowSupport(false)} />;
+    }
+
     return (
         <div className="space-y-8 pb-20 animate-fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-center border-b border-white/5 pb-6 gap-4">
@@ -48,6 +55,15 @@ export const AdminPage: React.FC = () => {
                             >
                                 <CreditCardIcon className="w-5 h-5" />
                                 Suscripciones
+                            </button>
+                            <button
+                                onClick={() => setShowSupport(true)}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold rounded-xl hover:shadow-lg hover:shadow-blue-500/20 transition-all transform hover:scale-[1.02] active:scale-95"
+                            >
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                                </svg>
+                                Soporte
                             </button>
                             <button
                                 onClick={() => setShowAgencySuite(true)}
