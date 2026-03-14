@@ -59,6 +59,9 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                     <p className="text-gray-300 text-center">
                         Has alcanzado el límite de <span className="text-white font-semibold">{featureNames[feature] || feature}</span> en tu plan <span className="text-brand font-semibold">{planName}</span>.
                     </p>
+                    <p className="text-emerald-400 text-center text-sm font-medium mt-2">
+                        Desbloquea hasta $682/mes en herramientas de inteligencia deportiva.
+                    </p>
 
                     {currentUsage !== undefined && limit !== undefined && (
                         <div className="bg-slate-800 rounded-xl p-4">

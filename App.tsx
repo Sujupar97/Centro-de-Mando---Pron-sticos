@@ -22,6 +22,14 @@ import { useSubscription } from './contexts/SubscriptionContext';
 import { useOrganization } from './contexts/OrganizationContext';
 import { useDailyRecap } from './hooks/useDailyRecap';
 import { DailyRecapModal } from './components/recap/DailyRecapModal';
+import { ToastProvider, useToast } from './contexts/ToastContext';
+import { useOnboarding } from './hooks/useOnboarding';
+import { WelcomeScreen } from './components/onboarding/WelcomeScreen';
+import { OnboardingOverlay } from './components/onboarding/OnboardingOverlay';
+import { CelebrationOverlay } from './components/celebrations/CelebrationOverlay';
+import { CommandPalette } from './components/CommandPalette';
+import { MilestoneBanner } from './components/premium/MilestoneBanner';
+import { useMilestones } from './hooks/useMilestones';
 
 export type Page = 'live' | 'results' | 'admin' | 'pricing';
 
@@ -30,20 +38,22 @@ const Platform: React.FC = () => {
   const { profile } = useAuth();
   const { plan, isAdmin, refreshSubscription } = useSubscription();
   const { isImpersonating } = useOrganization();
+  const { showToast } = useToast();
+  const { signOut } = useAuth();
+  const onboarding = useOnboarding(!!profile);
+  const isPaidUser = plan.plan_name !== 'free';
+  const milestones = useMilestones(isPaidUser);
   const [currentPage, setCurrentPage] = React.useState<Page>('live');
-  const [paymentBanner, setPaymentBanner] = React.useState(false);
+  const [showCelebration, setShowCelebration] = React.useState(false);
 
   // Handler: ?payment=success después de pagar en Whop
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment') === 'success') {
-      setPaymentBanner(true);
+      setShowCelebration(true);
       refreshSubscription();
-      // Limpiar el parámetro de la URL
       window.history.replaceState({}, '', window.location.pathname);
-      // Auto-ocultar después de 8 segundos
-      const timer = setTimeout(() => setPaymentBanner(false), 8000);
-      return () => clearTimeout(timer);
+      showToast(`¡Plan ${plan.display_name || ''} activado exitosamente!`, 'success', 6000);
     }
   }, []);
 
@@ -93,14 +103,6 @@ const Platform: React.FC = () => {
         onReopen: recap.reopen,
       }}
     >
-      {paymentBanner && (
-        <div className="mx-4 mt-4 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between animate-fade-in">
-          <p className="text-emerald-400 font-bold">¡Pago exitoso! Tu plan ha sido activado.</p>
-          <button onClick={() => setPaymentBanner(false)} className="text-emerald-400/60 hover:text-emerald-400 p-1">
-            ✕
-          </button>
-        </div>
-      )}
       {renderContent()}
       {recap.isVisible && recap.data && (
         <DailyRecapModal
@@ -111,6 +113,33 @@ const Platform: React.FC = () => {
           onViewResults={() => setCurrentPage('results')}
         />
       )}
+      {showCelebration && (
+        <CelebrationOverlay
+          planName={plan.display_name || 'Máquina'}
+          predictionsPercentage={plan.predictions_percentage}
+          onDismiss={() => setShowCelebration(false)}
+        />
+      )}
+      {onboarding.shouldShow && onboarding.showWelcome && (
+        <WelcomeScreen
+          userName={profile.full_name || 'Usuario'}
+          planName={plan.display_name}
+          onStart={onboarding.startTour}
+          onSkip={onboarding.skip}
+        />
+      )}
+      {onboarding.shouldShow && !onboarding.showWelcome && (
+        <OnboardingOverlay
+          currentStep={onboarding.currentStep}
+          totalSteps={onboarding.totalSteps}
+          onNext={onboarding.nextStep}
+          onPrev={onboarding.prevStep}
+          onSkip={onboarding.skip}
+          onComplete={onboarding.complete}
+        />
+      )}
+      <CommandPalette setCurrentPage={setCurrentPage} onSignOut={signOut} />
+      <MilestoneBanner milestone={milestones.pendingMilestone} onDismiss={milestones.dismissMilestone} />
     </Layout>
   );
 };
@@ -184,7 +213,9 @@ const App: React.FC = () => {
       <OrganizationProvider>
         <SubscriptionProvider>
           <LanguageProvider>
-            <AppContent />
+            <ToastProvider>
+              <AppContent />
+            </ToastProvider>
           </LanguageProvider>
         </SubscriptionProvider>
       </OrganizationProvider>

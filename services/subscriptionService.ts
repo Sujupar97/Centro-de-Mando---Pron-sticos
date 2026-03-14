@@ -489,32 +489,34 @@ export function getRecommendedUpgrade(currentPlanName: string): {
     const upgrades: Record<string, { planName: string; displayName: string; benefits: string[] }> = {
         free: {
             planName: 'starter',
-            displayName: 'Starter',
+            displayName: 'Ventaja',
             benefits: [
-                'Acceso al 35% de pronosticos',
-                '4 parlays mensuales',
-                'Analisis del 50% de partidos'
+                '35% de oportunidades diarias con 83%+ de confianza',
+                'Análisis de partidos seleccionados',
+                'Historial verificable completo',
+                'Recomendaciones de staking'
             ]
         },
         starter: {
             planName: 'pro',
-            displayName: 'Pro',
+            displayName: 'Elite',
             benefits: [
-                'Acceso al 80% de pronosticos',
-                '20 parlays mensuales',
-                'Analisis del 90% de partidos',
-                'Estadisticas completas'
+                '70% de oportunidades diarias',
+                '30% de parlays inteligentes',
+                'Análisis ilimitado de partidos',
+                'Dashboard de ROI personal',
+                'BONUS: Guía "Los 7 Errores Fatales del Apostador"'
             ]
         },
         pro: {
             planName: 'premium',
-            displayName: 'Premium',
+            displayName: 'Máquina',
             benefits: [
-                '100% de pronosticos',
-                'Parlays ilimitados',
-                'Analisis del 100% de partidos',
+                '100% de oportunidades diarias',
+                '80% de parlays inteligentes',
+                'Estadísticas avanzadas completas',
                 'Soporte prioritario',
-                'Analisis de tickets propios'
+                'BONUS: Guía + Checklist + Acceso anticipado'
             ]
         }
     };

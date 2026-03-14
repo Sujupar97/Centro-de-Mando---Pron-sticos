@@ -120,10 +120,10 @@ export type PlanTier = 'free' | 'starter' | 'pro' | 'premium';
 export const PLAN_TIERS: PlanTier[] = ['free', 'starter', 'pro', 'premium'];
 
 export const PLAN_DISPLAY_NAMES: Record<PlanTier, string> = {
-    free: 'Gratuito',
-    starter: 'Starter',
-    pro: 'Pro',
-    premium: 'Premium',
+    free: 'Explorador',
+    starter: 'Ventaja',
+    pro: 'Elite',
+    premium: 'Máquina',
 };
 
 export const PLAN_PREDICTIONS_PERCENTAGES: Record<PlanTier, number> = {
