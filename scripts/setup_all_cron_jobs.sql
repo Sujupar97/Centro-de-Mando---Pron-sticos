@@ -29,7 +29,7 @@ ON CONFLICT (key) DO NOTHING;
 -- =====================================================
 
 -- 1. ANALIZADOR AUTOMÁTICO - START - 12:30 AM Colombia (5:30 AM UTC)
--- Inicia el batch de análisis para los partidos del DÍA SIGUIENTE
+-- Inicia el batch de análisis para los partidos de HOY
 -- Popula daily_matches, filtra amistosos, procesa secuencialmente
 -- Incluye: análisis estándar + parlay por partido + combos al final
 SELECT cron.schedule(
@@ -107,7 +107,7 @@ ORDER BY jobname;
 -- =====================================================
 -- RESUMEN DEL FLUJO DIARIO V2:
 -- =====================================================
--- 12:30 AM → daily-analysis-generator START: Popula daily_matches para mañana,
+-- 12:30 AM → daily-analysis-generator START: Popula daily_matches para hoy,
 --            filtra amistosos, inicia batch secuencial (1 partido a la vez)
 --            Cada partido: ETL → Analyzer → Parlay Analyzer → siguiente
 -- ~2:30 AM → Batch típicamente completado (~30 partidos × 4 min/partido)

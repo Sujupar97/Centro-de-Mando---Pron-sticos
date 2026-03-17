@@ -17,12 +17,12 @@ const SELF_INVOKE_DELAY_MS = 2000 // 2s entre invocaciones (respiro Gemini rate 
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-function getTomorrowBogota(): string {
+function getTodayBogota(): string {
     const now = new Date()
     // Bogotá = UTC-5
     const bogotaMs = now.getTime() + (-5 * 60 * 60 * 1000)
     const bogotaNow = new Date(bogotaMs)
-    bogotaNow.setUTCDate(bogotaNow.getUTCDate() + 1)
+    // No +1 day — analyze TODAY's matches (CRON fires at 12:30 AM Bogotá)
     return bogotaNow.toISOString().split('T')[0]
 }
 
@@ -121,7 +121,7 @@ serve(async (req) => {
             }
 
             // Determinar fecha objetivo
-            const targetDate = reqBody.target_date || getTomorrowBogota()
+            const targetDate = reqBody.target_date || getTodayBogota()
             console.log(`[AutoAnalyzer] Target date: ${targetDate}`)
 
             // Verificar que no hay batch activo

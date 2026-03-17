@@ -45,53 +45,13 @@ serve(async (req) => {
 
         log(`[OPP-V8.1] ${dailyMatches.length} daily matches from DB`);
 
-        // ═══════════════════════════════════════════════════════════════
-        // STEP 1.5: Find ALL completed analyses for this date
-        // daily_matches may have dual IDs (SportMonks + API-Football) or
-        // may be missing SportMonks entries. Query jobs by created_at date
-        // to find any analyses not linked to daily_matches fixture_ids.
-        // ═══════════════════════════════════════════════════════════════
-        const { data: allDoneJobs } = await supabase
-            .from('analysis_jobs_v2')
-            .select('id, fixture_id, status, created_at')
-            .eq('status', 'done')
-            .or('analysis_type.eq.standard,analysis_type.is.null')
-            .gte('created_at', `${date}T00:00:00`)
-            .lt('created_at', `${date}T23:59:59+05:00`); // +5h buffer for Colombia timezone
+        // NOTE: Step 1.5 (analysis_jobs_v2 fallback) was REMOVED.
+        // It had timezone bugs (+05:00 instead of -05:00 for Bogotá) that caused
+        // fixture IDs from other dates to contaminate results.
+        // daily_matches.match_date is the single source of truth.
+        const allDoneJobs = null; // kept as null for downstream compat (lines 145-147 use ?. fallback)
 
-        if (allDoneJobs && allDoneJobs.length > 0) {
-            const jobFixtureIds = allDoneJobs.map((j: any) => j.fixture_id);
-            const missingIds = jobFixtureIds.filter((id: number) => !fixtureIds.includes(id));
-
-            if (missingIds.length > 0) {
-                log(`[OPP-V8.1] Found ${missingIds.length} analyses with fixture_ids NOT in daily_matches. Adding...`);
-
-                // Try to get team info from daily_matches for these IDs
-                const { data: extraMatches } = await supabase
-                    .from('daily_matches')
-                    .select('api_fixture_id, home_team, away_team, league_name, match_time, home_team_logo, away_team_logo')
-                    .in('api_fixture_id', missingIds);
-
-                if (extraMatches) {
-                    extraMatches.forEach((m: any) => {
-                        if (!dailyByFixture.has(m.api_fixture_id)) {
-                            dailyByFixture.set(m.api_fixture_id, m);
-                            fixtureIds.push(m.api_fixture_id);
-                        }
-                    });
-                    log(`[OPP-V8.1] Added ${extraMatches.length} extra matches from alternate IDs`);
-                }
-
-                // For IDs not even in daily_matches, try team names from reports_v2
-                const stillMissing = missingIds.filter((id: number) => !dailyByFixture.has(id));
-                if (stillMissing.length > 0) {
-                    fixtureIds.push(...stillMissing);
-                    log(`[OPP-V8.1] ${stillMissing.length} IDs have no daily_match entry (will extract team info from report)`);
-                }
-            }
-        }
-
-        log(`[OPP-V8.1] Total search IDs: ${fixtureIds.length} (daily_matches + jobs by date)`);
+        log(`[OPP-V8.1] Using ${fixtureIds.length} fixture IDs from daily_matches only`);
 
         // ═══════════════════════════════════════════════════════════════
         // STEP 2: DIRECT DATA ACCESS - Skip jobs table entirely
@@ -489,6 +449,13 @@ serve(async (req) => {
 
         // Sort by Probability Descending
         highProbPicks.sort((a, b) => b.p_model - a.p_model);
+
+        // CAP: Maximum 20 opportunities (top probability)
+        const MAX_OPPORTUNITIES = 20;
+        if (highProbPicks.length > MAX_OPPORTUNITIES) {
+            log(`[OPP-V8.1] CAP: Trimming ${highProbPicks.length} → ${MAX_OPPORTUNITIES} picks (keeping top probability)`);
+            highProbPicks.length = MAX_OPPORTUNITIES;
+        }
 
         log(`[OPP-V8.1] SUCCESS: ${highProbPicks.length} picks found (${highProbPicks.filter((p: any) => p.odds).length} with odds)`);
 

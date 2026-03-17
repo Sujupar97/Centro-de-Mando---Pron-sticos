@@ -13,12 +13,8 @@ const SYSTEM_START_DATE = '2026-02-17';
 const PARLAY_START_DATE = '2026-02-25';
 
 /**
- * Get fixture IDs for a date range using DUAL source:
- * 1. daily_matches by match_date (primary)
- * 2. analysis_jobs_v2 by created_at (catches next-day matches analyzed early)
- *
- * This mirrors the logic in v2-generate-parlays Step 1.5 to ensure
- * Resultados shows the SAME picks as Oportunidades.
+ * Get fixture IDs for a date range using daily_matches by match_date.
+ * Single source of truth — no analysis_jobs_v2 fallback (removed due to timezone bugs).
  */
 async function getFixtureIdsForDateRange(startDate: string, endDate: string): Promise<{
     fixtureIds: number[];
@@ -43,39 +39,10 @@ async function getFixtureIdsForDateRange(startDate: string, endDate: string): Pr
         fixtureIds.push(m.api_fixture_id);
     });
 
-    // 2. Analysis jobs completed in the date range (catches next-day matches analyzed early)
-    const { data: doneJobs } = await supabase
-        .from('analysis_jobs_v2')
-        .select('fixture_id')
-        .eq('status', 'done')
-        .or('analysis_type.eq.standard,analysis_type.is.null')
-        .gte('created_at', `${startDate}T00:00:00`)
-        .lte('created_at', `${endDate}T23:59:59+05:00`);
-
-    if (doneJobs && doneJobs.length > 0) {
-        const extraIds = doneJobs
-            .map(j => j.fixture_id)
-            .filter(id => !fixtureIds.includes(id));
-
-        if (extraIds.length > 0) {
-            // Get match info for these extra fixture IDs
-            const { data: extraMatches } = await supabase
-                .from('daily_matches')
-                .select('api_fixture_id, home_team, away_team, league_name, match_date')
-                .in('api_fixture_id', extraIds);
-
-            (extraMatches || []).forEach(m => {
-                if (!matchMap.has(m.api_fixture_id)) {
-                    matchMap.set(m.api_fixture_id, m);
-                    fixtureIds.push(m.api_fixture_id);
-                }
-            });
-
-            // IDs without daily_matches entry are still included
-            const stillMissing = extraIds.filter(id => !matchMap.has(id));
-            fixtureIds.push(...stillMissing);
-        }
-    }
+    // NOTE: analysis_jobs_v2 fallback was REMOVED.
+    // It had timezone bugs (+05:00 instead of -05:00 for Bogotá) that caused
+    // fixture IDs from other dates to contaminate results.
+    // daily_matches.match_date is the single source of truth.
 
     return { fixtureIds, matchMap };
 }
