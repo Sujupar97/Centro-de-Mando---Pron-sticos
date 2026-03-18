@@ -517,9 +517,14 @@ serve(async (req) => {
         let reqBody: any = {};
         try { reqBody = await req.json().catch(() => ({})); } catch { /* ignore */ }
 
-        const today = new Date().toISOString().split('T')[0];
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-        const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0];
+        // Bogotá = UTC-5 (Colombia no tiene DST)
+        const getBogotaDate = (offsetDays = 0): string => {
+            const d = new Date(Date.now() + (-5 * 60 * 60 * 1000) + (offsetDays * 86400000));
+            return d.toISOString().split('T')[0];
+        };
+        const today = getBogotaDate(0);
+        const yesterday = getBogotaDate(-1);
+        const twoDaysAgo = getBogotaDate(-2);
         // Accept both "date" and "dates" parameter names
         const rawDates = reqBody?.date || reqBody?.dates;
         const datesToCheck = rawDates

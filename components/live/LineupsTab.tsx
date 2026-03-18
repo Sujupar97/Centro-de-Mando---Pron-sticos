@@ -3,24 +3,21 @@ import React from 'react';
 import { APILineup } from '../../types';
 import { SoccerField } from './SoccerField';
 
-export const LineupsTab: React.FC<{ lineups: APILineup[] | null }> = ({ lineups }) => {
+export const LineupsTab: React.FC<{ lineups: APILineup[] | null; isPreMatch?: boolean }> = ({ lineups, isPreMatch = false }) => {
     if (!lineups || lineups.length === 0) {
         return <div className="text-center py-8 text-gray-400 bg-gray-800 rounded-lg">Las alineaciones aún no están disponibles para este partido.</div>;
     }
 
-    const homeLineup = lineups[0]; // Usually home is first in API response, but strictly should check lineup.team.id vs game.teams.home.id
+    const homeLineup = lineups[0];
     const awayLineup = lineups.length > 1 ? lineups[1] : null;
 
-    // Check if lineups are real or fallback (heuristic: usually fallback lineups might miss coach or some data, but let's assume API structure is kept).
-    // The service handles fetching. Here we just display.
-    
-    // If we only have 1 lineup, we display what we have.
-    
     return (
         <div className="space-y-6">
             <div className="bg-gray-800 p-4 rounded-lg shadow-lg">
-                <h4 className="text-lg font-bold text-white mb-4 text-center">Formaciones Tácticas</h4>
-                <SoccerField homeLineup={homeLineup} awayLineup={awayLineup} isProjected={false} />
+                <h4 className="text-lg font-bold text-white mb-4 text-center">
+                    {isPreMatch ? 'Alineaciones Esperadas' : 'Formaciones Tácticas'}
+                </h4>
+                <SoccerField homeLineup={homeLineup} awayLineup={awayLineup} isProjected={isPreMatch} />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

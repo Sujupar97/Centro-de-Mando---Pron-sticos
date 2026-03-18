@@ -46,7 +46,6 @@ export const OperationsCenter: React.FC = () => {
     const [selectedDate, setSelectedDate] = useState<string>(() => {
         const now = new Date();
         const bogota = new Date(now.toLocaleString('en-US', { timeZone: 'America/Bogota' }));
-        bogota.setDate(bogota.getDate() + 1);
         return bogota.toISOString().split('T')[0];
     });
     const [batchState, setBatchState] = useState<BatchState | null>(null);

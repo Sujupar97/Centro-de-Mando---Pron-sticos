@@ -142,6 +142,7 @@ serve(async (req) => {
 
             // Poblar daily_matches para la fecha objetivo via v2-list-fixtures-sportmonks
             console.log(`[AutoAnalyzer] Poblando daily_matches para ${targetDate}...`)
+            let fixturesError: string | null = null
             try {
                 const fixturesResp = await fetch(
                     `${supabaseUrl}/functions/v1/v2-list-fixtures-sportmonks`,
@@ -156,9 +157,13 @@ serve(async (req) => {
                 )
                 const fixturesData = await fixturesResp.json()
                 console.log(`[AutoAnalyzer] Fixtures response: ${fixturesResp.status}, count: ${fixturesData?.data?.length || fixturesData?.length || 'N/A'}`)
+                if (!fixturesResp.ok) {
+                    fixturesError = `SportMonks API error (HTTP ${fixturesResp.status}): ${fixturesData?.error || fixturesData?.message || 'Unknown error'}`
+                    console.error(`[AutoAnalyzer] ${fixturesError}`)
+                }
             } catch (e: any) {
-                console.error('[AutoAnalyzer] Error poblando fixtures:', e.message)
-                // Continuar de todas formas — puede que ya estén en daily_matches
+                fixturesError = `SportMonks API unreachable: ${e.message}`
+                console.error(`[AutoAnalyzer] ${fixturesError}`)
             }
 
             // Consultar daily_matches para la fecha, excluyendo amistosos
@@ -176,10 +181,24 @@ serve(async (req) => {
             const filteredMatches = (matches || []).filter(m => !isFriendly(m.league_name))
 
             if (filteredMatches.length === 0) {
-                console.log('[AutoAnalyzer] No hay partidos (o todos son amistosos) para esta fecha')
+                const msg = fixturesError
+                    ? `Error obteniendo partidos de SportMonks: ${fixturesError}`
+                    : `No hay partidos para analizar el ${targetDate}`
+                console.log(`[AutoAnalyzer] ${msg}`)
+                // Guardar error en batch state para que el admin lo vea en el UI
+                if (fixturesError) {
+                    await updateState(supabase, {
+                        active: false,
+                        target_date: targetDate,
+                        total_matches: 0,
+                        error: fixturesError,
+                        updated_at: new Date().toISOString()
+                    })
+                }
                 return jsonResponse({
-                    success: true,
-                    message: `No hay partidos para analizar el ${targetDate}`,
+                    success: !fixturesError,
+                    message: msg,
+                    error: fixturesError || undefined,
                     total_matches: matches?.length || 0,
                     friendly_excluded: (matches?.length || 0) - filteredMatches.length
                 })
