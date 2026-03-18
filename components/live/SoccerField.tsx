@@ -176,8 +176,8 @@ export const SoccerField: React.FC<SoccerFieldProps> = ({ homeLineup, awayLineup
             </div>
 
             {isProjected && (
-                <div className="bg-amber-500/20 text-amber-400 text-xs text-center py-1.5 rounded border border-amber-500/30">
-                    Alineación esperada — sujeta a cambios antes del inicio del partido
+                <div className="bg-yellow-500/20 text-yellow-400 text-xs text-center py-1 rounded border border-yellow-500/30">
+                    ⚠️ Alineación proyectada basada en el último partido (Formación no confirmada aún).
                 </div>
             )}
 

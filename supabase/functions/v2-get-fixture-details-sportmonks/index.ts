@@ -54,49 +54,31 @@ serve(async (req) => {
 
         console.log(`[v2-get-fixture-details-sportmonks] Context: Teams ${homeTeamId}-${awayTeamId}, League ${leagueId}`);
 
-        // Fetch additional context — each wrapped in try/catch so partial failures don't crash the whole response
-        const safeCall = async <T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
-            try { return await fn(); }
-            catch (e: any) { console.warn(`[v2-get-fixture-details-sportmonks] ${label} failed: ${e.message}`); return fallback; }
-        };
-
         const [h2h, standings, lastHome, lastAway] = await Promise.all([
-            safeCall('H2H', () => getH2H(homeTeamId, awayTeamId), []),
-            safeCall('Standings', () => seasonId ? getStandings(seasonId) : Promise.resolve([]), []),
-            safeCall('LastHome', () => getTeamFixtures(homeTeamId, 5), []),
-            safeCall('LastAway', () => getTeamFixtures(awayTeamId, 5), [])
+            getH2H(homeTeamId, awayTeamId),
+            seasonId ? getStandings(seasonId) : Promise.resolve([]),
+            getTeamFixtures(homeTeamId, 5),
+            getTeamFixtures(awayTeamId, 5)
         ]);
 
         // 3. Normalize to GameDetails format
+        // Re-use ListGame normalizer for the base 'fixture', 'league', 'teams', 'goals'
         const baseGame = normalizeSportMonksToListGame(fixtureData);
-
-        // Safe normalization — each section independent
-        let events = null;
-        let lineups = null;
-        let statistics = null;
-        let normalizedH2h: any[] = [];
-        let normalizedStandings = null;
-
-        try { events = normalizeLegacyEvents(fixtureData); } catch (e: any) { console.warn(`[v2-get-fixture-details-sportmonks] Events normalization failed: ${e.message}`); }
-        try { lineups = normalizeLegacyLineups(fixtureData, homeTeamId, awayTeamId); } catch (e: any) { console.warn(`[v2-get-fixture-details-sportmonks] Lineups normalization failed: ${e.message}`); }
-        try { statistics = normalizeLegacyStatistics(fixtureData, homeTeamId, awayTeamId); } catch (e: any) { console.warn(`[v2-get-fixture-details-sportmonks] Statistics normalization failed: ${e.message}`); }
-        try { normalizedH2h = h2h.map(normalizeSportMonksToListGame); } catch (e: any) { console.warn(`[v2-get-fixture-details-sportmonks] H2H normalization failed: ${e.message}`); }
-        try { normalizedStandings = normalizeLegacyStandings(standings); } catch (e: any) { console.warn(`[v2-get-fixture-details-sportmonks] Standings normalization failed: ${e.message}`); }
 
         const dossier: any = {
             fixture: baseGame.fixture,
             league: baseGame.league,
             teams: baseGame.teams,
             goals: baseGame.goals,
-            events,
-            lineups,
-            statistics,
-            h2h: normalizedH2h,
-            standings: normalizedStandings,
-            teamStats: { home: null, away: null },
+            events: normalizeLegacyEvents(fixtureData),
+            lineups: normalizeLegacyLineups(fixtureData, homeTeamId, awayTeamId),
+            statistics: normalizeLegacyStatistics(fixtureData, homeTeamId, awayTeamId),
+            h2h: h2h.map(normalizeSportMonksToListGame),
+            standings: normalizeLegacyStandings(standings),
+            teamStats: { home: null, away: null }, // TODO: Fetch team season stats if critical (expensive call usually)
             lastMatches: {
-                home: lastHome.map((m: any) => { try { return normalizeSportMonksToListGame(m); } catch { return null; } }).filter(Boolean),
-                away: lastAway.map((m: any) => { try { return normalizeSportMonksToListGame(m); } catch { return null; } }).filter(Boolean)
+                home: lastHome.map(normalizeSportMonksToListGame),
+                away: lastAway.map(normalizeSportMonksToListGame)
             }
         };
 

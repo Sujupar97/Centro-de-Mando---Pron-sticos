@@ -149,7 +149,7 @@ const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
             case 'stats':
                 return <StatisticsTab stats={details.statistics} />;
             case 'lineups':
-                return <LineupsTab lineups={details.lineups} isPreMatch={!isLive && !isFinished} />;
+                return <LineupsTab lineups={details.lineups} />;
             case 'h2h':
                 return <H2HTab h2h={details.h2h} />;
             case 'standings':
