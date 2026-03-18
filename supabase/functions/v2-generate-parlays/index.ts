@@ -447,8 +447,8 @@ serve(async (req) => {
             });
         }
 
-        // Sort by Probability Descending
-        highProbPicks.sort((a, b) => b.p_model - a.p_model);
+        // Sort by Probability Descending, then by fixture_id for deterministic tiebreaking
+        highProbPicks.sort((a, b) => b.p_model - a.p_model || a.fixture_id - b.fixture_id);
 
         // CAP: Maximum 20 opportunities (top probability)
         const MAX_OPPORTUNITIES = 20;
