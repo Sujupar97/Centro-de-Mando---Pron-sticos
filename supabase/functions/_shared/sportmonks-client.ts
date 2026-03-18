@@ -166,22 +166,27 @@ export async function getFixturesByDate(date: string): Promise<any[]> {
  * Get complete fixture data with all includes
  */
 export async function getFixtureComplete(fixtureId: number): Promise<any | null> {
-    // Try with all includes first
-    const fullIncludes = [
-        'participants', 'lineups', 'statistics.type', 'events', 'scores',
-        'venue', 'referees', 'formations', 'coaches', 'sidelined',
-        'odds', 'weatherReport', 'league', 'season', 'state', 'round'
-    ];
-    const result = await fetchSportMonks<any>(`/fixtures/${fixtureId}`, fullIncludes, {});
-    if (result) return result;
-
-    // Fallback: essential includes only (some plans don't support all includes)
-    console.warn(`[SportMonks] Full includes failed for fixture ${fixtureId}, retrying with essentials`);
-    const essentialIncludes = [
-        'participants', 'lineups', 'statistics.type', 'events', 'scores',
-        'venue', 'league', 'state', 'formations'
-    ];
-    return await fetchSportMonks<any>(`/fixtures/${fixtureId}`, essentialIncludes, {});
+    return await fetchSportMonks<any>(
+        `/fixtures/${fixtureId}`,
+        [
+            'participants',
+            'lineups',
+            'statistics.type',
+            'events',
+            'scores',
+            'venue',
+            'referees',
+            'formations',
+            'coaches',
+            'sidelined',
+            'weatherReport',
+            'league',
+            'season',
+            'state',
+            'round'
+        ],
+        {}
+    );
 }
 
 /**
