@@ -8,6 +8,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from '../_shared/cors.ts'
 
+/** Get next day string YYYY-MM-DD */
+function getNextDay(dateStr: string): string {
+    const d = new Date(dateStr + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().split('T')[0];
+}
+
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -34,24 +41,59 @@ serve(async (req) => {
 
         if (matchesError) throw matchesError;
 
-        if (!dailyMatches || dailyMatches.length === 0) {
-            log(`[OPP-V8.1] No matches found for date ${date}`);
-            return jsonResponse({ success: true, message: 'No hay partidos programados.', parlays: [], singles: [], stats: { matches: 0 }, debug_logs: logs });
-        }
-
-        let fixtureIds = dailyMatches.map((m: any) => m.api_fixture_id);
+        let fixtureIds: number[] = [];
         const dailyByFixture = new Map<number, any>();
-        dailyMatches.forEach((m: any) => dailyByFixture.set(m.api_fixture_id, m));
 
-        log(`[OPP-V8.1] ${dailyMatches.length} daily matches from DB`);
+        if (dailyMatches && dailyMatches.length > 0) {
+            fixtureIds = dailyMatches.map((m: any) => m.api_fixture_id);
+            dailyMatches.forEach((m: any) => dailyByFixture.set(m.api_fixture_id, m));
+            log(`[OPP-V8.1] ${dailyMatches.length} daily matches from DB`);
+        } else {
+            // ═══════════════════════════════════════════════════════════════
+            // FALLBACK: daily_matches empty (stale cleanup or API issue).
+            // Recover fixture IDs from value_picks_v2 by date range.
+            // This ensures past dates with verified picks still show.
+            // ═══════════════════════════════════════════════════════════════
+            log(`[OPP-V8.1] No matches in daily_matches for ${date}, trying fallback...`);
+
+            // Bogotá = UTC-5: 00:00 Bogotá = 05:00 UTC
+            const bogotaStart = `${date}T05:00:00+00:00`;
+            const bogotaEnd = `${getNextDay(date)}T05:00:00+00:00`;
+
+            const { data: fallbackPicks } = await supabase
+                .from('value_picks_v2')
+                .select('fixture_id')
+                .gte('created_at', bogotaStart)
+                .lt('created_at', bogotaEnd);
+
+            if (fallbackPicks && fallbackPicks.length > 0) {
+                fixtureIds = [...new Set(fallbackPicks.map((p: any) => p.fixture_id))];
+                log(`[OPP-V8.1] Fallback: recovered ${fixtureIds.length} fixture IDs from value_picks_v2`);
+            } else {
+                // Second fallback: try reports_v2
+                const { data: fallbackReports } = await supabase
+                    .from('reports_v2')
+                    .select('fixture_id')
+                    .gte('created_at', bogotaStart)
+                    .lt('created_at', bogotaEnd);
+
+                if (fallbackReports && fallbackReports.length > 0) {
+                    fixtureIds = [...new Set(fallbackReports.map((r: any) => r.fixture_id))];
+                    log(`[OPP-V8.1] Fallback: recovered ${fixtureIds.length} fixture IDs from reports_v2`);
+                } else {
+                    log(`[OPP-V8.1] No data found for ${date} in any source`);
+                    return jsonResponse({ success: true, message: 'No hay partidos programados.', parlays: [], singles: [], stats: { matches: 0 }, debug_logs: logs });
+                }
+            }
+        }
 
         // NOTE: Step 1.5 (analysis_jobs_v2 fallback) was REMOVED.
         // It had timezone bugs (+05:00 instead of -05:00 for Bogotá) that caused
         // fixture IDs from other dates to contaminate results.
-        // daily_matches.match_date is the single source of truth.
-        const allDoneJobs = null; // kept as null for downstream compat (lines 145-147 use ?. fallback)
+        // daily_matches.match_date is the single source of truth, with value_picks_v2 as fallback.
+        const allDoneJobs = null; // kept as null for downstream compat (lines below use ?. fallback)
 
-        log(`[OPP-V8.1] Using ${fixtureIds.length} fixture IDs from daily_matches only`);
+        log(`[OPP-V8.1] Using ${fixtureIds.length} fixture IDs`);
 
         // ═══════════════════════════════════════════════════════════════
         // STEP 2: DIRECT DATA ACCESS - Skip jobs table entirely

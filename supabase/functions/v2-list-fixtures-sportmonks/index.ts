@@ -119,31 +119,38 @@ serve(async (req) => {
             // ═══════════════════════════════════════════════════════════════
             // STALE CLEANUP: Remove daily_matches entries for this date
             // that no longer exist in SportMonks (rescheduled/cancelled).
-            // This prevents showing stale fixtures on a wrong date.
+            // SAFEGUARD: Only clean if we got fresh data from SportMonks.
+            // If SportMonks returned 0 fixtures (API issue, matches finished),
+            // do NOT delete existing daily_matches — v2-generate-parlays needs them.
             // ═══════════════════════════════════════════════════════════════
             const currentFixtureIds = normalized.map((g: any) => g.fixture?.id).filter(Boolean);
-            const { data: dbRows } = await supabase
-                .from('daily_matches')
-                .select('id, api_fixture_id')
-                .eq('match_date', date);
 
-            if (dbRows && dbRows.length > 0) {
-                const currentIdSet = new Set(currentFixtureIds);
-                const staleRows = dbRows.filter((r: any) => !currentIdSet.has(r.api_fixture_id));
+            if (currentFixtureIds.length > 0) {
+                const { data: dbRows } = await supabase
+                    .from('daily_matches')
+                    .select('id, api_fixture_id')
+                    .eq('match_date', date);
 
-                if (staleRows.length > 0) {
-                    const staleIds = staleRows.map((r: any) => r.id);
-                    const { error: deleteError } = await supabase
-                        .from('daily_matches')
-                        .delete()
-                        .in('id', staleIds);
+                if (dbRows && dbRows.length > 0) {
+                    const currentIdSet = new Set(currentFixtureIds);
+                    const staleRows = dbRows.filter((r: any) => !currentIdSet.has(r.api_fixture_id));
 
-                    if (deleteError) {
-                        console.error(`[v2-list-fixtures-sportmonks] Stale cleanup error:`, deleteError.message);
-                    } else {
-                        console.log(`[v2-list-fixtures-sportmonks] Cleaned ${staleRows.length} stale fixtures from ${date} (rescheduled/cancelled)`);
+                    if (staleRows.length > 0) {
+                        const staleIds = staleRows.map((r: any) => r.id);
+                        const { error: deleteError } = await supabase
+                            .from('daily_matches')
+                            .delete()
+                            .in('id', staleIds);
+
+                        if (deleteError) {
+                            console.error(`[v2-list-fixtures-sportmonks] Stale cleanup error:`, deleteError.message);
+                        } else {
+                            console.log(`[v2-list-fixtures-sportmonks] Cleaned ${staleRows.length} stale fixtures from ${date} (rescheduled/cancelled)`);
+                        }
                     }
                 }
+            } else {
+                console.log(`[v2-list-fixtures-sportmonks] SportMonks returned 0 fixtures for ${date} — skipping stale cleanup to preserve existing data`);
             }
         } catch (syncErr: any) {
             // Non-blocking: don't fail the main response if sync fails
