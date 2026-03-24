@@ -63,13 +63,12 @@ export async function getPublicResults(startDate: string, endDate: string, filte
         return emptyResults(baseBankroll, baseBankroll + totalProfit, totalProfit);
     }
 
-    // Step 2: Get verified picks — ALIGNED with Oportunidades (p_model >= 0.83 AND odds >= 1.40)
+    // Step 2: Get verified picks — ONLY persisted opportunities (is_opportunity=true)
     const { data: picks, error } = await supabase
         .from('value_picks_v2')
         .select('id, fixture_id, market, selection, p_model, odds, result, verified_at, actual_score')
         .in('result', ['WON', 'LOST'])
-        .gte('p_model', 0.83)
-        .or('odds.gte.1.40,odds.is.null')
+        .eq('is_opportunity', true)
         .in('fixture_id', fixtureIdsInRange)
         .order('verified_at', { ascending: false });
 
@@ -78,13 +77,12 @@ export async function getPublicResults(startDate: string, endDate: string, filte
         throw error;
     }
 
-    // Step 2.5: Count PENDING picks — ALIGNED with same filters as verified
+    // Step 2.5: Count PENDING picks — ONLY persisted opportunities
     const { count: pendingCount } = await supabase
         .from('value_picks_v2')
         .select('id', { count: 'exact', head: true })
         .in('fixture_id', fixtureIdsInRange)
-        .gte('p_model', 0.83)
-        .or('odds.gte.1.40,odds.is.null')
+        .eq('is_opportunity', true)
         .eq('result', 'PENDING');
 
     const results = picks || [];
@@ -364,13 +362,12 @@ async function calculateProfitFromPicks(baseBankroll: number, startDate: string,
     const { fixtureIds } = await getFixtureIdsForDateRange(startDate, endDate);
     if (fixtureIds.length === 0) return { totalProfit: 0, totalStaked: 0, totalUnitsProfit: 0, totalUnitsStaked: 0 };
 
-    // Get verified Oportunidades — ALIGNED with display (p_model >= 0.83)
+    // Get verified Oportunidades — ONLY persisted opportunities
     const { data: picks } = await supabase
         .from('value_picks_v2')
         .select('result, odds, p_model')
         .in('fixture_id', fixtureIds)
-        .gte('p_model', 0.83)
-        .or('odds.gte.1.40,odds.is.null')
+        .eq('is_opportunity', true)
         .in('result', ['WON', 'LOST']);
 
     const config = DEFAULT_STAKING_CONFIG;
@@ -1136,13 +1133,12 @@ async function fetchPicksWithMatchDate(startDate: string, endDate: string): Prom
         return { picks: [], matchMap, baseBankroll };
     }
 
-    // Get ALL verified + pending picks (we need pending count too)
+    // Get ALL verified + pending picks — ONLY persisted opportunities
     const { data: allPicks } = await supabase
         .from('value_picks_v2')
         .select('id, fixture_id, market, selection, p_model, odds, result, verified_at, actual_score, created_at')
         .in('fixture_id', fixtureIds)
-        .gte('p_model', 0.83)
-        .or('odds.gte.1.40,odds.is.null');
+        .eq('is_opportunity', true);
 
     const baseBankroll = await fetchBaseBankroll();
 

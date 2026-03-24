@@ -616,6 +616,40 @@ serve(async (req) => {
             log(`[OPP-V8.1] SYNC failed (non-blocking): ${syncErr.message}`);
         }
 
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 5.5: PERSIST OPPORTUNITY SELECTION
+        // Mark the final top-20 picks as is_opportunity=true in value_picks_v2.
+        // This ensures the same picks appear on every page refresh.
+        // Must run AFTER SYNC (Step 5) so all picks have real UUIDs.
+        // ═══════════════════════════════════════════════════════════════
+        try {
+            // RESET: Clear previous opportunity flags for this date
+            const { error: resetErr } = await supabase
+                .from('value_picks_v2')
+                .update({ is_opportunity: false, opportunity_rank: null, opportunity_date: null })
+                .eq('opportunity_date', date);
+            if (resetErr) log(`[OPP-V8.1] PERSIST reset warning: ${resetErr.message}`);
+
+            // SET: Mark each of the final picks as opportunity with rank
+            let persistedCount = 0;
+            for (let i = 0; i < highProbPicks.length; i++) {
+                const p = highProbPicks[i];
+                if (!p.id) continue;
+                const { error: setErr } = await supabase
+                    .from('value_picks_v2')
+                    .update({
+                        is_opportunity: true,
+                        opportunity_rank: i + 1,
+                        opportunity_date: date
+                    })
+                    .eq('id', p.id);
+                if (!setErr) persistedCount++;
+            }
+            log(`[OPP-V8.1] PERSIST: Marked ${persistedCount}/${highProbPicks.length} picks as opportunities for ${date}`);
+        } catch (persistErr: any) {
+            log(`[OPP-V8.1] PERSIST failed (non-blocking): ${persistErr.message}`);
+        }
+
         // Register in profitability tracking (non-blocking)
         try {
             const picksWithOdds = highProbPicks.filter((p: any) => p.odds);

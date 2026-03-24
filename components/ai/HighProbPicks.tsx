@@ -13,6 +13,7 @@ import { TrophyIcon, ChartBarIcon, ArrowPathIcon, ArrowTopRightOnSquareIcon, Loc
 import { usePresentationMode } from '../../hooks/usePresentationMode';
 import { isAgencyRole } from '../../utils/roles';
 import { useOrganization } from '../../contexts/OrganizationContext';
+import { getStakeUnits, getStakePercent, DEFAULT_STAKING_CONFIG } from '../../services/stakingService';
 
 interface HighProbPick {
     id: string;
@@ -37,9 +38,10 @@ interface HighProbPicksProps {
     date: string;
     onViewReport?: (jobId: string, fixtureId: number) => void;
     onPickOverridden?: () => void;
+    onAccessibleFixturesChange?: (fixtureIds: Set<number>) => void;
 }
 
-const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport, onPickOverridden }) => {
+const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport, onPickOverridden, onAccessibleFixturesChange }) => {
     const { profile } = useAuth();
     const { plan, isAdmin: isSubAdmin, trackUsage } = useSubscription();
     const { presentationMode } = usePresentationMode();
@@ -64,6 +66,57 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport, onPic
         setInfoMessage(null);
 
         try {
+            // FAST PATH: Read persisted opportunities directly from DB (stable on every refresh)
+            if (!forceRegenerate) {
+                console.log(`[HighProbPicks] Trying persisted opportunities for ${date}...`);
+                const { data: persisted } = await supabase
+                    .from('value_picks_v2')
+                    .select('id, job_id, fixture_id, market, selection, p_model, odds, result, verified_at, actual_score, opportunity_rank')
+                    .eq('is_opportunity', true)
+                    .eq('opportunity_date', date)
+                    .order('opportunity_rank', { ascending: true });
+
+                if (persisted && persisted.length > 0) {
+                    console.log(`[HighProbPicks] Found ${persisted.length} persisted opportunities`);
+                    // Enrich with team names from daily_matches
+                    const fids = [...new Set(persisted.map(p => p.fixture_id))];
+                    const { data: matches } = await supabase
+                        .from('daily_matches')
+                        .select('api_fixture_id, home_team, away_team, league_name, home_team_logo, away_team_logo')
+                        .in('api_fixture_id', fids);
+                    const mmap = new Map<number, any>();
+                    (matches || []).forEach((m: any) => mmap.set(m.api_fixture_id, m));
+
+                    const picks: HighProbPick[] = persisted.map((p: any) => {
+                        const m = mmap.get(p.fixture_id);
+                        return {
+                            id: p.id,
+                            job_id: p.job_id || '',
+                            fixture_id: p.fixture_id,
+                            market: p.market,
+                            selection: p.selection,
+                            p_model: p.p_model > 1 ? p.p_model / 100 : p.p_model,
+                            decision: 'ALTA',
+                            odds: p.odds && p.odds > 1 ? p.odds : 0,
+                            home_team: m?.home_team || 'Equipo',
+                            away_team: m?.away_team || 'Equipo',
+                            league: m?.league_name || '',
+                            logo_home: m?.home_team_logo,
+                            logo_away: m?.away_team_logo,
+                            result: p.result || 'PENDING',
+                            verified_at: p.verified_at,
+                            actual_score: p.actual_score,
+                        };
+                    });
+                    setSingles(picks);
+                    setInProgress(0);
+                    loadMatchScores(picks);
+                    return; // Done — no need to call edge function
+                }
+                console.log(`[HighProbPicks] No persisted opportunities, falling back to edge function`);
+            }
+
+            // SLOW PATH: Generate via edge function (first time or force refresh)
             console.log(`[HighProbPicks] Requesting picks for date: ${date} (Force: ${forceRegenerate})`);
 
             const { data, error: fnError } = await supabase.functions.invoke('v2-generate-parlays', {
@@ -150,6 +203,13 @@ const HighProbPicks: React.FC<HighProbPicksProps> = ({ date, onViewReport, onPic
     const visiblePicks = mainPicks.slice(0, allowedCount);
     const lockedPicks = mainPicks.slice(allowedCount);
     const hasLockedPicks = lockedPicks.length > 0 && !isHistorical;
+
+    // Report accessible fixture IDs to parent (LiveFeed) for unified gating
+    useEffect(() => {
+        if (!onAccessibleFixturesChange) return;
+        const ids = new Set(visiblePicks.map(p => p.fixture_id));
+        onAccessibleFixturesChange(ids);
+    }, [visiblePicks.length, allowedCount, onAccessibleFixturesChange]);
 
     // Helpers UI
     const translateMarket = (market: string): string => {
@@ -436,6 +496,11 @@ const SinglePickCard: React.FC<{
     const isWon = !presentationMode && pick.result === 'WON';
     const canOverride = isAdmin; // Admin siempre puede corregir resultados
 
+    // Stake / risk management
+    const stakeUnits = getStakeUnits(DEFAULT_STAKING_CONFIG, 'single', pick.p_model);
+    const stakePercent = getStakePercent(stakeUnits, DEFAULT_STAKING_CONFIG);
+    const potentialProfit = pick.odds ? (stakePercent * (pick.odds - 1)).toFixed(1) : null;
+
     const handleOverride = async (e: React.MouseEvent, result: 'WON' | 'LOST' | 'VOID') => {
         e.stopPropagation();
         if (overriding) return;
@@ -491,6 +556,21 @@ const SinglePickCard: React.FC<{
                     </span>
                     <span className="text-[10px] text-slate-500 uppercase">{pick.odds ? 'Cuota' : 'Estimada'}</span>
                 </div>
+            </div>
+
+            {/* Stake / Risk Management Badge */}
+            <div className="flex items-center justify-between px-3 py-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20 mb-3">
+                <div>
+                    <span className="text-[9px] uppercase text-emerald-500/60 font-bold block">Stake Sugerido</span>
+                    <span className="text-emerald-400 font-black text-lg">{stakePercent}%</span>
+                    <span className="text-emerald-500/50 text-[10px] ml-1">({stakeUnits}u)</span>
+                </div>
+                {potentialProfit && (
+                    <div className="text-right">
+                        <span className="text-[9px] uppercase text-slate-500 block">Ganancia Potencial</span>
+                        <span className="text-amber-400 font-bold text-sm">+{potentialProfit}%</span>
+                    </div>
+                )}
             </div>
 
             {canOverride ? (
