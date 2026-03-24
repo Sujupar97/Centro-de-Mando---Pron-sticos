@@ -20,7 +20,7 @@ import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
 import { UpgradePlanModal } from './pricing/UpgradePlanModal';
 import { incrementUsage } from '../services/subscriptionService';
 import { useOrganization } from '../contexts/OrganizationContext';
-import { isHistoricalDate, getAccessibleReportFixtureIds, PlanTier } from '../utils/planAccessUtils';
+import { isHistoricalDate } from '../utils/planAccessUtils';
 import { usePresentationMode } from '../hooks/usePresentationMode';
 import { isAgencyRole } from '../utils/roles';
 
@@ -171,6 +171,7 @@ export const FixturesFeed: React.FC = () => {
     const [activeJobs, setActiveJobs] = useState<Record<number, string>>({});
     const [gameJobStatus, setGameJobStatus] = useState<Record<number, AnalysisJob['status']>>({});
     const [reportsAvailable, setReportsAvailable] = useState<Record<number, boolean>>({});
+    const [pickBasedAccessibleIds, setPickBasedAccessibleIds] = useState<Set<number>>(new Set());
 
     // ID MAPPING: SportMonks ID (frontend) ↔ legacy API-Football ID (historical data)
     // daily-match-scanner (API-Football) is now DISABLED. New data uses SportMonks IDs only.
@@ -668,24 +669,28 @@ export const FixturesFeed: React.FC = () => {
     };
 
     // Calcular Set de reportes accesibles segun plan
+    // Fuente de verdad: los picks visibles en Oportunidades (pickBasedAccessibleIds)
     const accessibleReportsSet = React.useMemo<Set<number>>(() => {
+        const allReportIds = Object.keys(reportsAvailable).filter(k => reportsAvailable[Number(k)]).map(Number);
+
         const isAgency = isAgencyRole(isImpersonating ? 'user' : profile?.role);
         if (isAgency) {
-            // Agency ve todos los reportes
-            return new Set(Object.keys(reportsAvailable).filter(k => reportsAvailable[Number(k)]).map(Number));
+            return new Set(allReportIds);
         }
 
-        const allReportIds = Object.keys(reportsAvailable)
-            .filter(k => reportsAvailable[Number(k)])
-            .map(Number);
+        if (isHistoricalDate(selectedDate)) {
+            return new Set(allReportIds);
+        }
 
-        if (allReportIds.length === 0) return new Set<number>();
-
-        const planName = (subscription?.planName || 'free') as PlanTier;
-        const historical = isHistoricalDate(selectedDate);
-
-        return getAccessibleReportFixtureIds(allReportIds, planName, historical);
-    }, [reportsAvailable, profile?.role, subscription?.planName, selectedDate, isImpersonating]);
+        // Fixtures accesibles = picks visibles (de HighProbPicks) que tienen reporte
+        const accessible = new Set<number>();
+        for (const fid of pickBasedAccessibleIds) {
+            if (reportsAvailable[fid]) {
+                accessible.add(fid);
+            }
+        }
+        return accessible;
+    }, [reportsAvailable, pickBasedAccessibleIds, profile?.role, selectedDate, isImpersonating]);
 
     // Gating Helper — Verifica acceso a un reporte especifico
     const verifyReportAccess = async (fixtureId?: number): Promise<boolean> => {
@@ -828,6 +833,7 @@ export const FixturesFeed: React.FC = () => {
                             date={selectedDate}
                             onViewReport={handleViewReport}
                             onPickOverridden={handlePickOverridden}
+                            onAccessibleFixturesChange={setPickBasedAccessibleIds}
                         />
                     </div>
                 ) : viewMode === 'parlays' ? (
