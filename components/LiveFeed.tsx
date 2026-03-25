@@ -682,13 +682,11 @@ export const FixturesFeed: React.FC = () => {
             return new Set(allReportIds);
         }
 
-        // Fixtures accesibles = picks visibles (de HighProbPicks) que tienen reporte
-        const accessible = new Set<number>();
-        for (const fid of pickBasedAccessibleIds) {
-            if (reportsAvailable[fid]) {
-                accessible.add(fid);
-            }
-        }
+        // Picks visibles = accesibles (sin intersectar con reportsAvailable,
+        // porque reportsAvailable puede no haber cargado aún todos los fixtures).
+        // El lock icon en Partidos usa hasReport && !accessible, asi que incluir
+        // fixtures sin reporte aqui es inofensivo.
+        const accessible = new Set<number>(pickBasedAccessibleIds);
         return accessible;
     }, [reportsAvailable, pickBasedAccessibleIds, profile?.role, selectedDate, isImpersonating]);
 
@@ -699,22 +697,22 @@ export const FixturesFeed: React.FC = () => {
         const isAgency = isAgencyRole(isImpersonating ? 'user' : profile?.role);
         if (isAgency) return true;
 
-        // Si tenemos fixtureId, verificar contra el set de reportes accesibles
-        if (fixtureId && !accessibleReportsSet.has(fixtureId)) {
+        // Si el fixture esta en el set de picks accesibles, permitir inmediatamente
+        if (fixtureId && accessibleReportsSet.has(fixtureId)) {
+            return true;
+        }
+
+        // Si tenemos fixtureId pero NO esta en el set accesible, bloquear
+        if (fixtureId) {
             setUpgradeReason('Actualiza tu plan para acceder a este informe de análisis.');
             setIsUpgradeModalOpen(true);
             return false;
         }
 
-        // Fallback: verificar limites generales de análisis
-        const accessCheck = await checkAnalysisAccess();
-        if (!accessCheck.allowed) {
-            setUpgradeReason(accessCheck.message || 'Actualiza tu plan para acceder a los análisis de IA.');
-            setIsUpgradeModalOpen(true);
-            return false;
-        }
-
-        return true;
+        // Sin fixtureId: bloquear por defecto (no deberia ocurrir)
+        setUpgradeReason('Actualiza tu plan para acceder a los análisis de IA.');
+        setIsUpgradeModalOpen(true);
+        return false;
     };
 
     // 4. Ver Reporte (con persistencia en URL)
