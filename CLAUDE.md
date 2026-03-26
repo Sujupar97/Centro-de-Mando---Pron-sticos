@@ -214,6 +214,16 @@ user/usuario    → Usuario individual con acceso básico
 - `adaptV3ToFrontend()` en `analysisService.ts` normaliza la salida de Gemini al formato que espera `AnalysisReportModal`
 - Usa "data scavenging" — múltiples fallbacks para extraer datos de cualquier estructura que Gemini devuelva
 
+### Oportunidades persistentes (is_opportunity):
+- `v2-generate-parlays` marca las top 20 como `is_opportunity=true` en `value_picks_v2` (Step 5.5)
+- `HighProbPicks.tsx` lee primero de DB (fast path) pero **verifica staleness**:
+  - Si hay 20 persistidas → siempre usar fast path (ya alcanzó el máximo)
+  - Si hay < 20 persistidas Y hay más picks elegibles (p_model >= 0.83) → regenerar vía edge function
+  - Si hay < 20 persistidas Y NO hay más elegibles → usar fast path (es todo lo que hay)
+- El botón "Actualizar" SIEMPRE regenera (`forceRegenerate=true`)
+- `resultsService.ts` filtra por `is_opportunity=true` para calcular ROI real (no todos los picks)
+- **NUNCA** confiar ciegamente en datos persistidos sin verificar si hay datos más recientes
+
 ---
 
 ## Convenciones de UI/UX
