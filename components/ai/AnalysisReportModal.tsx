@@ -682,6 +682,31 @@ const OddsOverviewSection: React.FC<{ odds: any }> = ({ odds }) => {
     );
 };
 
+// --- SEO PAGE LINK (admin only) ---
+const SeoPageLinkModal: React.FC<{ fixtureId?: string | number }> = ({ fixtureId }) => {
+    const [path, setPath] = useState<string | null>(null);
+    useEffect(() => {
+        if (!fixtureId) return;
+        const fid = typeof fixtureId === 'string' ? parseInt(fixtureId) : fixtureId;
+        if (isNaN(fid)) return;
+        supabase.from('seo_pages').select('full_path').eq('fixture_id', fid).single()
+            .then(({ data }) => { if (data?.full_path) setPath(data.full_path); });
+    }, [fixtureId]);
+    if (!path) return null;
+    return (
+        <a
+            href={`https://derbix.co${path}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-4 py-2 rounded-lg text-sm font-medium transition-all border border-blue-500/20 hover:border-blue-500/40"
+            title="Ver página SEO pública"
+        >
+            <LinkIcon className="w-4 h-4" />
+            <span className="hidden md:inline">Página SEO</span>
+        </a>
+    );
+};
+
 // --- COMPONENTE PRINCIPAL ---
 
 export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | null; onClose: () => void }> = ({ analysis, onClose }) => {
@@ -960,6 +985,8 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                     </svg>
                                 </button>
                                 {isAgency && (
+                                <>
+                                <SeoPageLinkModal fixtureId={currentAnalysis?.analysisRun?.fixture_id} />
                                 <button
                                     onClick={() => setShowPdfDialog(true)}
                                     className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all group border border-white/10 hover:border-brand/50"
@@ -968,6 +995,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
                                     <ArrowDownTrayIcon className="w-4 h-4 text-slate-400 group-hover:text-brand transition-colors" />
                                     <span className="hidden md:inline">Descargar PDF</span>
                                 </button>
+                                </>
                                 )}
                                 <div className="h-6 w-px bg-white/10 mx-1"></div>
                                 <button

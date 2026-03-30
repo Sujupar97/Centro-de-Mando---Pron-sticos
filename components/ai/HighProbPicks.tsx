@@ -603,28 +603,31 @@ const SinglePickCard: React.FC<{
             </div>
 
             {canOverride ? (
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={(e) => handleOverride(e, 'WON')}
-                        disabled={overriding}
-                        className="flex-1 py-2.5 sm:py-1.5 rounded-lg text-sm sm:text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-all disabled:opacity-50"
-                    >
-                        {overriding ? '...' : 'GANADA'}
-                    </button>
-                    <button
-                        onClick={(e) => handleOverride(e, 'LOST')}
-                        disabled={overriding}
-                        className="flex-1 py-2.5 sm:py-1.5 rounded-lg text-sm sm:text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all disabled:opacity-50"
-                    >
-                        {overriding ? '...' : 'PERDIDA'}
-                    </button>
-                    <button
-                        onClick={(e) => handleOverride(e, 'VOID')}
-                        disabled={overriding}
-                        className="py-2.5 sm:py-1.5 px-3 rounded-lg text-sm sm:text-xs font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30 hover:bg-slate-500/30 transition-all disabled:opacity-50"
-                    >
-                        {overriding ? '...' : 'NULA'}
-                    </button>
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={(e) => handleOverride(e, 'WON')}
+                            disabled={overriding}
+                            className="flex-1 py-2.5 sm:py-1.5 rounded-lg text-sm sm:text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-all disabled:opacity-50"
+                        >
+                            {overriding ? '...' : 'GANADA'}
+                        </button>
+                        <button
+                            onClick={(e) => handleOverride(e, 'LOST')}
+                            disabled={overriding}
+                            className="flex-1 py-2.5 sm:py-1.5 rounded-lg text-sm sm:text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all disabled:opacity-50"
+                        >
+                            {overriding ? '...' : 'PERDIDA'}
+                        </button>
+                        <button
+                            onClick={(e) => handleOverride(e, 'VOID')}
+                            disabled={overriding}
+                            className="py-2.5 sm:py-1.5 px-3 rounded-lg text-sm sm:text-xs font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30 hover:bg-slate-500/30 transition-all disabled:opacity-50"
+                        >
+                            {overriding ? '...' : 'NULA'}
+                        </button>
+                    </div>
+                    <SeoPageLink fixtureId={pick.fixture_id} />
                 </div>
             ) : (
                 <div className="w-full py-1.5 flex items-center justify-center gap-2 text-xs font-bold text-slate-500 group-hover:text-white transition-colors">
@@ -633,6 +636,28 @@ const SinglePickCard: React.FC<{
                 </div>
             )}
         </div>
+    );
+};
+
+// Mini component: link to SEO page (admin only)
+const SeoPageLink: React.FC<{ fixtureId: number }> = ({ fixtureId }) => {
+    const [path, setPath] = useState<string | null>(null);
+    useEffect(() => {
+        supabase.from('seo_pages').select('full_path').eq('fixture_id', fixtureId).single()
+            .then(({ data }) => { if (data?.full_path) setPath(data.full_path); });
+    }, [fixtureId]);
+    if (!path) return null;
+    return (
+        <a
+            href={`https://derbix.co${path}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full py-1.5 flex items-center justify-center gap-1.5 text-[10px] font-medium text-blue-400/70 hover:text-blue-300 border border-blue-500/10 rounded-lg hover:border-blue-500/30 transition-all"
+        >
+            <ArrowTopRightOnSquareIcon className="w-3 h-3" />
+            Ver Página SEO
+        </a>
     );
 };
 
