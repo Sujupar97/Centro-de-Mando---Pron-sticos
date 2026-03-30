@@ -959,6 +959,22 @@ serve(async (req) => {
                             verified_at: new Date().toISOString()
                         }, { onConflict: 'pick_id' });
 
+                    // Update SEO page with results (best-effort, non-blocking)
+                    try {
+                        const scores = actualScore ? actualScore.split('-').map((s: string) => parseInt(s.trim())) : [];
+                        await supabase
+                            .from('seo_pages')
+                            .update({
+                                has_results: true,
+                                home_score: scores[0] ?? null,
+                                away_score: scores[1] ?? null,
+                                result_correct: result === 'WON',
+                            })
+                            .eq('fixture_id', fixtureId);
+                    } catch (_seoErr) {
+                        // Non-critical — SEO page update failure doesn't block verification
+                    }
+
                     // ───────────────────────────────────────────────────────
                     // STEP 4: Update profitability_tracking
                     // ONLY for Oportunidades: p_model >= 0.83 AND odds >= 1.40

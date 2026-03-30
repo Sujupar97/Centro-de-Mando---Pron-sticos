@@ -1,5 +1,6 @@
 import React from 'react';
 import { SparklesIcon, ArrowRightIcon } from '../icons/Icons';
+import { trackRegisterCTA } from '../../services/analyticsService';
 
 interface LandingHeroProps {
   onGetStarted: () => void;
@@ -50,7 +51,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({ onGetStarted }) => {
         {/* CTAs */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
           <button
-            onClick={onGetStarted}
+            onClick={() => { trackRegisterCTA('hero'); onGetStarted(); }}
             className="group relative w-full sm:w-auto px-10 py-5 bg-brand text-white font-bold rounded-2xl transition-all hover:scale-105 active:scale-95 shadow-[0_0_40px_rgba(16,185,129,0.3)] hover:shadow-[0_0_60px_rgba(16,185,129,0.5)] overflow-hidden text-lg"
           >
             <span className="relative z-10 flex items-center justify-center gap-3">

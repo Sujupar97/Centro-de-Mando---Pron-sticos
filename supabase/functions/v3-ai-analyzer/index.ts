@@ -2007,6 +2007,21 @@ ${strategicInsightsBlock}
         const executionTime = Date.now() - startTime;
         console.log(`[V3-AI-ANALYZER] ✅ Analysis complete in ${executionTime}ms (${tokensUsed} tokens)`);
 
+        // ═══ SEO PAGE PUBLICATION (fire-and-forget) ═══
+        try {
+            const seoUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/seo-publish-page`;
+            fetch(seoUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+                },
+                body: JSON.stringify({ fixture_id: finalFixtureId, job_id })
+            }).catch(e => console.error('[V3-AI-ANALYZER] SEO publish failed (non-critical):', e));
+        } catch (_seoErr) {
+            // Non-critical — never block analysis completion
+        }
+
         // ═══ PARLAY ANALYSIS — MOVED TO FRONTEND ═══
         // Parlay analyzer is now triggered by the FRONTEND after confirming 'done' status,
         // with a delay to avoid Gemini API rate limiting. This prevents the parlay call

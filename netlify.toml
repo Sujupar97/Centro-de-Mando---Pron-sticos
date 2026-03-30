@@ -1,3 +1,31 @@
+# ─── Netlify Edge Functions for SEO ───
+# These are processed BEFORE the redirect rules below.
+
+[[edge_functions]]
+  function = "seo-prediccion"
+  path = "/predicciones/*/*"
+
+[[edge_functions]]
+  function = "seo-predicciones-index"
+  path = "/predicciones"
+
+[[edge_functions]]
+  function = "seo-predicciones-index"
+  path = "/predicciones/*"
+
+[[edge_functions]]
+  function = "seo-estadisticas"
+  path = "/estadisticas"
+
+[[edge_functions]]
+  function = "seo-sitemap"
+  path = "/sitemap.xml"
+
+[[edge_functions]]
+  function = "seo-robots"
+  path = "/robots.txt"
+
+# ─── SPA catch-all (for all non-SEO routes) ───
 [[redirects]]
   from = "/*"
   to = "/index.html"

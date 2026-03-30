@@ -8,6 +8,7 @@ import { supabase } from '../../services/supabaseService';
 import { mapLeagueToSportKey, fastBatchOddsCheck, findPriceInEvent } from '../../services/oddsService';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { trackPDFDownload } from '../../services/analyticsService';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { isAgencyRole } from '../../utils/roles';
 import { filterPicksForPlan, PLAN_PREDICTIONS_PERCENTAGES, PlanTier, PLAN_DISPLAY_NAMES } from '../../utils/planAccessUtils';
@@ -853,6 +854,7 @@ export const AnalysisReportModal: React.FC<{ analysis: VisualAnalysisResult | nu
 
     // Descarga PDF con opciones del diálogo
     const handleDownloadReport = (pdfOptions?: { isPromo: boolean; onlyOpportunities: boolean }) => {
+        trackPDFDownload(data?.header_partido?.titulo || 'Reporte');
         import('../../services/pdf/pdfGenerator').then(({ generateMatchAnalysisPDF }) => {
             const pdfData = {
                 report_pre_jsonb: {

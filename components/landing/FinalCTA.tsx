@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowRightIcon, RocketLaunchIcon } from '../icons/Icons';
 import { useScrollReveal } from './useScrollReveal';
+import { trackRegisterCTA } from '../../services/analyticsService';
 
 interface FinalCTAProps {
   onGetStarted: () => void;
@@ -40,7 +41,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({ onGetStarted }) => {
           </p>
 
           <button
-            onClick={onGetStarted}
+            onClick={() => { trackRegisterCTA('final_cta'); onGetStarted(); }}
             className="group inline-flex items-center gap-3 px-12 py-6 bg-brand text-white font-bold rounded-2xl text-lg hover:scale-105 active:scale-95 transition-all shadow-[0_0_50px_rgba(16,185,129,0.3)] hover:shadow-[0_0_80px_rgba(16,185,129,0.5)]"
           >
             Comienza Gratis

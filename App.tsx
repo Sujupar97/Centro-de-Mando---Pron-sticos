@@ -20,6 +20,10 @@ import { RefundPolicy } from './components/legal/RefundPolicy';
 import { isAgencyRole } from './utils/roles';
 import { useSubscription } from './contexts/SubscriptionContext';
 import { useOrganization } from './contexts/OrganizationContext';
+import { PrediccionPage } from './components/seo/PrediccionPage';
+import { PrediccionesIndex } from './components/seo/PrediccionesIndex';
+import { TeamPredictionsPage } from './components/seo/TeamPredictionsPage';
+import { EstadisticasPage } from './components/seo/EstadisticasPage';
 import { useDailyRecap } from './hooks/useDailyRecap';
 import { DailyRecapModal } from './components/recap/DailyRecapModal';
 import { ToastProvider, useToast } from './contexts/ToastContext';
@@ -191,6 +195,11 @@ const AppContent: React.FC = () => {
       <Route path="/terms" element={<TermsOfService />} />
       <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/refund" element={<RefundPolicy />} />
+      <Route path="/predicciones" element={<PrediccionesIndex />} />
+      <Route path="/predicciones/equipo/:teamSlug" element={<TeamPredictionsPage />} />
+      <Route path="/predicciones/:leagueSlug" element={<PrediccionesIndex />} />
+      <Route path="/predicciones/:leagueSlug/:matchSlug" element={<PrediccionPage />} />
+      <Route path="/estadisticas" element={<EstadisticasPage />} />
       <Route path="/signup" element={<SignUpFlow />} />
       <Route path="/login" element={<LoginRoute />} />
       <Route path="/reset-password" element={<ResetPassword />} />

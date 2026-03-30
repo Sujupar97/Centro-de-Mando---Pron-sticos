@@ -6,6 +6,7 @@ import { CheckIcon, SparklesIcon } from '../icons/Icons';
 import { getActivePlans, SubscriptionPlan } from '../../services/subscriptionService';
 import { getPlanPrice } from '../../services/lemonSqueezyService';
 import { useAuth } from '../../hooks/useAuth';
+import { trackUpgradePremium } from '../../services/analyticsService';
 
 // --- Value Stack Data ---
 const VALUE_STACK_ITEMS = [
@@ -285,6 +286,7 @@ export const PublicPricingPage: React.FC = () => {
     }, []);
 
     const handleSelectPlan = (plan: SubscriptionPlan) => {
+        trackUpgradePremium(plan.name);
         if (!user) {
             navigate(`/signup?plan=${plan.name}&billing=${billingPeriod}`);
             return;

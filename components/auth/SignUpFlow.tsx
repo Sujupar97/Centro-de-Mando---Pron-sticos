@@ -5,6 +5,7 @@ import { PlanSelector } from './PlanSelector';
 import { ArrowRightIcon, ArrowLeftIcon, SparklesIcon } from '../icons/Icons';
 import { openCheckoutOverlay, getVariantId } from '../../services/lemonSqueezyService';
 import { SubscriptionPlan } from '../../services/subscriptionService';
+import { trackSignupFree } from '../../services/analyticsService';
 
 interface SignUpData {
     fullName: string;
@@ -88,6 +89,9 @@ export const SignUpFlow: React.FC = () => {
 
             if (authError) throw authError;
             if (!authData.user) throw new Error('No se pudo crear el usuario');
+
+            // Track successful signup
+            trackSignupFree();
 
             // Notificar admin del nuevo registro (fire-and-forget, no bloquea el flujo)
             supabase.functions.invoke('send-admin-notification', {
