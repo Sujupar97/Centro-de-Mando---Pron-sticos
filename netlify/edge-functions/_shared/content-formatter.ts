@@ -71,15 +71,18 @@ export function timeAgo(dateStr: string): string {
 }
 
 /**
- * Render an AdSense slot placeholder.
+ * Render a Google AdSense display ad slot.
  */
 export function renderAdSlot(slotNumber: number): string {
   return `
   <div class="ad-slot">
     <div class="ad-label">Publicidad</div>
-    <!-- Google AdSense slot ${slotNumber} -->
-    <div style="min-height:90px;display:flex;align-items:center;justify-content:center;color:#d1d5db;font-size:0.75rem;">
-      Espacio publicitario
-    </div>
+    <ins class="adsbygoogle"
+         style="display:block"
+         data-ad-client="ca-pub-6499561482256447"
+         data-ad-slot="auto"
+         data-ad-format="auto"
+         data-full-width-responsive="true"></ins>
+    <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
   </div>`;
 }
