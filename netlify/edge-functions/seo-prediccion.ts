@@ -13,13 +13,18 @@ import {
   generateFAQSchema,
   generateBreadcrumbSchema,
 } from "./_shared/schema-org.ts";
+import {
+  bulletsToNarrative,
+  estimateReadingTime,
+  timeAgo,
+  renderAdSlot,
+} from "./_shared/content-formatter.ts";
 
 const SITE_URL = "https://derbix.co";
 
 export default async function handler(req: Request) {
   const url = new URL(req.url);
   const pathParts = url.pathname.split("/").filter(Boolean);
-  // Expected: ["predicciones", leagueSlug, matchSlug]
 
   if (pathParts.length < 3 || pathParts[0] !== "predicciones") {
     return new Response("Not Found", { status: 404 });
@@ -31,7 +36,6 @@ export default async function handler(req: Request) {
   try {
     const supabase = getSupabaseClient();
 
-    // 1. Get SEO page data
     const { data: page, error: pageErr } = await supabase
       .from("seo_pages")
       .select("*")
@@ -43,23 +47,20 @@ export default async function handler(req: Request) {
       return render404(leagueSlug);
     }
 
-    // 2. Get analysis report
     const { data: report } = await supabase
       .from("reports_v2")
-      .select("report_packet")
+      .select("report_packet, created_at")
       .eq("fixture_id", page.fixture_id)
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
 
-    // 3. Get value picks (for stats display)
     const { data: picks } = await supabase
       .from("value_picks_v2")
       .select("market, selection, p_model, odds, edge, decision, confidence, result, is_opportunity")
       .eq("fixture_id", page.fixture_id)
       .order("p_model", { ascending: false });
 
-    // 4. Get related matches (same league, recent)
     const { data: relatedLeague } = await supabase
       .from("seo_pages")
       .select("full_path, home_team, away_team, match_date, has_results, result_correct")
@@ -68,7 +69,6 @@ export default async function handler(req: Request) {
       .order("match_date", { ascending: false })
       .limit(6);
 
-    // 5. Get related matches (same teams)
     const { data: relatedTeam } = await supabase
       .from("seo_pages")
       .select("full_path, home_team, away_team, match_date, league_name, has_results, result_correct")
@@ -77,27 +77,20 @@ export default async function handler(req: Request) {
       .order("match_date", { ascending: false })
       .limit(6);
 
-    // Parse report data
     const rp = report?.report_packet;
-    const resumen = rp?.resumen_ejecutivo;
-    const detallado = rp?.analisis_detallado;
-    const veredicto = rp?.veredicto_analista;
-    const predicciones = rp?.predicciones_finales?.detalle || [];
-    const advertencias = rp?.advertencias;
 
-    // Build page HTML
-    const bodyHtml = buildPredictionPage(page, {
-      resumen,
-      detallado,
-      veredicto,
-      predicciones,
-      advertencias,
+    const bodyHtml = buildArticle(page, {
+      resumen: rp?.resumen_ejecutivo,
+      detallado: rp?.analisis_detallado,
+      veredicto: rp?.veredicto_analista,
+      predicciones: rp?.predicciones_finales?.detalle || [],
+      advertencias: rp?.advertencias,
       picks: picks || [],
       relatedLeague: relatedLeague || [],
       relatedTeam: relatedTeam || [],
+      reportCreatedAt: report?.created_at,
     });
 
-    // Schema.org
     const sportsEventSchema = generateSportsEventSchema({
       homeTeam: page.home_team,
       awayTeam: page.away_team,
@@ -112,13 +105,7 @@ export default async function handler(req: Request) {
       url: `${SITE_URL}${page.full_path}`,
     });
 
-    const faqSchema = generateFAQSchema(
-      page.home_team,
-      page.away_team,
-      page.league_name,
-      !!report
-    );
-
+    const faqSchema = generateFAQSchema(page.home_team, page.away_team, page.league_name, !!report);
     const breadcrumbSchema = generateBreadcrumbSchema([
       { name: "Inicio", url: SITE_URL },
       { name: "Predicciones", url: `${SITE_URL}/predicciones` },
@@ -133,9 +120,7 @@ export default async function handler(req: Request) {
       schemas: [sportsEventSchema, faqSchema, breadcrumbSchema],
     };
 
-    const html = renderPage(meta, bodyHtml);
-
-    return new Response(html, {
+    return new Response(renderPage(meta, bodyHtml), {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
@@ -147,9 +132,9 @@ export default async function handler(req: Request) {
   }
 }
 
-// ─── Build the full prediction page body ───
+// ─── Editorial Article Builder ───
 
-interface AnalysisData {
+interface ArticleData {
   resumen: any;
   detallado: any;
   veredicto: any;
@@ -158,17 +143,30 @@ interface AnalysisData {
   picks: any[];
   relatedLeague: any[];
   relatedTeam: any[];
+  reportCreatedAt?: string;
 }
 
-function buildPredictionPage(page: any, data: AnalysisData): string {
-  const { resumen, detallado, veredicto, predicciones, advertencias, picks, relatedLeague, relatedTeam } = data;
+function buildArticle(page: any, data: ArticleData): string {
+  const { resumen, detallado, veredicto, predicciones, advertencias, picks, relatedLeague, relatedTeam, reportCreatedAt } = data;
 
   const [year, month, day] = (page.match_date || "").split("-");
   const formattedDate = day && month && year ? `${day}/${month}/${year}` : page.match_date;
 
+  // Estimate reading time from all text content
+  const allText = [
+    resumen?.frase_principal,
+    ...(resumen?.puntos_clave || []),
+    ...(detallado?.contexto_competitivo?.bullets || []),
+    ...(detallado?.estilo_y_tactica?.bullets || []),
+    ...(detallado?.factores_situacionales?.bullets || []),
+  ].filter(Boolean).join(" ");
+  const readTime = estimateReadingTime(allText);
+  const updatedAgo = reportCreatedAt ? timeAgo(reportCreatedAt) : "";
+
   let html = renderNav();
 
-  html += `<main class="container py-8">`;
+  // ─── Article container ───
+  html += `<div class="article">`;
 
   // Breadcrumbs
   html += renderBreadcrumbs([
@@ -178,157 +176,175 @@ function buildPredictionPage(page: any, data: AnalysisData): string {
     { label: `${page.home_team} vs ${page.away_team}` },
   ]);
 
-  // ─── Section 1: Match Header ───
+  // Category badges
   html += `
-  <header class="card mb-6">
-    <div class="flex items-center justify-between flex-wrap gap-4">
-      <div class="flex items-center gap-4">
-        ${page.home_logo ? `<img src="${page.home_logo}" alt="${escapeHtml(page.home_team)}" class="team-logo">` : ""}
-        <div>
-          <h1>Pronostico ${escapeHtml(page.home_team)} vs ${escapeHtml(page.away_team)}</h1>
-          <p class="text-slate-400 text-sm">${escapeHtml(page.league_name)} &middot; ${formattedDate}${page.match_time ? ` &middot; ${page.match_time}` : ""}</p>
-        </div>
-        ${page.away_logo ? `<img src="${page.away_logo}" alt="${escapeHtml(page.away_team)}" class="team-logo">` : ""}
-      </div>
-      <div class="flex gap-2">
-        <span class="badge badge-blue">${escapeHtml(page.league_name)}</span>
-        ${veredicto?.nivel_confianza ? `<span class="badge badge-emerald">${escapeHtml(veredicto.nivel_confianza)} confianza</span>` : ""}
-      </div>
-    </div>`;
+  <div class="category-bar">
+    <span class="cat-badge cat-analysis">Analisis</span>
+    <span class="cat-badge cat-league">${escapeHtml(page.league_name)}</span>
+    <span class="cat-date">${formattedDate}</span>
+  </div>`;
 
-  // Result banner if available
+  // H1 — Editorial serif title
+  html += `<h1 class="article-title">${escapeHtml(page.home_team)} vs ${escapeHtml(page.away_team)}: Analisis Completo y Pronostico</h1>`;
+
+  // Byline
+  html += `
+  <div class="byline">
+    <span>Por <strong>Derbix AI Engine</strong></span>
+    ${updatedAgo ? `<span class="byline-dot"></span><span>Actualizado ${updatedAgo}</span>` : ""}
+    <span class="byline-dot"></span>
+    <span>${readTime} min lectura</span>
+  </div>`;
+
+  // Hero match card
+  html += `
+  <div class="hero-match">
+    <div class="hero-teams">
+      <div class="hero-team">
+        ${page.home_logo ? `<img src="${page.home_logo}" alt="${escapeHtml(page.home_team)}">` : ""}
+        <span class="hero-team-name">${escapeHtml(page.home_team)}</span>
+      </div>
+      <span class="hero-vs">vs</span>
+      <div class="hero-team">
+        ${page.away_logo ? `<img src="${page.away_logo}" alt="${escapeHtml(page.away_team)}">` : ""}
+        <span class="hero-team-name">${escapeHtml(page.away_team)}</span>
+      </div>
+    </div>
+    <div class="hero-info">
+      <span class="hero-badge">${escapeHtml(page.league_name)}</span>
+      <span class="hero-badge">${formattedDate}</span>
+      ${page.match_time ? `<span class="hero-badge">${page.match_time.split(" ")[1]?.substring(0, 5) || page.match_time}</span>` : ""}
+      ${veredicto?.nivel_confianza ? `<span class="hero-badge hero-confidence">${escapeHtml(veredicto.nivel_confianza)} confianza</span>` : ""}
+    </div>
+  </div>`;
+
+  // Result banner (if match finished)
   if (page.has_results && page.home_score != null && page.away_score != null) {
-    const resultClass = page.result_correct ? "result-won" : "result-lost";
-    const resultIcon = page.result_correct ? "&#10003;" : "&#10007;";
+    const cls = page.result_correct ? "result-won" : "result-lost";
+    const tagCls = page.result_correct ? "result-tag-won" : "result-tag-lost";
+    const tagText = page.result_correct ? "&#10003; Prediccion Acertada" : "&#10007; Prediccion Fallada";
     html += `
-    <div class="mt-4 p-4 card-sm flex items-center justify-between">
+    <div class="result-banner ${cls}">
       <div>
-        <span class="font-bold text-xl">${page.home_score} - ${page.away_score}</span>
-        <span class="text-slate-400 text-sm ml-2">Resultado Final</span>
+        <span class="result-score">${page.home_score} - ${page.away_score}</span>
+        <span class="result-label">Resultado Final</span>
       </div>
-      <span class="${resultClass} text-lg">${resultIcon} ${page.result_correct ? "Prediccion Acertada" : "Prediccion Fallada"}</span>
+      <span class="result-tag ${tagCls}">${tagText}</span>
     </div>`;
   }
 
-  html += `</header>`;
-
-  // ─── Section 2: Analysis Summary (PUBLIC) ───
+  // ─── Section: Resumen del Partido ───
   if (resumen) {
-    html += `
-    <section class="card mb-6">
-      <h2>Analisis del Partido</h2>
-      ${resumen.frase_principal ? `<p class="text-lg text-slate-300 mb-4">${escapeHtml(resumen.frase_principal)}</p>` : ""}
-      ${resumen.puntos_clave?.length ? `
-      <ul class="bullet-list">
-        ${resumen.puntos_clave.map((p: string) => `<li>${escapeHtml(p)}</li>`).join("")}
-      </ul>` : ""}
-    </section>`;
+    html += `<h2 class="section-title">Resumen del Partido</h2>`;
+    if (resumen.frase_principal) {
+      html += `<p><strong>${escapeHtml(resumen.frase_principal)}</strong></p>`;
+    }
+    if (resumen.puntos_clave?.length) {
+      html += bulletsToNarrative(resumen.puntos_clave);
+    }
   }
 
-  // ─── Section 3: Key Stats (PUBLIC) ───
-  if (detallado) {
-    html += `<section class="card mb-6">
-      <h2>Estadisticas Clave</h2>`;
+  // ═══ ADSENSE #1 ═══
+  html += renderAdSlot(1);
 
-    // Competitive context
-    if (detallado.contexto_competitivo?.bullets?.length) {
-      html += `<h3 class="text-emerald-400">Contexto Competitivo</h3>
-      <ul class="bullet-list mb-4">
-        ${detallado.contexto_competitivo.bullets.map((b: string) => `<li>${escapeHtml(b)}</li>`).join("")}
-      </ul>`;
-    }
-
-    // Tactical analysis
-    if (detallado.estilo_y_tactica?.bullets?.length) {
-      html += `<h3 class="text-emerald-400">Estilo y Tactica</h3>
-      <ul class="bullet-list mb-4">
-        ${detallado.estilo_y_tactica.bullets.map((b: string) => `<li>${escapeHtml(b)}</li>`).join("")}
-      </ul>`;
-    }
-
-    html += `</section>`;
+  // ─── Section: Contexto de la Temporada ───
+  if (detallado?.contexto_competitivo?.bullets?.length) {
+    html += `<h2 class="section-title">Contexto de la Temporada</h2>`;
+    html += bulletsToNarrative(detallado.contexto_competitivo.bullets);
   }
 
-  // ─── Section 4: Key Factors (PUBLIC) ───
-  const factorSections = [
-    { key: "alineaciones_y_bajas", title: "Alineaciones y Bajas" },
-    { key: "factores_situacionales", title: "Factores Situacionales" },
-    { key: "escenarios_de_partido", title: "Escenarios de Partido" },
-  ];
-
-  const hasFactors = detallado && factorSections.some((s) => detallado[s.key]?.bullets?.length);
-  if (hasFactors) {
-    html += `<section class="card mb-6">
-      <h2>Factores Clave</h2>`;
-
-    for (const section of factorSections) {
-      const bullets = detallado[section.key]?.bullets;
-      if (bullets?.length) {
-        html += `<h3 class="text-emerald-400">${section.title}</h3>
-        <ul class="bullet-list mb-4">
-          ${bullets.map((b: string) => `<li>${escapeHtml(b)}</li>`).join("")}
-        </ul>`;
-      }
-    }
-
-    // Warnings
-    if (advertencias?.bullets?.length) {
-      html += `<h3 class="text-amber-400" style="color:#fbbf24;">Advertencias</h3>
-      <ul class="bullet-list mb-4">
-        ${advertencias.bullets.map((b: string) => `<li>${escapeHtml(b)}</li>`).join("")}
-      </ul>`;
-    }
-
-    html += `</section>`;
+  // ─── Section: Analisis Tactico ───
+  if (detallado?.estilo_y_tactica?.bullets?.length) {
+    html += `<h2 class="section-title">Analisis Tactico</h2>`;
+    html += bulletsToNarrative(detallado.estilo_y_tactica.bullets);
   }
 
-  // ─── Section 5: Prediction (PREMIUM — blurred) ───
-  html += `
-  <section class="card mb-6 relative" style="overflow:hidden; min-height:300px;">
-    <h2>Prediccion y Apuestas Recomendadas</h2>
-    <div class="premium-blur" aria-hidden="true">`;
-
-  // Render actual predictions (blurred)
-  if (veredicto) {
-    html += `
-      <div class="card-sm mb-4">
-        <p class="font-bold text-xl">${escapeHtml(veredicto.decision || "APOSTAR")}</p>
-        <p class="text-slate-300">${escapeHtml(veredicto.seleccion_clave || "Ver prediccion completa")}</p>
-        <p class="text-sm text-slate-400">Probabilidad: ${veredicto.probabilidad || 0}% | ${escapeHtml(veredicto.nivel_confianza || "Media")} confianza</p>
-      </div>`;
+  // ─── Section: Formaciones y Bajas ───
+  if (detallado?.alineaciones_y_bajas?.bullets?.length) {
+    html += `<h2 class="section-title">Alineaciones y Bajas</h2>`;
+    html += bulletsToNarrative(detallado.alineaciones_y_bajas.bullets);
   }
 
-  if (predicciones.length) {
-    html += `<table>
+  // ─── Section: Estadisticas Clave (tables, not narrative) ───
+  if (picks?.length) {
+    html += `<h2 class="section-title">Estadisticas Clave</h2>`;
+    html += `<p>El motor de inteligencia artificial de Derbix analizo mas de 5,000 variables para este partido. A continuacion, los mercados evaluados:</p>`;
+    html += `<table class="stats-table">
       <thead><tr><th>Mercado</th><th>Seleccion</th><th>Probabilidad</th><th>Cuota</th></tr></thead>
       <tbody>`;
-    for (const pred of predicciones.slice(0, 5)) {
+    // Show only non-premium data: market names and generic info
+    for (const p of picks.slice(0, 6)) {
+      const prob = p.p_model > 1 ? p.p_model : Math.round(p.p_model * 100);
       html += `<tr>
-        <td>${escapeHtml(pred.mercado || "")}</td>
-        <td>${escapeHtml(pred.seleccion || "")}</td>
-        <td>${pred.probabilidad_estimado_porcentaje || 0}%</td>
-        <td>${pred.odds ? `@${pred.odds}` : "-"}</td>
+        <td>${escapeHtml(p.market || "")}</td>
+        <td>${escapeHtml(p.selection || "")}</td>
+        <td class="num">${prob}%</td>
+        <td class="num">${p.odds ? `@${Number(p.odds).toFixed(2)}` : "-"}</td>
       </tr>`;
     }
     html += `</tbody></table>`;
   }
 
-  html += `</div>`;
+  // ═══ ADSENSE #2 ═══
+  html += renderAdSlot(2);
 
-  // Overlay CTA
+  // ─── Section: Factores Decisivos ───
+  const hasFactors = detallado?.factores_situacionales?.bullets?.length ||
+                     detallado?.escenarios_de_partido?.bullets?.length ||
+                     advertencias?.bullets?.length;
+  if (hasFactors) {
+    html += `<h2 class="section-title">Factores Decisivos</h2>`;
+    if (detallado.factores_situacionales?.bullets?.length) {
+      html += bulletsToNarrative(detallado.factores_situacionales.bullets);
+    }
+    if (detallado.escenarios_de_partido?.bullets?.length) {
+      html += bulletsToNarrative(detallado.escenarios_de_partido.bullets);
+    }
+    if (advertencias?.bullets?.length) {
+      html += `<p><strong>Advertencias:</strong></p>`;
+      html += `<ul class="key-points">`;
+      for (const b of advertencias.bullets) {
+        html += `<li>${escapeHtml(b)}</li>`;
+      }
+      html += `</ul>`;
+    }
+  }
+
+  // ─── Section: Prediccion (PREMIUM — blurred) ───
+  html += `<h2 class="section-title">Prediccion y Apuestas Recomendadas</h2>`;
   html += `
-    <div class="premium-overlay">
-      <div style="font-size:3rem; margin-bottom:1rem;">&#128274;</div>
-      <h3 class="text-xl font-bold mb-2 text-white">Desbloquea las Predicciones Premium</h3>
-      <p class="text-slate-400 mb-4 text-center" style="max-width:400px;">
-        Accede a probabilidades exactas, picks de valor y el analisis profundo completo. 1 pronostico gratis al dia, para siempre.
-      </p>
-      <a href="/signup" class="btn btn-primary">Crear Cuenta Gratis</a>
-      <p class="text-slate-500 text-sm mt-4">Ya tienes cuenta? <a href="/login">Inicia sesion</a></p>
-    </div>
-  </section>`;
+  <div class="premium-section">
+    <div class="premium-blur" aria-hidden="true">`;
 
-  // CTA between sections
+  if (veredicto) {
+    html += `<div style="padding:1rem;background:#f8fafc;border-radius:0.5rem;margin-bottom:1rem;">
+      <p style="font-size:1.25rem;font-weight:800;">${escapeHtml(veredicto.decision || "APOSTAR")}</p>
+      <p>${escapeHtml(veredicto.seleccion_clave || "Ver prediccion completa")}</p>
+      <p style="font-size:0.875rem;color:#6b7280;">Probabilidad: ${veredicto.probabilidad || 0}%</p>
+    </div>`;
+  }
+  if (predicciones.length) {
+    html += `<table style="width:100%;"><tbody>`;
+    for (const pred of predicciones.slice(0, 4)) {
+      html += `<tr><td style="padding:0.5rem;">${escapeHtml(pred.mercado || "")}</td><td>${escapeHtml(pred.seleccion || "")}</td><td>${pred.probabilidad_estimado_porcentaje || 0}%</td><td>${pred.odds ? `@${pred.odds}` : ""}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+
+  html += `</div>
+    <div class="premium-overlay">
+      <div class="premium-lock">&#128274;</div>
+      <div class="premium-title">Desbloquea la Prediccion Completa</div>
+      <p class="premium-sub">Accede a probabilidades exactas, picks de valor y el analisis profundo completo. 1 pronostico gratis al dia, para siempre.</p>
+      <a href="/signup" class="premium-btn">Crear Cuenta Gratis</a>
+      <p class="premium-login">Ya tienes cuenta? <a href="/login">Inicia sesion</a></p>
+    </div>
+  </div>`;
+
+  // ═══ ADSENSE #3 ═══
+  html += renderAdSlot(3);
+
+  // CTA
   html += renderCTA(
     "Pronosticos con IA para 40+ Ligas",
     "Nuestro algoritmo analiza mas de 5,000 variables por partido. Track record 100% verificable.",
@@ -336,59 +352,46 @@ function buildPredictionPage(page: any, data: AnalysisData): string {
     "/pricing"
   );
 
-  // ─── Section 6: Related Content ───
-  html += `<section class="mb-8">`;
-
-  // Related from same league
+  // ─── Related Content ───
   if (relatedLeague?.length) {
-    html += `<h2>Otros Partidos de ${escapeHtml(page.league_name)}</h2>
-    <div class="grid grid-2 gap-3 mb-6">`;
+    html += `<div class="related-section">
+      <div class="related-title">Otros Partidos de ${escapeHtml(page.league_name)}</div>
+      <div class="related-grid">`;
     for (const r of relatedLeague) {
-      const resultBadge = r.has_results
-        ? r.result_correct
-          ? `<span class="result-won text-sm">&#10003;</span>`
-          : `<span class="result-lost text-sm">&#10007;</span>`
+      const badge = r.has_results
+        ? r.result_correct ? `<span class="related-won">&#10003;</span>` : `<span class="related-lost">&#10007;</span>`
         : "";
-      html += `<a href="${r.full_path}" class="card-sm flex items-center justify-between" style="text-decoration:none;">
-        <span class="text-white text-sm">${escapeHtml(r.home_team)} vs ${escapeHtml(r.away_team)}</span>
-        <span class="flex items-center gap-2">
-          <span class="text-slate-500 text-sm">${r.match_date}</span>
-          ${resultBadge}
-        </span>
+      html += `<a href="${r.full_path}" class="related-card">
+        <span>${escapeHtml(r.home_team)} vs ${escapeHtml(r.away_team)}</span>
+        <span class="related-meta"><span>${r.match_date}</span>${badge}</span>
       </a>`;
     }
-    html += `</div>`;
+    html += `</div></div>`;
   }
 
-  // Related from same team
   if (relatedTeam?.length) {
-    html += `<h2>Ultimos Pronosticos de ${escapeHtml(page.home_team)}</h2>
-    <div class="grid grid-2 gap-3 mb-6">`;
+    html += `<div class="related-section">
+      <div class="related-title">Ultimos Pronosticos de ${escapeHtml(page.home_team)}</div>
+      <div class="related-grid">`;
     for (const r of relatedTeam) {
-      const resultBadge = r.has_results
-        ? r.result_correct
-          ? `<span class="result-won text-sm">&#10003;</span>`
-          : `<span class="result-lost text-sm">&#10007;</span>`
+      const badge = r.has_results
+        ? r.result_correct ? `<span class="related-won">&#10003;</span>` : `<span class="related-lost">&#10007;</span>`
         : "";
-      html += `<a href="${r.full_path}" class="card-sm flex items-center justify-between" style="text-decoration:none;">
-        <span class="text-white text-sm">${escapeHtml(r.home_team)} vs ${escapeHtml(r.away_team)}</span>
-        <span class="flex items-center gap-2">
-          <span class="text-slate-500 text-sm">${escapeHtml(r.league_name || "")}</span>
-          ${resultBadge}
-        </span>
+      html += `<a href="${r.full_path}" class="related-card">
+        <span>${escapeHtml(r.home_team)} vs ${escapeHtml(r.away_team)}</span>
+        <span class="related-meta"><span>${escapeHtml(r.league_name || "")}</span>${badge}</span>
       </a>`;
     }
-    html += `</div>`;
+    html += `</div></div>`;
   }
 
-  html += `</section>`;
-  html += `</main>`;
+  html += `</div>`; // close .article
   html += renderFooter();
 
   return html;
 }
 
-// ─── 404 fallback ───
+// ─── 404 ───
 
 function render404(leagueSlug: string): Response {
   const meta: PageMeta = {
@@ -399,18 +402,17 @@ function render404(leagueSlug: string): Response {
 
   const body = `
   ${renderNav()}
-  <main class="container py-12 text-center">
-    <h1 class="mb-4">Pronostico No Encontrado</h1>
-    <p class="text-slate-400 mb-6">Este pronostico aun no ha sido generado o la URL es incorrecta.</p>
-    <div class="flex gap-3 justify-center">
-      <a href="/predicciones/${leagueSlug}" class="btn btn-outline">Ver liga</a>
-      <a href="/predicciones" class="btn btn-primary">Ver todos los pronosticos</a>
+  <div class="article" style="padding-top:4rem;padding-bottom:4rem;text-align:center;">
+    <h1 class="article-title">Pronostico No Encontrado</h1>
+    <p style="color:#6b7280;margin-bottom:2rem;">Este pronostico aun no ha sido generado o la URL es incorrecta.</p>
+    <div style="display:flex;gap:0.75rem;justify-content:center;">
+      <a href="/predicciones/${leagueSlug}" class="premium-btn" style="background:#6b7280;">Ver liga</a>
+      <a href="/predicciones" class="premium-btn">Ver todos los pronosticos</a>
     </div>
-  </main>
+  </div>
   ${renderFooter()}`;
 
-  const html = renderPage(meta, body);
-  return new Response(html, {
+  return new Response(renderPage(meta, body), {
     status: 404,
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
