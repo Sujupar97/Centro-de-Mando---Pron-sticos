@@ -1,5 +1,4 @@
-// Shared HTML template for Netlify Edge Functions
-// Renders the base HTML shell with dark theme, fonts, GTM, and SEO tags
+// Light-mode editorial HTML template for SEO pages
 
 import { SEO_CRITICAL_CSS } from "./seo-styles.ts";
 
@@ -8,16 +7,12 @@ export interface PageMeta {
   description: string;
   canonicalUrl: string;
   ogImage?: string;
-  schemas?: string[]; // JSON-LD strings
+  schemas?: string[];
 }
 
 const SITE_URL = "https://derbix.co";
-// Replace with actual GTM container ID after setup
 const GTM_ID = "GTM-P7V936CJ";
 
-/**
- * Render the complete HTML page with head, body, and all SEO tags.
- */
 export function renderPage(meta: PageMeta, bodyContent: string): string {
   const schemasHtml = (meta.schemas || [])
     .map((s) => `<script type="application/ld+json">${s}</script>`)
@@ -31,154 +26,106 @@ export function renderPage(meta: PageMeta, bodyContent: string): string {
   <title>${escapeHtml(meta.title)}</title>
   <meta name="description" content="${escapeHtml(meta.description)}">
   <link rel="canonical" href="${meta.canonicalUrl}">
-
-  <!-- Open Graph -->
+  <meta name="google-site-verification" content="Bk4lF_kTaPtp2SINZBl1djLWn1VeeduiV-ca_k4eEfc">
   <meta property="og:title" content="${escapeHtml(meta.title)}">
   <meta property="og:description" content="${escapeHtml(meta.description)}">
   <meta property="og:type" content="article">
   <meta property="og:url" content="${meta.canonicalUrl}">
   <meta property="og:site_name" content="Derbix">
   ${meta.ogImage ? `<meta property="og:image" content="${meta.ogImage}">` : ""}
-
-  <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${escapeHtml(meta.title)}">
   <meta name="twitter:description" content="${escapeHtml(meta.description)}">
-
-  <!-- Schema.org -->
   ${schemasHtml}
-
-  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-
-  <!-- Google Tag Manager -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@700;800&display=swap" rel="stylesheet">
   <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
   new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
   j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
   })(window,document,'script','dataLayer','${GTM_ID}');</script>
-
-  <!-- Critical CSS -->
   <style>${SEO_CRITICAL_CSS}</style>
 </head>
 <body>
-  <!-- GTM noscript -->
   <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=${GTM_ID}" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-
   ${bodyContent}
 </body>
 </html>`;
 }
 
-/**
- * Render the top navigation bar.
- */
 export function renderNav(): string {
   return `
-  <div class="container">
-    <nav class="nav">
+  <nav class="nav-bar">
+    <div class="nav-inner">
       <a href="/" class="nav-logo">Derbix</a>
-      <div class="flex gap-3 items-center">
-        <a href="/predicciones" class="text-slate-300 text-sm">Predicciones</a>
-        <a href="/estadisticas" class="text-slate-300 text-sm">Estadisticas</a>
-        <a href="/pricing" class="text-slate-300 text-sm">Planes</a>
-        <a href="/signup" class="btn btn-primary text-sm" style="padding:0.5rem 1rem;">Registrarse</a>
+      <div class="nav-links">
+        <a href="/predicciones">Predicciones</a>
+        <a href="/estadisticas">Estadisticas</a>
+        <a href="/pricing">Planes</a>
+        <a href="/signup" class="nav-cta">Registrarse</a>
       </div>
-    </nav>
-  </div>`;
+    </div>
+  </nav>`;
 }
 
-/**
- * Render breadcrumbs navigation.
- */
-export function renderBreadcrumbs(
-  items: Array<{ label: string; href?: string }>
-): string {
+export function renderBreadcrumbs(items: Array<{ label: string; href?: string }>): string {
   const parts = items
     .map((item, i) => {
-      if (i === items.length - 1) {
-        return `<span class="text-slate-300">${escapeHtml(item.label)}</span>`;
-      }
-      return `<a href="${item.href}">${escapeHtml(item.label)}</a><span class="separator">/</span>`;
+      if (i === items.length - 1) return `<span>${escapeHtml(item.label)}</span>`;
+      return `<a href="${item.href}">${escapeHtml(item.label)}</a><span class="sep">/</span>`;
     })
     .join(" ");
-
-  return `<nav class="breadcrumbs" aria-label="breadcrumb">${parts}</nav>`;
+  return `<div class="breadcrumbs">${parts}</div>`;
 }
 
-/**
- * Render the footer with internal links.
- */
 export function renderFooter(): string {
   return `
   <footer class="footer">
-    <div class="container">
-      <div class="flex justify-between flex-wrap gap-4">
+    <div class="footer-inner">
+      <div class="footer-grid">
         <div>
-          <span class="nav-logo" style="font-size:1.25rem;">Derbix</span>
-          <p class="mt-4 text-sm" style="max-width:400px;">
-            Plataforma de inteligencia deportiva con IA. Analisis de mas de 5,000 variables por partido en 40+ ligas.
+          <a href="/" class="nav-logo" style="font-size:1.125rem;">Derbix</a>
+          <p style="margin-top:0.75rem;font-size:0.8125rem;max-width:280px;line-height:1.6;">
+            Plataforma de inteligencia deportiva con IA. Analisis de mas de 5,000 variables por partido.
           </p>
         </div>
-        <div class="flex gap-6">
-          <div>
-            <h4 class="font-semibold text-sm text-white mb-2">Predicciones</h4>
-            <div class="flex flex-col gap-2 text-sm">
-              <a href="/predicciones">Hoy</a>
-              <a href="/predicciones/premier-league">Premier League</a>
-              <a href="/predicciones/la-liga">La Liga</a>
-              <a href="/predicciones/serie-a">Serie A</a>
-              <a href="/predicciones/bundesliga">Bundesliga</a>
-            </div>
-          </div>
-          <div>
-            <h4 class="font-semibold text-sm text-white mb-2">Plataforma</h4>
-            <div class="flex flex-col gap-2 text-sm">
-              <a href="/pricing">Planes</a>
-              <a href="/estadisticas">Estadisticas</a>
-              <a href="/signup">Registrarse</a>
-              <a href="/login">Iniciar Sesion</a>
-            </div>
-          </div>
-          <div>
-            <h4 class="font-semibold text-sm text-white mb-2">Legal</h4>
-            <div class="flex flex-col gap-2 text-sm">
-              <a href="/terms">Terminos</a>
-              <a href="/privacy">Privacidad</a>
-              <a href="/refund">Reembolsos</a>
-            </div>
-          </div>
+        <div class="footer-col">
+          <h4>Predicciones</h4>
+          <a href="/predicciones">Hoy</a>
+          <a href="/predicciones/premier-league">Premier League</a>
+          <a href="/predicciones/la-liga">La Liga</a>
+          <a href="/predicciones/serie-a">Serie A</a>
+          <a href="/predicciones/bundesliga">Bundesliga</a>
+        </div>
+        <div class="footer-col">
+          <h4>Plataforma</h4>
+          <a href="/pricing">Planes</a>
+          <a href="/estadisticas">Estadisticas</a>
+          <a href="/signup">Registrarse</a>
+          <a href="/login">Iniciar Sesion</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="/terms">Terminos</a>
+          <a href="/privacy">Privacidad</a>
+          <a href="/refund">Reembolsos</a>
         </div>
       </div>
-      <div class="mt-8 text-center text-sm text-slate-500">
-        &copy; ${new Date().getFullYear()} Derbix. Todos los derechos reservados.
-      </div>
+      <div class="footer-bottom">&copy; ${new Date().getFullYear()} Derbix. Todos los derechos reservados.</div>
     </div>
   </footer>`;
 }
 
-/**
- * Render a CTA section (for between content blocks).
- */
-export function renderCTA(
-  heading: string,
-  subtext: string,
-  buttonText: string,
-  buttonHref: string
-): string {
+export function renderCTA(heading: string, subtext: string, buttonText: string, buttonHref: string): string {
   return `
-  <section class="card" style="text-align:center; margin: 2rem 0;">
-    <h3>${escapeHtml(heading)}</h3>
-    <p class="text-slate-400 mb-4">${escapeHtml(subtext)}</p>
-    <a href="${buttonHref}" class="btn btn-primary">${escapeHtml(buttonText)}</a>
-  </section>`;
+  <div class="cta-block">
+    <div class="cta-title">${escapeHtml(heading)}</div>
+    <p class="cta-sub">${escapeHtml(subtext)}</p>
+    <a href="${buttonHref}" class="premium-btn">${escapeHtml(buttonText)}</a>
+  </div>`;
 }
 
-/**
- * Escape HTML special characters.
- */
 export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
