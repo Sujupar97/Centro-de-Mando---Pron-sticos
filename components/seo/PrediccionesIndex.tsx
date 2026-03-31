@@ -71,13 +71,13 @@ export const PrediccionesIndex: React.FC = () => {
   const basePath = leagueSlug ? `/predicciones/${leagueSlug}` : '/predicciones';
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-white text-gray-900">
       {/* Nav */}
-      <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between border-b border-white/5">
+      <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between border-b border-gray-200">
         <Link to="/" className="text-emerald-500 font-display font-extrabold text-xl">Derbix</Link>
         <div className="flex items-center gap-4 text-sm">
-          <Link to="/predicciones" className="text-slate-300 hover:text-white">Predicciones</Link>
-          <Link to="/estadisticas" className="text-slate-300 hover:text-white">Estadísticas</Link>
+          <Link to="/predicciones" className="text-gray-600 hover:text-gray-900">Predicciones</Link>
+          <Link to="/estadisticas" className="text-gray-600 hover:text-gray-900">Estadísticas</Link>
           <Link to="/signup" className="bg-emerald-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">
             Registrarse
           </Link>
@@ -98,8 +98,8 @@ export const PrediccionesIndex: React.FC = () => {
               ]
         } />
 
-        <h1 className="text-3xl font-bold text-white mb-2 font-display">{title}</h1>
-        <p className="text-slate-400 mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2 font-display">{title}</h1>
+        <p className="text-gray-500 mb-8">
           Pronósticos generados por nuestro algoritmo de inteligencia artificial. Análisis de más de 5,000 variables por partido.
         </p>
 
@@ -123,25 +123,25 @@ export const PrediccionesIndex: React.FC = () => {
             <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : pages.length === 0 ? (
-          <p className="text-slate-500 text-center py-12">No hay predicciones disponibles.</p>
+          <p className="text-gray-400 text-center py-12">No hay predicciones disponibles.</p>
         ) : (
           <div className="flex flex-col gap-3">
             {pages.map((m) => (
               <Link
                 key={m.full_path}
                 to={m.full_path}
-                className="bg-slate-900/60 border border-white/5 rounded-xl p-4 flex items-center justify-between hover:border-emerald-500/30 transition-all"
+                className="bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between hover:border-emerald-500/30 transition-all"
               >
                 <div className="flex items-center gap-3">
                   {m.home_logo && <img src={m.home_logo} alt="" className="w-6 h-6 object-contain" />}
-                  <span className="text-white font-medium">{m.home_team} vs {m.away_team}</span>
+                  <span className="text-gray-900 font-medium">{m.home_team} vs {m.away_team}</span>
                   {m.away_logo && <img src={m.away_logo} alt="" className="w-6 h-6 object-contain" />}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-blue-500/15 text-blue-400 border border-blue-500/30">
                     {m.league_name}
                   </span>
-                  <span className="text-slate-500 text-sm">{m.match_date}</span>
+                  <span className="text-gray-400 text-sm">{m.match_date}</span>
                   {m.has_results && (
                     <span className={`text-sm font-bold ${m.result_correct ? 'text-emerald-400' : 'text-red-400'}`}>
                       {m.result_correct ? '✓' : '✗'}
@@ -164,7 +164,7 @@ export const PrediccionesIndex: React.FC = () => {
                 Anterior
               </Link>
             )}
-            <span className="flex items-center text-slate-400 text-sm px-4">
+            <span className="flex items-center text-gray-500 text-sm px-4">
               Página {currentPage} de {totalPages}
             </span>
             {currentPage < totalPages && (
@@ -179,17 +179,17 @@ export const PrediccionesIndex: React.FC = () => {
         )}
 
         {/* CTA */}
-        <div className="bg-slate-900/80 border border-white/5 rounded-2xl p-8 mt-8 text-center backdrop-blur-xl">
-          <h3 className="text-xl font-bold text-white mb-2">Desbloquea Predicciones Premium</h3>
-          <p className="text-slate-400 mb-4">1 pronóstico gratis al día, para siempre.</p>
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 mt-8 text-center">
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Desbloquea Predicciones Premium</h3>
+          <p className="text-gray-500 mb-4">1 pronóstico gratis al día, para siempre.</p>
           <Link to="/signup" className="bg-emerald-500 text-white px-6 py-3 rounded-xl font-semibold inline-block hover:bg-emerald-600 transition">
             Crear Cuenta Gratis
           </Link>
         </div>
       </main>
 
-      <footer className="border-t border-white/5 py-8 mt-8">
-        <div className="max-w-4xl mx-auto px-4 text-center text-sm text-slate-500">
+      <footer className="border-t border-gray-200 py-8 mt-8">
+        <div className="max-w-4xl mx-auto px-4 text-center text-sm text-gray-400">
           © {new Date().getFullYear()} Derbix. Todos los derechos reservados.
         </div>
       </footer>

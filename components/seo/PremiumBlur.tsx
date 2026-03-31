@@ -31,12 +31,12 @@ export const PremiumBlur: React.FC<PremiumBlurProps> = ({ children, matchTitle }
       </div>
 
       {/* Overlay with CTA */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/85 backdrop-blur-md rounded-2xl p-8 z-10">
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/90 backdrop-blur-sm rounded-2xl p-8 z-10">
         <div className="text-4xl mb-4">🔒</div>
-        <h3 className="text-xl font-bold text-white mb-2">
+        <h3 className="text-xl font-bold text-gray-900 mb-2">
           Desbloquea las Predicciones Premium
         </h3>
-        <p className="text-slate-400 mb-6 text-center max-w-md">
+        <p className="text-gray-500 mb-6 text-center max-w-md">
           Accede a probabilidades exactas, picks de valor y el análisis profundo completo.
           1 pronóstico gratis al día, para siempre.
         </p>
@@ -46,7 +46,7 @@ export const PremiumBlur: React.FC<PremiumBlurProps> = ({ children, matchTitle }
         >
           Crear Cuenta Gratis
         </button>
-        <p className="text-slate-500 text-sm mt-4">
+        <p className="text-gray-400 text-sm mt-4">
           ¿Ya tienes cuenta?{' '}
           <button
             onClick={() => navigate('/login')}

@@ -106,7 +106,7 @@ export const PrediccionPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -114,9 +114,9 @@ export const PrediccionPage: React.FC = () => {
 
   if (!page) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-4">
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center text-gray-900 p-4">
         <h1 className="text-2xl font-bold mb-4">Pronóstico No Encontrado</h1>
-        <p className="text-slate-400 mb-6">Este pronóstico aún no ha sido generado.</p>
+        <p className="text-gray-500 mb-6">Este pronóstico aún no ha sido generado.</p>
         <Link to="/predicciones" className="bg-emerald-500 text-white px-6 py-3 rounded-xl font-semibold">
           Ver Todos los Pronósticos
         </Link>
@@ -131,14 +131,14 @@ export const PrediccionPage: React.FC = () => {
   const advertencias = report?.advertencias;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-white text-gray-900">
       {/* Nav */}
-      <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between border-b border-white/5">
+      <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between border-b border-gray-200">
         <Link to="/" className="text-emerald-500 font-display font-extrabold text-xl">Derbix</Link>
         <div className="flex items-center gap-4 text-sm">
-          <Link to="/predicciones" className="text-slate-300 hover:text-white">Predicciones</Link>
-          <Link to="/estadisticas" className="text-slate-300 hover:text-white">Estadísticas</Link>
-          <Link to="/pricing" className="text-slate-300 hover:text-white">Planes</Link>
+          <Link to="/predicciones" className="text-gray-600 hover:text-gray-900">Predicciones</Link>
+          <Link to="/estadisticas" className="text-gray-600 hover:text-gray-900">Estadísticas</Link>
+          <Link to="/pricing" className="text-gray-600 hover:text-gray-900">Planes</Link>
           {!session && (
             <Link to="/signup" className="bg-emerald-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">
               Registrarse
@@ -173,15 +173,15 @@ export const PrediccionPage: React.FC = () => {
 
         {/* Analysis Summary (PUBLIC) */}
         {resumen && (
-          <section className="bg-slate-900/80 border border-white/5 rounded-2xl p-6 mb-6 backdrop-blur-xl">
-            <h2 className="text-xl font-bold text-white mb-4 font-display">Análisis del Partido</h2>
+          <section className="bg-white border border-gray-200 rounded-2xl p-6 mb-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 font-display">Análisis del Partido</h2>
             {resumen.frase_principal && (
-              <p className="text-lg text-slate-300 mb-4">{resumen.frase_principal}</p>
+              <p className="text-lg text-gray-600 mb-4">{resumen.frase_principal}</p>
             )}
             {resumen.puntos_clave?.length > 0 && (
               <ul className="space-y-2">
                 {resumen.puntos_clave.map((p: string, i: number) => (
-                  <li key={i} className="flex items-start gap-2 text-slate-300">
+                  <li key={i} className="flex items-start gap-2 text-gray-600">
                     <span className="text-emerald-500 mt-1">•</span>
                     <span>{p}</span>
                   </li>
@@ -193,8 +193,8 @@ export const PrediccionPage: React.FC = () => {
 
         {/* Stats & Factors (PUBLIC) */}
         {detallado && (
-          <section className="bg-slate-900/80 border border-white/5 rounded-2xl p-6 mb-6 backdrop-blur-xl">
-            <h2 className="text-xl font-bold text-white mb-4 font-display">Factores Clave</h2>
+          <section className="bg-white border border-gray-200 rounded-2xl p-6 mb-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 font-display">Factores Clave</h2>
             {['contexto_competitivo', 'estilo_y_tactica', 'alineaciones_y_bajas', 'factores_situacionales'].map((key) => {
               const section = detallado[key];
               if (!section?.bullets?.length) return null;
@@ -205,7 +205,7 @@ export const PrediccionPage: React.FC = () => {
                   </h3>
                   <ul className="space-y-1">
                     {section.bullets.map((b: string, i: number) => (
-                      <li key={i} className="flex items-start gap-2 text-slate-300 text-sm">
+                      <li key={i} className="flex items-start gap-2 text-gray-600 text-sm">
                         <span className="text-emerald-500 mt-1">•</span>
                         <span>{b}</span>
                       </li>
@@ -219,7 +219,7 @@ export const PrediccionPage: React.FC = () => {
                 <h3 className="text-amber-400 font-semibold mb-2">Advertencias</h3>
                 <ul className="space-y-1">
                   {advertencias.bullets.map((b: string, i: number) => (
-                    <li key={i} className="flex items-start gap-2 text-slate-300 text-sm">
+                    <li key={i} className="flex items-start gap-2 text-gray-600 text-sm">
                       <span className="text-amber-400 mt-1">⚠</span>
                       <span>{b}</span>
                     </li>
@@ -232,13 +232,13 @@ export const PrediccionPage: React.FC = () => {
 
         {/* Predictions (PREMIUM or BLURRED) */}
         {canViewPremium ? (
-          <section className="bg-slate-900/80 border border-white/5 rounded-2xl p-6 mb-6 backdrop-blur-xl">
-            <h2 className="text-xl font-bold text-white mb-4 font-display">Predicción y Apuestas</h2>
+          <section className="bg-white border border-gray-200 rounded-2xl p-6 mb-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 font-display">Predicción y Apuestas</h2>
             {veredicto && (
-              <div className="bg-slate-800/50 rounded-xl p-4 mb-4 border border-white/5">
-                <p className="text-lg font-bold text-white">{veredicto.decision}</p>
-                <p className="text-slate-300">{veredicto.seleccion_clave}</p>
-                <p className="text-sm text-slate-400">
+              <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-200">
+                <p className="text-lg font-bold text-gray-900">{veredicto.decision}</p>
+                <p className="text-gray-600">{veredicto.seleccion_clave}</p>
+                <p className="text-sm text-gray-500">
                   Probabilidad: {veredicto.probabilidad}% | {veredicto.nivel_confianza} confianza
                 </p>
               </div>
@@ -247,18 +247,18 @@ export const PrediccionPage: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-slate-500 text-xs uppercase">
+                    <tr className="text-left text-gray-400 text-xs uppercase">
                       <th className="pb-3 pr-4">Mercado</th>
                       <th className="pb-3 pr-4">Selección</th>
                       <th className="pb-3 pr-4">Probabilidad</th>
                       <th className="pb-3">Cuota</th>
                     </tr>
                   </thead>
-                  <tbody className="text-slate-300">
+                  <tbody className="text-gray-600">
                     {predicciones.map((pred: any, i: number) => (
-                      <tr key={i} className="border-t border-white/5">
+                      <tr key={i} className="border-t border-gray-200">
                         <td className="py-3 pr-4">{pred.mercado}</td>
-                        <td className="py-3 pr-4 font-medium text-white">{pred.seleccion}</td>
+                        <td className="py-3 pr-4 font-medium text-gray-900">{pred.seleccion}</td>
                         <td className="py-3 pr-4 text-emerald-400">{pred.probabilidad_estimado_porcentaje}%</td>
                         <td className="py-3">{pred.odds ? `@${pred.odds}` : '-'}</td>
                       </tr>
@@ -269,12 +269,12 @@ export const PrediccionPage: React.FC = () => {
             )}
           </section>
         ) : (
-          <section className="bg-slate-900/80 border border-white/5 rounded-2xl p-6 mb-6 backdrop-blur-xl">
-            <h2 className="text-xl font-bold text-white mb-4 font-display">Predicción y Apuestas Recomendadas</h2>
+          <section className="bg-white border border-gray-200 rounded-2xl p-6 mb-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 font-display">Predicción y Apuestas Recomendadas</h2>
             <PremiumBlur matchTitle={`${page.home_team} vs ${page.away_team}`}>
               {/* Fake preview content for blur */}
               <div className="space-y-4 p-4">
-                <div className="bg-slate-800 rounded-xl p-4">
+                <div className="bg-gray-100 rounded-xl p-4">
                   <p className="text-lg font-bold">APOSTAR</p>
                   <p>Over 2.5 Goles — 85% probabilidad</p>
                 </div>
@@ -291,9 +291,9 @@ export const PrediccionPage: React.FC = () => {
         )}
 
         {/* CTA */}
-        <div className="bg-slate-900/80 border border-white/5 rounded-2xl p-8 mb-8 text-center backdrop-blur-xl">
-          <h3 className="text-xl font-bold text-white mb-2">Pronósticos con IA para 40+ Ligas</h3>
-          <p className="text-slate-400 mb-4">Track record 100% verificable. Sin tipsters. Sin humo.</p>
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 mb-8 text-center">
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Pronósticos con IA para 40+ Ligas</h3>
+          <p className="text-gray-500 mb-4">Track record 100% verificable. Sin tipsters. Sin humo.</p>
           <Link to="/pricing" className="bg-emerald-500 text-white px-6 py-3 rounded-xl font-semibold inline-block hover:bg-emerald-600 transition">
             Ver Planes
           </Link>
@@ -311,8 +311,8 @@ export const PrediccionPage: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 py-8 mt-8">
-        <div className="max-w-4xl mx-auto px-4 text-center text-sm text-slate-500">
+      <footer className="border-t border-gray-200 py-8 mt-8">
+        <div className="max-w-4xl mx-auto px-4 text-center text-sm text-gray-400">
           © {new Date().getFullYear()} Derbix. Todos los derechos reservados.
         </div>
       </footer>

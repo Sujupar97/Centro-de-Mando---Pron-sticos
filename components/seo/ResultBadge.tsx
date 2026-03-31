@@ -29,7 +29,7 @@ export const ResultBadge: React.FC<ResultBadgeProps> = ({ result, size = 'md' })
       );
     default:
       return (
-        <span className={`inline-flex items-center gap-1 ${sizeClasses} rounded-full font-medium bg-slate-500/15 text-slate-400 border border-slate-500/30`}>
+        <span className={`inline-flex items-center gap-1 ${sizeClasses} rounded-full font-medium bg-gray-500/15 text-gray-500 border border-gray-500/30`}>
           ⏳ Pendiente
         </span>
       );
