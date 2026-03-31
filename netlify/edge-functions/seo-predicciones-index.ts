@@ -15,23 +15,18 @@ const PAGE_SIZE = 20;
 export default async function handler(req: Request) {
   const url = new URL(req.url);
   const pathParts = url.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
-  // "predicciones" | "predicciones/equipo/real-madrid" | "predicciones/premier-league"
-
   const page = parseInt(url.searchParams.get("page") || "1", 10);
   const offset = (page - 1) * PAGE_SIZE;
 
   try {
     const supabase = getSupabaseClient();
 
-    // Determine which index to render
     if (pathParts.length === 1 && pathParts[0] === "predicciones") {
       return renderMainIndex(supabase, page, offset);
     }
-
     if (pathParts.length === 3 && pathParts[1] === "equipo") {
       return renderTeamIndex(supabase, pathParts[2], page, offset);
     }
-
     if (pathParts.length === 2) {
       return renderLeagueIndex(supabase, pathParts[1], page, offset);
     }
@@ -43,23 +38,20 @@ export default async function handler(req: Request) {
   }
 }
 
-// ─── Main Index: /predicciones/ ───
+// ─── Main Index ───
 
 async function renderMainIndex(supabase: any, page: number, offset: number): Promise<Response> {
-  // Get today's and upcoming predictions grouped by league
   const { data: pages, count } = await supabase
     .from("seo_pages")
     .select("full_path, home_team, away_team, league_name, league_slug, match_date, has_results, result_correct, home_logo, away_logo", { count: "exact" })
     .order("match_date", { ascending: false })
     .range(offset, offset + PAGE_SIZE - 1);
 
-  // Get distinct leagues for navigation
   const { data: leagues } = await supabase
     .from("seo_pages")
     .select("league_slug, league_name")
     .order("league_name");
 
-  // Deduplicate leagues
   const uniqueLeagues = leagues
     ? [...new Map(leagues.map((l: any) => [l.league_slug, l])).values()]
     : [];
@@ -67,28 +59,24 @@ async function renderMainIndex(supabase: any, page: number, offset: number): Pro
   const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1;
 
   let body = renderNav();
-  body += `<main class="container py-8">`;
+  body += `<div class="article-wide">`;
   body += renderBreadcrumbs([
     { label: "Inicio", href: "/" },
     { label: "Predicciones" },
   ]);
 
-  body += `<h1 class="mb-6">Predicciones de Futbol con IA</h1>
-    <p class="text-slate-400 mb-8">Pronosticos generados por nuestro algoritmo de inteligencia artificial. Analisis de mas de 5,000 variables por partido.</p>`;
+  body += `<h1 class="article-title" style="margin-top:1rem;">Predicciones de Futbol con IA</h1>
+    <p style="color:#6b7280;margin-bottom:2rem;">Pronosticos generados por nuestro algoritmo de inteligencia artificial. Analisis de mas de 5,000 variables por partido.</p>`;
 
-  // League navigation
-  if (uniqueLeagues.length) {
-    body += `<div class="flex flex-wrap gap-2 mb-8">`;
+  if ((uniqueLeagues as any[]).length) {
+    body += `<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:2rem;">`;
     for (const league of uniqueLeagues as any[]) {
-      body += `<a href="/predicciones/${league.league_slug}" class="badge badge-blue" style="text-decoration:none;">${escapeHtml(league.league_name)}</a>`;
+      body += `<a href="/predicciones/${league.league_slug}" class="league-badge" style="text-decoration:none;">${escapeHtml(league.league_name)}</a>`;
     }
     body += `</div>`;
   }
 
-  // Predictions list
   body += renderMatchList(pages || []);
-
-  // Pagination
   body += renderPagination("/predicciones", page, totalPages);
 
   body += renderCTA(
@@ -98,24 +86,21 @@ async function renderMainIndex(supabase: any, page: number, offset: number): Pro
     "/signup"
   );
 
-  body += `</main>`;
+  body += `</div>`;
   body += renderFooter();
 
   const meta: PageMeta = {
     title: "Predicciones de Futbol con IA | Derbix",
-    description: "Pronosticos de futbol generados por IA para 40+ ligas. Analisis profundo con mas de 5,000 variables. Track record verificable. Predicciones para hoy y proximos partidos.",
+    description: "Pronosticos de futbol generados por IA para 40+ ligas. Analisis profundo con mas de 5,000 variables. Track record verificable.",
     canonicalUrl: `${SITE_URL}/predicciones${page > 1 ? `?page=${page}` : ""}`,
   };
 
   return new Response(renderPage(meta, body), {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
-    },
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
   });
 }
 
-// ─── League Index: /predicciones/[league-slug] ───
+// ─── League Index ───
 
 async function renderLeagueIndex(supabase: any, leagueSlug: string, page: number, offset: number): Promise<Response> {
   const { data: pages, count } = await supabase
@@ -125,23 +110,21 @@ async function renderLeagueIndex(supabase: any, leagueSlug: string, page: number
     .order("match_date", { ascending: false })
     .range(offset, offset + PAGE_SIZE - 1);
 
-  if (!pages?.length) {
-    return new Response("Not Found", { status: 404 });
-  }
+  if (!pages?.length) return new Response("Not Found", { status: 404 });
 
   const leagueName = pages[0].league_name;
   const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1;
 
   let body = renderNav();
-  body += `<main class="container py-8">`;
+  body += `<div class="article-wide">`;
   body += renderBreadcrumbs([
     { label: "Inicio", href: "/" },
     { label: "Predicciones", href: "/predicciones" },
     { label: leagueName },
   ]);
 
-  body += `<h1 class="mb-6">Predicciones ${escapeHtml(leagueName)}</h1>
-    <p class="text-slate-400 mb-8">Todos los pronosticos de ${escapeHtml(leagueName)} generados por nuestro algoritmo de IA.</p>`;
+  body += `<h1 class="article-title" style="margin-top:1rem;">Predicciones ${escapeHtml(leagueName)}</h1>
+    <p style="color:#6b7280;margin-bottom:2rem;">Todos los pronosticos de ${escapeHtml(leagueName)} generados por nuestro algoritmo de IA.</p>`;
 
   body += renderMatchList(pages);
   body += renderPagination(`/predicciones/${leagueSlug}`, page, totalPages);
@@ -153,7 +136,7 @@ async function renderLeagueIndex(supabase: any, leagueSlug: string, page: number
     "/pricing"
   );
 
-  body += `</main>`;
+  body += `</div>`;
   body += renderFooter();
 
   const meta: PageMeta = {
@@ -163,50 +146,41 @@ async function renderLeagueIndex(supabase: any, leagueSlug: string, page: number
   };
 
   return new Response(renderPage(meta, body), {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
-    },
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
   });
 }
 
-// ─── Team Index: /predicciones/equipo/[team-slug] ───
+// ─── Team Index ───
 
 async function renderTeamIndex(supabase: any, teamSlug: string, page: number, offset: number): Promise<Response> {
   const { data: pages, count } = await supabase
     .from("seo_pages")
-    .select("full_path, home_team, away_team, league_name, match_date, has_results, result_correct, home_logo, away_logo", { count: "exact" })
+    .select("full_path, home_team, away_team, league_name, match_date, has_results, result_correct, home_logo, away_logo, home_team_slug", { count: "exact" })
     .or(`home_team_slug.eq.${teamSlug},away_team_slug.eq.${teamSlug}`)
     .order("match_date", { ascending: false })
     .range(offset, offset + PAGE_SIZE - 1);
 
-  if (!pages?.length) {
-    return new Response("Not Found", { status: 404 });
-  }
+  if (!pages?.length) return new Response("Not Found", { status: 404 });
 
-  // Derive team name from first result
-  const firstMatch = pages[0];
-  const teamName = firstMatch.home_team_slug === teamSlug
-    ? firstMatch.home_team
-    : firstMatch.away_team || teamSlug;
-
+  const first = pages[0];
+  const teamName = first.home_team_slug === teamSlug ? first.home_team : first.away_team || teamSlug;
   const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1;
 
   let body = renderNav();
-  body += `<main class="container py-8">`;
+  body += `<div class="article-wide">`;
   body += renderBreadcrumbs([
     { label: "Inicio", href: "/" },
     { label: "Predicciones", href: "/predicciones" },
     { label: teamName },
   ]);
 
-  body += `<h1 class="mb-6">Predicciones ${escapeHtml(teamName)}</h1>
-    <p class="text-slate-400 mb-8">Historial completo de pronosticos para ${escapeHtml(teamName)}.</p>`;
+  body += `<h1 class="article-title" style="margin-top:1rem;">Predicciones ${escapeHtml(teamName)}</h1>
+    <p style="color:#6b7280;margin-bottom:2rem;">Historial completo de pronosticos para ${escapeHtml(teamName)}.</p>`;
 
   body += renderMatchList(pages);
   body += renderPagination(`/predicciones/equipo/${teamSlug}`, page, totalPages);
 
-  body += `</main>`;
+  body += `</div>`;
   body += renderFooter();
 
   const meta: PageMeta = {
@@ -216,38 +190,35 @@ async function renderTeamIndex(supabase: any, teamSlug: string, page: number, of
   };
 
   return new Response(renderPage(meta, body), {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
-    },
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
   });
 }
 
 // ─── Shared renderers ───
 
 function renderMatchList(matches: any[]): string {
-  if (!matches.length) {
-    return `<p class="text-slate-500">No hay predicciones disponibles.</p>`;
-  }
+  if (!matches.length) return `<p style="color:#9ca3af;text-align:center;padding:3rem 0;">No hay predicciones disponibles.</p>`;
 
-  let html = `<div class="flex flex-col gap-3">`;
+  let html = `<div class="match-list">`;
   for (const m of matches) {
     const resultBadge = m.has_results
       ? m.result_correct
-        ? `<span class="result-won text-sm">&#10003; Acertada</span>`
-        : `<span class="result-lost text-sm">&#10007; Fallada</span>`
-      : `<span class="text-slate-500 text-sm">Pendiente</span>`;
+        ? `<span class="related-won">&#10003; Acertada</span>`
+        : `<span class="related-lost">&#10007; Fallada</span>`
+      : `<span style="color:#9ca3af;font-size:0.75rem;">Pendiente</span>`;
 
     html += `
-    <a href="${m.full_path}" class="card-sm flex items-center justify-between" style="text-decoration:none;">
-      <div class="flex items-center gap-3">
-        ${m.home_logo ? `<img src="${m.home_logo}" alt="" class="team-logo-sm">` : ""}
-        <span class="text-white font-medium">${escapeHtml(m.home_team)} vs ${escapeHtml(m.away_team)}</span>
-        ${m.away_logo ? `<img src="${m.away_logo}" alt="" class="team-logo-sm">` : ""}
+    <a href="${m.full_path}" class="match-item">
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        ${m.home_logo ? `<img src="${m.home_logo}" alt="" style="width:24px;height:24px;object-fit:contain;">` : ""}
+        <span class="match-team">${escapeHtml(m.home_team)}</span>
+        <span class="match-vs">vs</span>
+        <span class="match-team">${escapeHtml(m.away_team)}</span>
+        ${m.away_logo ? `<img src="${m.away_logo}" alt="" style="width:24px;height:24px;object-fit:contain;">` : ""}
       </div>
-      <div class="flex items-center gap-3">
-        <span class="badge badge-blue text-sm">${escapeHtml(m.league_name || "")}</span>
-        <span class="text-slate-500 text-sm">${m.match_date}</span>
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <span class="league-badge">${escapeHtml(m.league_name || "")}</span>
+        <span style="color:#9ca3af;font-size:0.8125rem;">${m.match_date}</span>
         ${resultBadge}
       </div>
     </a>`;
@@ -258,19 +229,14 @@ function renderMatchList(matches: any[]): string {
 
 function renderPagination(basePath: string, currentPage: number, totalPages: number): string {
   if (totalPages <= 1) return "";
-
-  let html = `<div class="flex justify-center gap-2 mt-8">`;
-
+  let html = `<div style="display:flex;justify-content:center;gap:0.75rem;margin-top:2rem;">`;
   if (currentPage > 1) {
-    html += `<a href="${basePath}${currentPage > 2 ? `?page=${currentPage - 1}` : ""}" class="btn btn-outline text-sm" style="padding:0.5rem 1rem;">Anterior</a>`;
+    html += `<a href="${basePath}${currentPage > 2 ? `?page=${currentPage - 1}` : ""}" class="premium-btn" style="background:#f1f5f9;color:#374151;font-size:0.875rem;padding:0.5rem 1.25rem;">Anterior</a>`;
   }
-
-  html += `<span class="flex items-center text-slate-400 text-sm px-4">Pagina ${currentPage} de ${totalPages}</span>`;
-
+  html += `<span style="display:flex;align-items:center;color:#6b7280;font-size:0.875rem;">Pagina ${currentPage} de ${totalPages}</span>`;
   if (currentPage < totalPages) {
-    html += `<a href="${basePath}?page=${currentPage + 1}" class="btn btn-outline text-sm" style="padding:0.5rem 1rem;">Siguiente</a>`;
+    html += `<a href="${basePath}?page=${currentPage + 1}" class="premium-btn" style="background:#f1f5f9;color:#374151;font-size:0.875rem;padding:0.5rem 1.25rem;">Siguiente</a>`;
   }
-
   html += `</div>`;
   return html;
 }
