@@ -233,80 +233,46 @@ function buildArticle(page: any, data: ArticleData): string {
     </div>`;
   }
 
-  // ─── Section: Resumen del Partido ───
-  if (resumen) {
-    html += `<h2 class="section-title">Resumen del Partido</h2>`;
-    if (resumen.frase_principal) {
-      html += `<p><strong>${escapeHtml(resumen.frase_principal)}</strong></p>`;
-    }
-    if (resumen.puntos_clave?.length) {
-      html += bulletsToNarrative(resumen.puntos_clave);
-    }
-  }
-
-  // ═══ ADSENSE #1 ═══
-  html += renderAdSlot(1);
-
-  // ─── Section: Contexto de la Temporada ───
-  if (detallado?.contexto_competitivo?.bullets?.length) {
-    html += `<h2 class="section-title">Contexto de la Temporada</h2>`;
-    html += bulletsToNarrative(detallado.contexto_competitivo.bullets);
-  }
-
-  // ─── Section: Analisis Tactico ───
-  if (detallado?.estilo_y_tactica?.bullets?.length) {
-    html += `<h2 class="section-title">Analisis Tactico</h2>`;
-    html += bulletsToNarrative(detallado.estilo_y_tactica.bullets);
-  }
-
-  // ─── Section: Formaciones y Bajas ───
-  if (detallado?.alineaciones_y_bajas?.bullets?.length) {
-    html += `<h2 class="section-title">Alineaciones y Bajas</h2>`;
-    html += bulletsToNarrative(detallado.alineaciones_y_bajas.bullets);
-  }
-
-  // ─── Section: Estadisticas Clave (tables, not narrative) ───
-  if (picks?.length) {
-    html += `<h2 class="section-title">Estadisticas Clave</h2>`;
-    html += `<p>El motor de inteligencia artificial de Derbix analizo mas de 5,000 variables para este partido. A continuacion, los mercados evaluados:</p>`;
-    html += `<table class="stats-table">
-      <thead><tr><th>Mercado</th><th>Seleccion</th><th>Probabilidad</th><th>Cuota</th></tr></thead>
-      <tbody>`;
-    // Show only non-premium data: market names and generic info
-    for (const p of picks.slice(0, 6)) {
-      const prob = p.p_model > 1 ? p.p_model : Math.round(p.p_model * 100);
-      html += `<tr>
-        <td>${escapeHtml(p.market || "")}</td>
-        <td>${escapeHtml(p.selection || "")}</td>
-        <td class="num">${prob}%</td>
-        <td class="num">${p.odds ? `@${Number(p.odds).toFixed(2)}` : "-"}</td>
-      </tr>`;
-    }
-    html += `</tbody></table>`;
-  }
-
-  // ═══ ADSENSE #2 ═══
-  html += renderAdSlot(2);
-
-  // ─── Section: Factores Decisivos ───
-  const hasFactors = detallado?.factores_situacionales?.bullets?.length ||
-                     detallado?.escenarios_de_partido?.bullets?.length ||
-                     advertencias?.bullets?.length;
-  if (hasFactors) {
-    html += `<h2 class="section-title">Factores Decisivos</h2>`;
-    if (detallado.factores_situacionales?.bullets?.length) {
-      html += bulletsToNarrative(detallado.factores_situacionales.bullets);
-    }
-    if (detallado.escenarios_de_partido?.bullets?.length) {
-      html += bulletsToNarrative(detallado.escenarios_de_partido.bullets);
-    }
-    if (advertencias?.bullets?.length) {
-      html += `<p><strong>Advertencias:</strong></p>`;
-      html += `<ul class="key-points">`;
-      for (const b of advertencias.bullets) {
-        html += `<li>${escapeHtml(b)}</li>`;
+  // ─── ARTICLE CONTENT ───
+  if (page.article_html) {
+    // Gemini-generated editorial article — render directly
+    html += page.article_html;
+    html += renderAdSlot(1);
+  } else {
+    // Fallback: bullet-to-narrative formatter (for pages without article_html)
+    if (resumen) {
+      html += `<h2 class="section-title">Resumen del Partido</h2>`;
+      if (resumen.frase_principal) {
+        html += `<p><strong>${escapeHtml(resumen.frase_principal)}</strong></p>`;
       }
-      html += `</ul>`;
+      if (resumen.puntos_clave?.length) {
+        html += bulletsToNarrative(resumen.puntos_clave);
+      }
+    }
+    html += renderAdSlot(1);
+    if (detallado?.contexto_competitivo?.bullets?.length) {
+      html += `<h2 class="section-title">Contexto de la Temporada</h2>`;
+      html += bulletsToNarrative(detallado.contexto_competitivo.bullets);
+    }
+    if (detallado?.estilo_y_tactica?.bullets?.length) {
+      html += `<h2 class="section-title">Analisis Tactico</h2>`;
+      html += bulletsToNarrative(detallado.estilo_y_tactica.bullets);
+    }
+    if (detallado?.alineaciones_y_bajas?.bullets?.length) {
+      html += `<h2 class="section-title">Alineaciones y Bajas</h2>`;
+      html += bulletsToNarrative(detallado.alineaciones_y_bajas.bullets);
+    }
+    html += renderAdSlot(2);
+    const hasFactors = detallado?.factores_situacionales?.bullets?.length ||
+                       detallado?.escenarios_de_partido?.bullets?.length ||
+                       advertencias?.bullets?.length;
+    if (hasFactors) {
+      html += `<h2 class="section-title">Factores Decisivos</h2>`;
+      if (detallado?.factores_situacionales?.bullets?.length) html += bulletsToNarrative(detallado.factores_situacionales.bullets);
+      if (detallado?.escenarios_de_partido?.bullets?.length) html += bulletsToNarrative(detallado.escenarios_de_partido.bullets);
+      if (advertencias?.bullets?.length) {
+        html += `<ul class="key-points">${advertencias.bullets.map((b: string) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`;
+      }
     }
   }
 
