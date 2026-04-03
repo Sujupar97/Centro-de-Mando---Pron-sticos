@@ -33,6 +33,22 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // 0. Verify report exists before creating SEO page
+    const { data: reportCheck } = await supabase
+      .from("reports_v2")
+      .select("id")
+      .eq("fixture_id", fixture_id)
+      .limit(1)
+      .single();
+
+    if (!reportCheck) {
+      console.warn(`[SEO-PUBLISH-PAGE] No report for fixture ${fixture_id}, skipping page creation`);
+      return new Response(
+        JSON.stringify({ success: false, reason: "No report data available" }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
+
     // 1. Get match data from daily_matches
     const { data: match, error: matchErr } = await supabase
       .from("daily_matches")
@@ -121,7 +137,28 @@ serve(async (req) => {
       );
     }
 
-    // 5. Ping Google Indexing API (non-blocking, best-effort)
+    // 5. Generate editorial article via Gemini (awaited, non-critical)
+    try {
+      const articleUrl = `${supabaseUrl}/functions/v1/seo-generate-article`;
+      const articleRes = await fetch(articleUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({ fixture_id }),
+      });
+      if (articleRes.ok) {
+        const artData = await articleRes.json();
+        console.log(`[SEO-PUBLISH-PAGE] Article generated (${artData.article_length} chars)`);
+      } else {
+        console.warn(`[SEO-PUBLISH-PAGE] Article generation failed: ${articleRes.status}`);
+      }
+    } catch (artErr) {
+      console.warn("[SEO-PUBLISH-PAGE] Article generation failed (non-critical):", artErr);
+    }
+
+    // 6. Ping Google Indexing API (non-blocking, best-effort)
     const pageUrl = `${SITE_URL}${fullPath}`;
     try {
       await pingGoogleIndexingApi(pageUrl);
