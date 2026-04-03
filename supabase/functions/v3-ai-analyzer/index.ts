@@ -2007,19 +2007,24 @@ ${strategicInsightsBlock}
         const executionTime = Date.now() - startTime;
         console.log(`[V3-AI-ANALYZER] ✅ Analysis complete in ${executionTime}ms (${tokensUsed} tokens)`);
 
-        // ═══ SEO PAGE PUBLICATION (fire-and-forget) ═══
+        // ═══ SEO PAGE PUBLICATION (awaited but non-blocking on failure) ═══
         try {
             const seoUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/seo-publish-page`;
-            fetch(seoUrl, {
+            const seoRes = await fetch(seoUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
                 },
                 body: JSON.stringify({ fixture_id: finalFixtureId, job_id })
-            }).catch(e => console.error('[V3-AI-ANALYZER] SEO publish failed (non-critical):', e));
+            });
+            if (seoRes.ok) {
+                console.log(`[V3-AI-ANALYZER] ✅ SEO page published for fixture ${finalFixtureId}`);
+            } else {
+                console.warn(`[V3-AI-ANALYZER] SEO publish returned ${seoRes.status}: ${await seoRes.text().catch(() => 'no body')}`);
+            }
         } catch (_seoErr) {
-            // Non-critical — never block analysis completion
+            console.error('[V3-AI-ANALYZER] SEO publish failed (non-critical):', _seoErr);
         }
 
         // ═══ PARLAY ANALYSIS — MOVED TO FRONTEND ═══
