@@ -8,6 +8,7 @@ import { isAgencyRole } from '../utils/roles';
 import { SupportDashboard } from './admin/SupportDashboard';
 import { SeoDashboard } from './admin/SeoDashboard';
 import { AffiliateManager } from './admin/AffiliateManager';
+import { TelegramContentGenerator } from './admin/TelegramContentGenerator';
 
 export const AdminPage: React.FC = () => {
     const { profile } = useAuth();
@@ -16,6 +17,7 @@ export const AdminPage: React.FC = () => {
     const [showSupport, setShowSupport] = useState(false);
     const [showSeo, setShowSeo] = useState(false);
     const [showAffiliates, setShowAffiliates] = useState(false);
+    const [showTelegram, setShowTelegram] = useState(false);
 
     // Si el usuario activa la suite de agencia
     if (showAgencySuite) {
@@ -52,6 +54,11 @@ export const AdminPage: React.FC = () => {
         return <AffiliateManager onBack={() => setShowAffiliates(false)} />;
     }
 
+    // Si el usuario activa generador de contenido Telegram
+    if (showTelegram) {
+        return <TelegramContentGenerator onBack={() => setShowTelegram(false)} />;
+    }
+
     return (
         <div className="space-y-8 pb-20 animate-fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-center border-b border-white/5 pb-6 gap-4">
@@ -85,6 +92,13 @@ export const AdminPage: React.FC = () => {
                             >
                                 <ChartBarIcon className="w-5 h-5" />
                                 SEO
+                            </button>
+                            <button
+                                onClick={() => setShowTelegram(true)}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sky-500 to-blue-500 text-white font-bold rounded-xl hover:shadow-lg hover:shadow-sky-500/20 transition-all transform hover:scale-[1.02] active:scale-95"
+                            >
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
+                                Telegram
                             </button>
                             <button
                                 onClick={() => setShowAffiliates(true)}
