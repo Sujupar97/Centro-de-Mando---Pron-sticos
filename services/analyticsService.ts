@@ -33,6 +33,21 @@ export function trackSignupFree(): void {
   trackEvent('signup_free');
 }
 
+/** User completed signup with UTM attribution */
+export function trackSignupWithAttribution(params: {
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmRef?: string;
+}): void {
+  trackEvent('signup_free', {
+    utm_source: params.utmSource,
+    utm_medium: params.utmMedium,
+    utm_campaign: params.utmCampaign,
+    utm_ref: params.utmRef,
+  });
+}
+
 /** User attempted to view premium/blurred content */
 export function trackPremiumBlurView(match: string): void {
   trackEvent('view_premium_blur', { match });

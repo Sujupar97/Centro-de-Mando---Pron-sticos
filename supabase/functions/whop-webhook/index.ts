@@ -126,6 +126,30 @@ async function assignFreePlan(supabase: any, userId: string, orgId: string) {
 }
 
 // ==========================================
+// Helper: Send Meta Conversions API event (fire-and-forget)
+// ==========================================
+
+function sendMetaConversion(sbUrl: string, sbKey: string, eventData: {
+    event_name: string;
+    email?: string;
+    value?: number;
+    currency?: string;
+    event_id?: string;
+}) {
+    const url = `${sbUrl}/functions/v1/meta-conversions-api`;
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sbKey}`
+        },
+        body: JSON.stringify(eventData)
+    }).catch(err => {
+        console.error('[whop-webhook] Meta CAPI error (non-blocking):', err);
+    });
+}
+
+// ==========================================
 // Helper: Notificar al equipo admin (fire-and-forget)
 // ==========================================
 
@@ -329,6 +353,30 @@ async function handlePaymentSucceeded(supabase: any, data: any) {
             raw_response: data,
             description: 'Pago procesado via Whop'
         });
+
+        // Send Purchase event to Meta Conversions API (fire-and-forget)
+        try {
+            const sbUrl = Deno.env.get('SUPABASE_URL')!;
+            const sbKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('email')
+                .eq('id', sub.user_id)
+                .single();
+
+            if (profile?.email) {
+                sendMetaConversion(sbUrl, sbKey, {
+                    event_name: 'Purchase',
+                    email: profile.email,
+                    value: data.amount || 0,
+                    currency: (data.currency || 'USD').toUpperCase(),
+                    event_id: `whop_payment_${paymentId}`,
+                });
+            }
+        } catch (metaErr) {
+            console.error('[whop-webhook] Meta CAPI prep error (non-blocking):', metaErr);
+        }
     }
 
     console.log(`[whop-webhook] Payment succeeded: payment=${paymentId}, membership=${membershipId}`);

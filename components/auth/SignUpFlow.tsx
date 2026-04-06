@@ -5,7 +5,7 @@ import { PlanSelector } from './PlanSelector';
 import { ArrowRightIcon, ArrowLeftIcon, SparklesIcon } from '../icons/Icons';
 import { openCheckoutOverlay, getVariantId } from '../../services/lemonSqueezyService';
 import { SubscriptionPlan } from '../../services/subscriptionService';
-import { trackSignupFree } from '../../services/analyticsService';
+import { trackSignupWithAttribution } from '../../services/analyticsService';
 
 interface SignUpData {
     fullName: string;
@@ -37,6 +37,12 @@ export const SignUpFlow: React.FC = () => {
     const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>(
         (searchParams.get('billing') as 'monthly' | 'annual') || 'monthly'
     );
+
+    // Capture UTM parameters from URL for attribution tracking
+    const utmSource = searchParams.get('utm_source') || undefined;
+    const utmMedium = searchParams.get('utm_medium') || undefined;
+    const utmCampaign = searchParams.get('utm_campaign') || undefined;
+    const utmRef = searchParams.get('ref') || undefined;
 
     // Guardamos datos para el checkout de pago después de confirmar email
     const signUpResultRef = useRef<{ userId: string } | null>(null);
@@ -90,8 +96,23 @@ export const SignUpFlow: React.FC = () => {
             if (authError) throw authError;
             if (!authData.user) throw new Error('No se pudo crear el usuario');
 
-            // Track successful signup
-            trackSignupFree();
+            // Track successful signup with UTM attribution
+            trackSignupWithAttribution({ utmSource, utmMedium, utmCampaign, utmRef });
+
+            // Save UTM attribution to profile (fire-and-forget)
+            if (utmSource || utmMedium || utmCampaign || utmRef) {
+                supabase
+                    .from('profiles')
+                    .update({
+                        utm_source: utmSource || null,
+                        utm_medium: utmMedium || null,
+                        utm_campaign: utmCampaign || null,
+                        utm_ref: utmRef || null,
+                    })
+                    .eq('id', authData.user.id)
+                    .then(() => {})
+                    .catch(() => {});
+            }
 
             // Notificar admin del nuevo registro (fire-and-forget, no bloquea el flujo)
             supabase.functions.invoke('send-admin-notification', {
