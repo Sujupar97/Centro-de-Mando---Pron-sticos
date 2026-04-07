@@ -353,6 +353,35 @@ export const SignUpFlow: React.FC = () => {
                     ) : step === 1 ? (
                         /* STEP 1: User Data */
                         <div className="max-w-md mx-auto">
+                            {/* Context banner for ads traffic */}
+                            <div className="mb-6">
+                                <div className="bg-brand/5 border border-brand/20 rounded-2xl p-5 text-center">
+                                    <h2 className="text-lg sm:text-xl font-bold text-white mb-3">
+                                        ⚡ Estás a 30 segundos de tener tus pronósticos del día
+                                    </h2>
+                                    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-slate-300">
+                                        <span className="flex items-center gap-1">
+                                            <svg className="w-3.5 h-3.5 text-brand" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                            </svg>
+                                            Sin tarjeta de crédito
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <svg className="w-3.5 h-3.5 text-brand" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                            </svg>
+                                            Plan gratis disponible
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <svg className="w-3.5 h-3.5 text-brand" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                            </svg>
+                                            Resultados 100% verificables
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="text-center mb-8">
                                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand/10 border border-brand/20 mb-4">
                                     <SparklesIcon className="w-4 h-4 text-brand" />
