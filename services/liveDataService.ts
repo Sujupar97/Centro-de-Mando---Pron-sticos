@@ -200,7 +200,25 @@ export const fetchGameDetails = async (game: Game): Promise<GameDetails> => {
     }
 };
 
-export const fetchTopPicks = async (date: string) => {
+/**
+ * Roles que pueden ver pronósticos `pending_review` y aprobarlos/rechazarlos.
+ * Usuarios normales solo ven `auto_approved` y `admin_approved`.
+ * Fuente canónica: utils/roles.ts (AGENCY_ROLES). Se mantienen aliases legacy
+ * (admin, superadmin) por compatibilidad con perfiles antiguos.
+ */
+const ADMIN_ROLE_SET = new Set([
+    'platform_owner', 'agency_admin',
+    // Legacy aliases (normalizeRole los mapea a 'user' a futuro, pero
+    // mientras haya perfiles sin migrar, los aceptamos como reviewers)
+    'admin', 'superadmin',
+]);
+
+export const isReviewerRole = (role?: string | null): boolean => {
+    if (!role) return false;
+    return ADMIN_ROLE_SET.has(role.toLowerCase());
+};
+
+export const fetchTopPicks = async (date: string, userRole?: string | null) => {
     try {
         console.log(`[TopPicks] Fetching for date: ${date}`);
         const { supabase } = await import('./supabaseService');
@@ -790,13 +808,23 @@ export const fetchTopPicks = async (date: string) => {
         console.log(`[TopPicks] Predictions found: ${predictions?.length || 0}`);
 
         // 5. Cruzar datos (Join en memoria)
+        const isReviewer = isReviewerRole(userRole);
         const topPicks: TopPickItem[] = [];
 
         predictions?.forEach((pred: any) => {
+            // Filtro de visibilidad por review_status según rol del usuario.
+            // - admin_rejected: nunca visible
+            // - pending_review: solo visible para admin/owner (cola de revisión)
+            // - auto_approved / admin_approved: visible para todos
+            const status = (pred.review_status || 'auto_approved') as string;
+            if (status === 'admin_rejected') return;
+            if (status === 'pending_review' && !isReviewer) return;
+
             const game = games.find(g => g.fixture.id === pred.fixture_id);
             if (!game) return;
 
             topPicks.push({
+                predictionId: pred.id,
                 gameId: pred.fixture_id,
                 analysisRunId: pred.analysis_run_id,
                 matchup: `${game.teams.home.name} vs ${game.teams.away.name}`,
@@ -814,7 +842,9 @@ export const fetchTopPicks = async (date: string) => {
                     reasoning: pred.reasoning
                 },
                 result: pred.is_won === true ? 'Won' : (pred.is_won === false ? 'Lost' : 'Pending'),
-                odds: pred.odds // Mapped from DB
+                odds: pred.odds, // Mapped from DB
+                reviewStatus: status as any,
+                suspiciousReason: pred.suspicious_reason || null,
             });
         });
 

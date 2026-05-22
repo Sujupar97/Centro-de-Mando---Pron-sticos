@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { TopPickItem } from '../../types';
-import { fetchTopPicks } from '../../services/liveDataService';
+import { fetchTopPicks, isReviewerRole } from '../../services/liveDataService';
 import { supabase } from '../../services/supabaseService';
 import { mapLeagueToSportKey, fastBatchOddsCheck, findPriceInEvent } from '../../services/oddsService';
 import { TrophyIcon, ChartBarIcon, CheckCircleIcon, XCircleIcon, LockClosedIcon } from '../icons/Icons';
@@ -40,6 +40,11 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
     const [subscription, setSubscription] = useState<any>(null);
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
+    // Admin review state
+    const isAdmin = isReviewerRole(profile?.role);
+    const [reviewingIds, setReviewingIds] = useState<Set<string>>(new Set());
+    const [reviewErrors, setReviewErrors] = useState<Record<string, string>>({});
+
     useEffect(() => {
         const loadSubscription = async () => {
             if (profile?.id) {
@@ -65,10 +70,20 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
         return Math.ceil(totalPicks * (pct / 100));
     };
 
+    // Separar pendientes de revisión (solo se llenan si el usuario es admin/owner)
+    const pendingReviewPicks = useMemo(
+        () => topPicks.filter(p => p.reviewStatus === 'pending_review'),
+        [topPicks]
+    );
+    const publishedPicks = useMemo(
+        () => topPicks.filter(p => p.reviewStatus !== 'pending_review'),
+        [topPicks]
+    );
+
     // ═══════════════════════════════════════════════════════════════
     // FILTRO ESTRICTO: Solo alta probabilidad o media con alta confianza
     // ═══════════════════════════════════════════════════════════════
-    const filteredPicks = topPicks.filter(pick => {
+    const filteredPicks = publishedPicks.filter(pick => {
         const prob = pick.bestRecommendation.probability;
         const conf = pick.bestRecommendation.confidence?.toLowerCase() || '';
 
@@ -100,7 +115,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
             setError('');
             setTopPicks([]);
             try {
-                const data = await fetchTopPicks(date);
+                const data = await fetchTopPicks(date, profile?.role);
                 if (data) setTopPicks(data);
             } catch (err: any) {
                 setError(err.message || 'Error al cargar las mejores opciones.');
@@ -110,7 +125,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
         };
 
         loadData();
-    }, [date]);
+    }, [date, profile?.role]);
 
     // EFECTO: Buscar Cuotas Reales si faltan (Post-Load)
     useEffect(() => {
@@ -149,12 +164,19 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                                 pick.odds = realPrice;
                                 updatesCount++;
 
-                                if (pick.analysisRunId) {
+                                if (pick.predictionId) {
+                                    // Actualizar por PK del pronóstico para evitar pisar otros markets del mismo run
+                                    await supabase
+                                        .from('predictions')
+                                        .update({ odds: realPrice })
+                                        .eq('id', pick.predictionId);
+                                } else if (pick.analysisRunId) {
+                                    // Fallback legacy: si el pronóstico no tiene id cargado, intentar por run+selection
                                     await supabase
                                         .from('predictions')
                                         .update({ odds: realPrice })
                                         .eq('analysis_run_id', pick.analysisRunId)
-                                        .eq('selection', pick.bestRecommendation.prediction); // Match selection text
+                                        .eq('selection', pick.bestRecommendation.prediction);
                                 }
                             }
                         }
@@ -163,6 +185,13 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                     if (updatesCount > 0) {
                         setTopPicks(updatedPicks);
                         console.log(`Actualizadas ${updatesCount} cuotas en Top Picks.`);
+                        // Refrescar desde DB para recoger el nuevo review_status que el trigger pudo haber asignado
+                        try {
+                            const refreshed = await fetchTopPicks(date, profile?.role);
+                            if (refreshed) setTopPicks(refreshed);
+                        } catch {
+                            /* swallow — la UI ya tiene los odds actualizados localmente */
+                        }
                     }
                 }
 
@@ -173,6 +202,63 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
 
         checkAndFetchOdds();
     }, [topPicks.length, isLoading]); // Run once after load
+
+    const setReviewError = (predictionId: string, message: string | null) => {
+        setReviewErrors(prev => {
+            const next = { ...prev };
+            if (message) next[predictionId] = message;
+            else delete next[predictionId];
+            return next;
+        });
+    };
+
+    // Acción admin: aprobar o rechazar
+    const handleReview = async (predictionId: string, action: 'approve' | 'reject') => {
+        if (!predictionId) return;
+        if (reviewingIds.has(predictionId)) return; // ya en curso para este pronóstico
+        setReviewingIds(prev => new Set(prev).add(predictionId));
+        setReviewError(predictionId, null);
+        try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const accessToken = sessionData?.session?.access_token;
+            if (!accessToken) {
+                setReviewError(predictionId, 'Sesión inválida. Vuelve a iniciar sesión.');
+                return;
+            }
+            const { data, error } = await supabase.functions.invoke('review-prediction', {
+                body: { prediction_id: predictionId, action },
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            if (error) {
+                setReviewError(predictionId, error.message || 'Error al revisar el pronóstico');
+                return;
+            }
+            if (data && data.success === false) {
+                setReviewError(predictionId, data.error || 'No fue posible completar la revisión');
+                return;
+            }
+
+            // Actualizar estado local sin volver a llamar a la red
+            setTopPicks(prev =>
+                prev
+                    .map(p => {
+                        if (p.predictionId !== predictionId) return p;
+                        const newStatus = action === 'approve' ? 'admin_approved' : 'admin_rejected';
+                        return { ...p, reviewStatus: newStatus as any };
+                    })
+                    // Si fue rechazado, sacarlo de la lista visible (los admins tampoco lo necesitan ver permanente)
+                    .filter(p => p.reviewStatus !== 'admin_rejected')
+            );
+        } catch (e: any) {
+            setReviewError(predictionId, e.message || 'Error inesperado');
+        } finally {
+            setReviewingIds(prev => {
+                const next = new Set(prev);
+                next.delete(predictionId);
+                return next;
+            });
+        }
+    };
 
     return (
         <div className="flex flex-col h-full animate-fade-in">
@@ -223,12 +309,107 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                 </div>
             )}
 
+            {/* === PANEL ADMIN: PRONÓSTICOS PENDIENTES DE REVISIÓN === */}
+            {isAdmin && pendingReviewPicks.length > 0 && (
+                <div className="mb-6 bg-amber-500/5 border border-amber-500/40 rounded-xl p-4 animate-fade-in">
+                    <div className="flex items-center justify-between mb-3">
+                        <div>
+                            <h4 className="text-amber-300 font-bold flex items-center gap-2">
+                                <LockClosedIcon className="w-5 h-5" />
+                                Pendientes de tu aprobación ({pendingReviewPicks.length})
+                            </h4>
+                            <p className="text-xs text-amber-200/70 mt-1">
+                                Estos pronósticos fueron retenidos porque la combinación de probabilidad y cuota parece anómala.
+                                Solo tú (admin/owner) los ves. Apruébalos para publicarlos a todos los usuarios, o recházalos si la cuota es incorrecta.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        {pendingReviewPicks.map((pick) => {
+                            const rowError = pick.predictionId ? reviewErrors[pick.predictionId] : undefined;
+                            const inFlight = pick.predictionId ? reviewingIds.has(pick.predictionId) : false;
+                            return (
+                            <div
+                                key={`pending-${pick.predictionId}`}
+                                className="bg-slate-900/70 border border-amber-500/30 rounded-lg p-3 flex flex-col gap-2"
+                            >
+                            <div className="flex flex-col md:flex-row gap-3 md:items-center">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                        <span className="text-[10px] uppercase font-bold tracking-wider bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded">
+                                            CUOTA SOSPECHOSA
+                                        </span>
+                                        <span className="text-xs text-gray-400">{pick.league}</span>
+                                    </div>
+                                    <div className="text-white font-bold text-sm">
+                                        {pick.teams.home.name} vs {pick.teams.away.name}
+                                    </div>
+                                    <div className="text-xs text-gray-300 mt-1">
+                                        <span className="text-gray-500 uppercase">{pick.bestRecommendation.market}:</span>{' '}
+                                        <span className="text-white">{pick.bestRecommendation.prediction}</span>
+                                        {' · '}
+                                        <span className="text-emerald-400 font-semibold">{pick.bestRecommendation.probability}%</span>
+                                        {pick.odds && (
+                                            <>
+                                                {' · '}
+                                                <span className="text-cyan-400 font-semibold">@{pick.odds.toFixed(2)}</span>
+                                            </>
+                                        )}
+                                    </div>
+                                    {pick.suspiciousReason && (
+                                        <div className="text-[10px] text-amber-200/60 font-mono mt-1 truncate">
+                                            {pick.suspiciousReason}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {pick.analysisRunId && (
+                                        <button
+                                            onClick={() => onOpenReport && onOpenReport(pick.analysisRunId || null, pick.gameId)}
+                                            className="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-600 text-gray-300 hover:bg-slate-800 transition-colors"
+                                            title="Ver informe del análisis"
+                                        >
+                                            Ver informe
+                                        </button>
+                                    )}
+                                    <button
+                                        disabled={inFlight}
+                                        onClick={() => pick.predictionId && handleReview(pick.predictionId, 'approve')}
+                                        className="px-3 py-1.5 text-xs font-bold rounded-md bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/30 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center gap-1"
+                                    >
+                                        <CheckCircleIcon className="w-4 h-4" />
+                                        Aprobar
+                                    </button>
+                                    <button
+                                        disabled={inFlight}
+                                        onClick={() => pick.predictionId && handleReview(pick.predictionId, 'reject')}
+                                        className="px-3 py-1.5 text-xs font-bold rounded-md bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center gap-1"
+                                    >
+                                        <XCircleIcon className="w-4 h-4" />
+                                        Rechazar
+                                    </button>
+                                </div>
+                            </div>
+                            {rowError && (
+                                <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-xs p-2 rounded">
+                                    {rowError}
+                                </div>
+                            )}
+                            </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+            {/* === FIN PANEL ADMIN === */}
+
             {isLoading ? (
                 <div className="flex flex-col items-center justify-center h-64">
                     <div className="w-12 h-12 border-4 border-green-accent border-t-transparent rounded-full animate-spin"></div>
                     <p className="mt-4 text-gray-400 animate-pulse">Buscando las mejores oportunidades...</p>
                 </div>
-            ) : topPicks.length === 0 ? (
+            ) : publishedPicks.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-64 bg-gray-800/30 rounded-lg border-2 border-dashed border-gray-700">
                     <ChartBarIcon className="w-12 h-12 text-gray-600 mb-4" />
                     <h4 className="text-xl font-semibold text-gray-400">Sin Análisis para esta fecha</h4>
@@ -244,6 +425,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                         </div>
                     ) : filteredPicks.map((pick, index) => {
                         const isLocked = index >= getAllowedCount(filteredPicks.length);
+                        const isAdminApproved = pick.reviewStatus === 'admin_approved';
 
                         return (
                             <div
@@ -255,7 +437,7 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                                         onOpenReport && onOpenReport(pick.analysisRunId || null, pick.gameId);
                                     }
                                 }}
-                                className={`relative bg-gray-800 rounded-xl shadow-lg overflow-hidden border transition-all duration-300 group cursor-pointer 
+                                className={`relative bg-gray-800 rounded-xl shadow-lg overflow-hidden border transition-all duration-300 group cursor-pointer
                                 ${isLocked
                                         ? 'border-gray-700 hover:border-gray-600 opacity-90'
                                         : 'border-gray-700 hover:border-green-accent/50 hover:bg-gray-750'
@@ -277,6 +459,14 @@ export const TopPicks: React.FC<TopPicksProps> = ({ date, onOpenReport }) => {
                                     <div className="absolute top-4 right-4 z-20 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-3 py-1.5 rounded-md text-sm font-black shadow-[0_0_15px_rgba(59,130,246,0.5)] animate-pulse-slow border border-blue-400 flex flex-col items-center leading-none">
                                         <span className="text-[10px] font-normal opacity-80 mb-0.5">CUOTA</span>
                                         <span>@{pick.odds.toFixed(2)}</span>
+                                    </div>
+                                )}
+
+                                {/* Badge: APROBADO POR ADMIN (solo cuando aplica) */}
+                                {isAdminApproved && !isLocked && (
+                                    <div className="absolute top-4 left-4 z-20 bg-amber-500/90 text-black px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                        <CheckCircleIcon className="w-3 h-3" />
+                                        Verificado Admin
                                     </div>
                                 )}
 
